@@ -170,6 +170,10 @@
                     <div class="activity-detail-value" id="modal-distance">--</div>
                 </div>
                 <div class="activity-detail-card">
+                    <div class="activity-detail-label" id="modal-pace-label">Overall Pace</div>
+                    <div class="activity-detail-value" id="modal-pace" style="color: var(--accent-color);">--</div>
+                </div>
+                <div class="activity-detail-card">
                     <div class="activity-detail-label">Duration</div>
                     <div class="activity-detail-value" id="modal-duration">--</div>
                 </div>
@@ -178,17 +182,52 @@
                     <div class="activity-detail-value" id="modal-hr">--</div>
                 </div>
                 <div class="activity-detail-card">
+                    <div class="activity-detail-label">Avg Cadence</div>
+                    <div class="activity-detail-value" id="modal-cadence">--</div>
+                </div>
+                <div class="activity-detail-card" id="power-summary-card" style="display: none;">
+                    <div class="activity-detail-label">Avg Power</div>
+                    <div class="activity-detail-value" id="modal-power">--</div>
+                </div>
+                <div class="activity-detail-card">
+                    <div class="activity-detail-label">Elev Gain</div>
+                    <div class="activity-detail-value" id="modal-elevation">--</div>
+                </div>
+                <div class="activity-detail-card">
                     <div class="activity-detail-label">Calories</div>
                     <div class="activity-detail-value" id="modal-calories">--</div>
                 </div>
             </div>
 
-            <h3 style="margin-bottom: 1rem;">Heart Rate Trend</h3>
+            <div id="splits-section" style="display: none; margin-bottom: 2rem;">
+                <h3 style="margin-bottom: 1rem;">Mile Splits</h3>
+                <div id="splits-table"
+                    style="background: rgba(255,255,255,0.05); border-radius: 1rem; overflow: hidden;">
+                    <!-- Splits injected here -->
+                </div>
+            </div>
+
+            <h3 style="margin-bottom: 1rem;">Elevation</h3>
+            <div class="small-chart-container">
+                <canvas id="activityElevChart"></canvas>
+            </div>
+
+            <h3 style="margin-bottom: 1rem;">Heart Rate</h3>
             <div class="small-chart-container">
                 <canvas id="activityHrChart"></canvas>
             </div>
 
-            <h3 style="margin-bottom: 1rem;">Speed/Pace Trend</h3>
+            <h3 style="margin-bottom: 1rem;" id="cadence-title">Cadence</h3>
+            <div class="small-chart-container" id="cadence-chart-container">
+                <canvas id="activityCadenceChart"></canvas>
+            </div>
+
+            <h3 style="margin-bottom: 1rem; display: none;" id="power-title">Power (Zones)</h3>
+            <div class="small-chart-container" id="power-chart-container" style="display: none;">
+                <canvas id="activityPowerChart"></canvas>
+            </div>
+
+            <h3 style="margin-bottom: 1rem;">Speed/Pace</h3>
             <div class="small-chart-container">
                 <canvas id="activitySpeedChart"></canvas>
             </div>
@@ -614,21 +653,68 @@
             const modal = document.getElementById('activityModal');
             modal.classList.add('active');
 
+            // Initial UI reset
+            document.getElementById('splits-section').style.display = 'none';
+            document.getElementById('power-summary-card').style.display = 'none';
+            document.getElementById('power-title').style.display = 'none';
+            document.getElementById('power-chart-container').style.display = 'none';
+            document.getElementById('modal-pace-label').textContent = 'Overall Pace';
+
             // Populate basic data
+            const isRunning = basicData.activityType.typeKey.includes('running') || basicData.activityType.typeKey.includes('walking');
+            const isCycling = basicData.activityType.typeKey.includes('cycling') || basicData.activityType.typeKey.includes('ride');
+
             document.getElementById('modal-title').textContent = basicData.activityName;
             document.getElementById('modal-date').textContent = new Date(basicData.startTimeLocal).toLocaleString();
             document.getElementById('modal-distance').textContent = formatDualDistance(basicData.distance / 1609.34);
             document.getElementById('modal-duration').textContent = Math.round(basicData.duration / 60) + ' min';
             document.getElementById('modal-hr').textContent = basicData.averageHR ? Math.round(basicData.averageHR) + ' bpm' : '--';
             document.getElementById('modal-calories').textContent = Math.round(basicData.calories) + ' kcal';
+            document.getElementById('modal-elevation').textContent = basicData.elevationGain ? Math.round(basicData.elevationGain * 3.28084) + ' ft' : '--';
 
             try {
                 const res = await fetch(`/api/activity/${activityId}`);
                 if (res.ok) {
                     const data = await res.json();
                     if (!data.error) {
-                        const isRunning = basicData.activityType.typeKey.includes('running');
-                        renderActivityCharts(data.charts, isRunning);
+                        renderActivityCharts(data.charts, isRunning, isCycling);
+
+                        // Populate calculated stats
+
+                        let avgCadence = 0;
+                        if (data.charts.cadence && data.charts.cadence.length > 0) {
+                            const validCadence = data.charts.cadence.filter(c => c > 0 && c !== null);
+                            if (validCadence.length > 0) {
+                                const sum = validCadence.reduce((a, b) => a + b, 0);
+                                avgCadence = Math.round(sum / validCadence.length);
+                            }
+                        }
+                        document.getElementById('modal-cadence').textContent = avgCadence > 0 ? avgCadence + (isRunning ? ' spm' : ' rpm') : '--';
+
+                        // Handle Splits
+                        if (isRunning && data.splits && data.splits.length > 0) {
+                            renderSplits(data.splits);
+                        }
+
+                        // Handle Power Stats & Graph visibility
+                        const validPower = data.charts.power ? data.charts.power.filter(p => p > 0 && p !== null) : [];
+                        const hasPowerData = validPower.length > 0;
+                        const avgPower = (data.summary && data.summary.averagePower) || basicData.averagePower;
+
+                        if (isCycling) {
+                            document.getElementById('modal-pace-label').textContent = 'Avg Power';
+                            document.getElementById('modal-pace').textContent = avgPower ? Math.round(avgPower) + ' W' : '--';
+                            // Hide redundant power card if we put it in the main slot
+                            document.getElementById('power-summary-card').style.display = 'none';
+                        } else {
+                            document.getElementById('modal-pace-label').textContent = 'Overall Pace';
+                            document.getElementById('modal-pace').textContent = (data.avg_pace_str || '--') + ' /mi';
+                        }
+
+                        if (hasPowerData) {
+                            document.getElementById('power-title').style.display = 'block';
+                            document.getElementById('power-chart-container').style.display = 'block';
+                        }
                     }
                 }
             } catch (err) {
@@ -636,34 +722,112 @@
             }
         }
 
+        function renderSplits(splits) {
+            const container = document.getElementById('splits-section');
+            const table = document.getElementById('splits-table');
+            container.style.display = 'block';
+
+            let html = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; padding: 0.75rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">
+                    <div>MILE</div>
+                    <div style="text-align: right;">PACE</div>
+                </div>
+            `;
+
+            splits.forEach(s => {
+                html += `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; padding: 1rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 1.1rem;">
+                        <div style="font-weight: 500;">${s.mile}</div>
+                        <div style="text-align: right; color: var(--accent-color); font-weight: 600;">${s.pace_str}</div>
+                    </div>
+                `;
+            });
+
+            table.innerHTML = html;
+        }
+
         function closeModal() {
             document.getElementById('activityModal').classList.remove('active');
         }
 
-        function renderActivityCharts(charts, isRunning) {
+        function renderActivityCharts(charts, isRunning, isCycling) {
+            // Elevation
+            renderDetailChart('activityElevChart', charts.timestamps, charts.elevation.map(e => e * 3.28084), 'Elevation', '#94a3b8', 'ft');
+
             // HR Chart
-            renderDetailChart('activityHrChart', charts.timestamps.map(t => ''), charts.heart_rate, 'Heart Rate', '#f87171', 'bpm');
+            renderDetailChart('activityHrChart', charts.timestamps, charts.heart_rate, 'Heart Rate', '#f87171', 'bpm');
+
+            // Cadence Chart
+            renderDetailChart('activityCadenceChart', charts.timestamps, charts.cadence, isRunning ? 'Steps/Min' : 'RPM', '#4ade80', '');
+
+            // Power Chart
+            if (isCycling && charts.power && charts.power.length > 0) {
+                renderPowerChart(charts.timestamps, charts.power);
+            }
 
             // Speed/Pace Chart
             if (isRunning) {
-                // Convert m/s to min/mile
                 const paces = charts.speed.map(s => s > 0.5 ? 26.8224 / s : null);
-                renderDetailChart('activitySpeedChart', charts.timestamps.map(t => ''), paces, 'Pace', '#38bdf8', 'min/mi', true);
+                renderDetailChart('activitySpeedChart', charts.timestamps, paces, 'Pace', '#38bdf8', 'min/mi', true);
             } else {
-                // Convert m/s to mph
                 const speeds = charts.speed.map(s => s * 2.23694);
-                renderDetailChart('activitySpeedChart', charts.timestamps.map(t => ''), speeds, 'Speed', '#38bdf8', 'mph');
+                renderDetailChart('activitySpeedChart', charts.timestamps, speeds, 'Speed', '#38bdf8', 'mph');
             }
         }
 
-        function renderDetailChart(canvasId, labels, data, label, color, unit, reversed = false) {
+        function renderPowerChart(timestamps, power) {
+            const ctx = document.getElementById('activityPowerChart').getContext('2d');
+            if (chartInstances['activityPowerChart']) chartInstances['activityPowerChart'].destroy();
+
+            chartInstances['activityPowerChart'] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timestamps.map(t => ''),
+                    datasets: [{
+                        label: 'Power',
+                        data: power,
+                        borderColor: '#818cf8',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.4,
+                        fill: true,
+                        backgroundColor: (context) => {
+                            const chart = context.chart;
+                            const { ctx, chartArea } = chart;
+                            if (!chartArea) return null;
+                            const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+                            gradient.addColorStop(0, 'rgba(148, 163, 184, 0.2)');
+                            gradient.addColorStop(0.2, 'rgba(74, 222, 128, 0.4)');
+                            gradient.addColorStop(0.4, 'rgba(250, 204, 21, 0.4)');
+                            gradient.addColorStop(0.6, 'rgba(251, 146, 60, 0.4)');
+                            gradient.addColorStop(0.8, 'rgba(248, 113, 113, 0.4)');
+                            return gradient;
+                        }
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: {
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#94a3b8', callback: val => val + ' W' }
+                        },
+                        x: { display: false }
+                    }
+                }
+            });
+        }
+
+        function renderDetailChart(canvasId, timestamps, data, label, color, unit, reversed = false) {
             const ctx = document.getElementById(canvasId).getContext('2d');
             if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
             chartInstances[canvasId] = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: labels,
+                    labels: timestamps.map(t => ''),
                     datasets: [{
                         label: label,
                         data: data,
