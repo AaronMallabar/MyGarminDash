@@ -321,7 +321,10 @@ def get_activity_details(activity_id):
             'heart_rate': [],
             'speed': [],
             'elevation': [],
-            'timestamps': []
+            'cadence': [],
+            'power': [],
+            'timestamps': [],
+            'distance': []
         }
         
         for m in metrics_list:
@@ -344,11 +347,81 @@ def get_activity_details(activity_id):
                 # Elevation (m)
                 if 'directElevation' in key_map:
                     charts['elevation'].append(row[key_map['directElevation']])
+                
+                # Cadence
+                if 'directBikeCadence' in key_map:
+                    charts['cadence'].append(row[key_map['directBikeCadence']])
+                elif 'directRunCadence' in key_map:
+                    charts['cadence'].append(row[key_map['directRunCadence']])
+                elif 'directDoubleCadence' in key_map:
+                    charts['cadence'].append(row[key_map['directDoubleCadence']])
+                elif 'directFractionalCadence' in key_map:
+                    charts['cadence'].append(row[key_map['directFractionalCadence']])
+
+                # Power
+                if 'directPower' in key_map:
+                    charts['power'].append(row[key_map['directPower']])
+                
+                # Distance (meters)
+                if 'sumDistance' in key_map:
+                    charts['distance'].append(row[key_map['sumDistance']])
+
+        # Summary stats from DTO
+        summary = details.get('summaryDTO', {})
+        avg_speed = summary.get('averageSpeed') # m/s
+        avg_pace_str = "--"
+        if avg_speed and avg_speed > 0.1:
+            pace_seconds = 1609.34 / avg_speed
+            avg_pace_str = f"{int(pace_seconds//60)}:{int(pace_seconds%60):02d}"
+
+        # Distance calculation
+        splits = []
+        if 'sumDuration' in key_map and 'sumDistance' in key_map:
+            mile_in_meters = 1609.34
+            next_mile = 1
+            last_duration = 0
+            last_dist = 0
+            
+            for i in range(len(metrics_list)):
+                m_row = metrics_list[i].get('metrics', [])
+                dist_m = m_row[key_map['sumDistance']] if len(m_row) > key_map['sumDistance'] else 0
+                dist_mi = dist_m / mile_in_meters
+                
+                if dist_mi >= next_mile:
+                    curr_duration = m_row[key_map['sumDuration']] if len(m_row) > key_map['sumDuration'] else 0
+                    split_duration = curr_duration - last_duration
+                    splits.append({
+                        'mile': next_mile,
+                        'duration': split_duration, 
+                        'pace_str': f"{int(split_duration//60)}:{int(split_duration%60):02d}"
+                    })
+                    last_duration = curr_duration
+                    last_dist = dist_m
+                    next_mile += 1
+            
+            # Add final partial mile if it's significant
+            if metrics_list:
+                final_row = metrics_list[-1].get('metrics', [])
+                final_dist_m = final_row[key_map['sumDistance']] if len(final_row) > key_map['sumDistance'] else 0
+                final_duration = final_row[key_map['sumDuration']] if len(final_row) > key_map['sumDuration'] else 0
+                if final_dist_m > last_dist:
+                    diff_m = final_dist_m - last_dist
+                    diff_mi = diff_m / mile_in_meters
+                    diff_duration = final_duration - last_duration
+                    if diff_mi > 0.05: # Only if more than 0.05 miles left
+                        pace_per_mile = diff_duration / diff_mi
+                        splits.append({
+                            'mile': round((next_mile - 1) + diff_mi, 2),
+                            'duration': diff_duration,
+                            'pace_str': f"{int(pace_per_mile//60)}:{int(pace_per_mile%60):02d}"
+                        })
 
         return jsonify({
             'activityId': activity_id,
             'charts': charts,
-            'summary': details.get('summaryDTO', {}) # Basic summary like avgHR, maxHR, etc.
+            'summary': summary,
+            'splits': splits,
+            'avg_pace_str': avg_pace_str
         })
     except Exception as e:
         logger.error(f"Error fetching activity details: {e}")
