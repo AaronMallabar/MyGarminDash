@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Garmin Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Garmin Dashboard</h1>
+            <div id="last-sync" class="last-sync">Syncing...</div>
+        </header>
+
+        <div id="error-message"
+            style="display: none; color: #f87171; background: rgba(248, 113, 113, 0.1); padding: 1rem; border-radius: 0.5rem; margin-bottom: 2rem;">
+        </div>
+
+        <!-- Monthly Distance -->
+        <section style="margin-bottom: 3rem;">
+            <h2>Monthly Distance</h2>
+            <div class="goals-grid">
+                <div class="goal-card">
+                    <div class="goal-header">🏃 Running</div>
+                    <div class="donut-chart" id="month-run-chart">
+                        <div class="donut-inner">
+                            <span class="donut-percent" id="month-run-percent">0%</span>
+                        </div>
+                    </div>
+                    <div class="goal-values">
+                        <div><span id="month-run">--</span></div>
+                        <div>Goal: <span id="month-run-goal">50</span></div>
+                    </div>
+                </div>
+                <div class="goal-card">
+                    <div class="goal-header">🚴 Cycling</div>
+                    <div class="donut-chart" id="month-cycle-chart">
+                        <div class="donut-inner">
+                            <span class="donut-percent" id="month-cycle-percent">0%</span>
+                        </div>
+                    </div>
+                    <div class="goal-values">
+                        <div><span id="month-cycle">--</span></div>
+                        <div>Goal: <span id="month-cycle-goal">200</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Yearly Distance -->
+        <section style="margin-bottom: 3rem;">
+            <h2>Yearly Distance</h2>
+            <div class="goals-grid">
+                <div class="goal-card">
+                    <div class="goal-header">🏃 Running</div>
+                    <div class="donut-chart" id="year-run-chart">
+                        <div class="donut-inner">
+                            <span class="donut-percent" id="year-run-percent">0%</span>
+                        </div>
+                    </div>
+                    <div class="goal-values">
+                        <div><span id="year-run">--</span></div>
+                        <div>Goal: <span id="year-run-goal">600</span></div>
+                    </div>
+                </div>
+                <div class="goal-card">
+                    <div class="goal-header">🚴 Cycling</div>
+                    <div class="donut-chart" id="year-cycle-chart">
+                        <div class="donut-inner">
+                            <span class="donut-percent" id="year-cycle-percent">0%</span>
+                        </div>
+                    </div>
+                    <div class="goal-values">
+                        <div><span id="year-cycle">--</span></div>
+                        <div>Goal: <span id="year-cycle-goal">2400</span></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- YTD Cycling Comparison -->
+        <section style="margin-bottom: 3rem;">
+            <h2>Year-to-Date Cycling Comparison</h2>
+            <div class="chart-container">
+                <canvas id="ytdCyclingChart"></canvas>
+            </div>
+        </section>
+
+        <!-- YTD Running Comparison -->
+        <section style="margin-bottom: 3rem;">
+            <h2>Year-to-Date Running Comparison</h2>
+            <div class="chart-container">
+                <canvas id="ytdRunningChart"></canvas>
+            </div>
+        </section>
+
+        <div class="grid">
+            <div class="card">
+                <h2>Steps</h2>
+                <div class="metric-value"><span id="steps">--</span></div>
+                <div class="metric-unit">Goal: 10,000</div>
+            </div>
+            <div class="card">
+                <h2>Resting HR</h2>
+                <div class="metric-value"><span id="rhr">--</span><span class="metric-unit">bpm</span></div>
+            </div>
+            <div class="card">
+                <h2>Stress Score</h2>
+                <div class="metric-value"><span id="stress">--</span></div>
+                <div class="metric-unit">Avg Stress Level</div>
+            </div>
+            <div class="card">
+                <h2>Sleep</h2>
+                <div class="metric-value"><span id="sleep">--</span><span class="metric-unit">hrs</span></div>
+                <div class="metric-unit">Quality: <span id="sleep-score">--</span></div>
+            </div>
+        </div>
+
+        <section class="activities-section">
+            <h2>Recent Activities</h2>
+            <div id="activity-list" class="activity-list">
+                <!-- Activities will be injected here -->
+                <div class="activity-item" style="justify-content: center; padding: 2rem;">
+                    <div class="loading"></div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // Helper to format distance in both miles and km
+        function formatDualDistance(miles) {
+            const km = (miles * 1.60934).toFixed(1);
+            const mi = Number(miles).toFixed(1);
+            return `${mi} mi / ${km} km`;
+        }
+
+        async function fetchData() {
+            try {
+                // Fetch basic stats
+                const statsRes = await fetch('/api/stats');
+                if (statsRes.ok) {
+                    const stats = await statsRes.json();
+                    if (!stats.error) updateDashboard(stats);
+                    else showError(stats.error);
+                }
+
+
+
+                // Fetch Longterm Stats
+                const ltRes = await fetch('/api/longterm_stats');
+                if (ltRes.ok) {
+                    const ltStats = await ltRes.json();
+                    if (!ltStats.error) updateLongtermStats(ltStats);
+                }
+
+                // Fetch Goals Config
+                const goalsConfigRes = await fetch('/api/goals_config');
+                if (goalsConfigRes.ok) {
+                    const goalsConfig = await goalsConfigRes.json();
+                    if (!goalsConfig.error) {
+                        document.getElementById('month-run-goal').innerHTML = formatDualDistance(goalsConfig.monthly.running);
+                        document.getElementById('month-cycle-goal').innerHTML = formatDualDistance(goalsConfig.monthly.cycling);
+                        document.getElementById('year-run-goal').innerHTML = formatDualDistance(goalsConfig.yearly.running);
+                        document.getElementById('year-cycle-goal').innerHTML = formatDualDistance(goalsConfig.yearly.cycling);
+                    }
+                }
+
+                // Fetch YTD Mileage Comparison
+                const ytdRes = await fetch('/api/ytd_mileage_comparison');
+                if (ytdRes.ok) {
+                    const ytdData = await ytdRes.json();
+                    if (!ytdData.error) {
+                        renderYTDChart('ytdCyclingChart', ytdData.labels, ytdData.cycling);
+                        renderYTDChart('ytdRunningChart', ytdData.labels, ytdData.running);
+                    }
+                }
+
+                // Update timestamp
+                document.getElementById('last-sync').textContent = 'Synced: ' + new Date().toLocaleTimeString();
+
+            } catch (err) {
+                console.error(err);
+                showError('Could not load data. Check console.');
+            }
+        }
+
+        function updateLongtermStats(data) {
+            // Update monthly running
+            const monthRunGoal = parseFloat(document.getElementById('month-run-goal').textContent);
+            const monthRunPercent = Math.min(100, Math.round((data.month.running / monthRunGoal) * 100));
+            document.getElementById('month-run').innerHTML = formatDualDistance(data.month.running);
+            document.getElementById('month-run-percent').textContent = monthRunPercent + '%';
+            document.getElementById('month-run-chart').style.background =
+                `conic-gradient(var(--accent-color) 0% ${monthRunPercent}%, rgba(255,255,255,0.1) ${monthRunPercent}% 100%)`;
+
+            // Update monthly cycling
+            const monthCycleGoal = parseFloat(document.getElementById('month-cycle-goal').textContent);
+            const monthCyclePercent = Math.min(100, Math.round((data.month.cycling / monthCycleGoal) * 100));
+            document.getElementById('month-cycle').innerHTML = formatDualDistance(data.month.cycling);
+            document.getElementById('month-cycle-percent').textContent = monthCyclePercent + '%';
+            document.getElementById('month-cycle-chart').style.background =
+                `conic-gradient(var(--accent-color) 0% ${monthCyclePercent}%, rgba(255,255,255,0.1) ${monthCyclePercent}% 100%)`;
+
+            // Update yearly running
+            const yearRunGoal = parseFloat(document.getElementById('year-run-goal').textContent);
+            const yearRunPercent = Math.min(100, Math.round((data.year.running / yearRunGoal) * 100));
+            document.getElementById('year-run').innerHTML = formatDualDistance(data.year.running);
+            document.getElementById('year-run-percent').textContent = yearRunPercent + '%';
+            document.getElementById('year-run-chart').style.background =
+                `conic-gradient(var(--accent-color) 0% ${yearRunPercent}%, rgba(255,255,255,0.1) ${yearRunPercent}% 100%)`;
+
+            // Update yearly cycling
+            const yearCycleGoal = parseFloat(document.getElementById('year-cycle-goal').textContent);
+            const yearCyclePercent = Math.min(100, Math.round((data.year.cycling / yearCycleGoal) * 100));
+            document.getElementById('year-cycle').innerHTML = formatDualDistance(data.year.cycling);
+            document.getElementById('year-cycle-percent').textContent = yearCyclePercent + '%';
+            document.getElementById('year-cycle-chart').style.background =
+                `conic-gradient(var(--accent-color) 0% ${yearCyclePercent}%, rgba(255,255,255,0.1) ${yearCyclePercent}% 100%)`;
+        }
+
+
+
+        function updateDashboard(data) {
+            // Stats
+            document.getElementById('steps').textContent = data.steps || 0;
+            document.getElementById('rhr').textContent = data.resting_hr || '--';
+            document.getElementById('stress').textContent = data.stress_avg || '--';
+
+            // Sleep - convert seconds to hours
+            const sleepHours = data.sleep_seconds ? (data.sleep_seconds / 3600).toFixed(1) : '--';
+            document.getElementById('sleep').textContent = sleepHours;
+            document.getElementById('sleep-score').textContent = data.sleep_score || '--';
+
+            // Activities
+            const activityList = document.getElementById('activity-list');
+            activityList.innerHTML = '';
+
+            if (data.activities && data.activities.length > 0) {
+                data.activities.forEach(activity => {
+                    const el = document.createElement('div');
+                    el.className = 'activity-item';
+
+                    const date = new Date(activity.startTimeLocal).toLocaleDateString([], { month: 'short', day: 'numeric' });
+                    const distanceKm = (activity.distance / 1000).toFixed(2);
+                    const distanceMi = (activity.distance / 1609.34).toFixed(2);
+                    const durationMin = Math.round(activity.duration / 60);
+
+                    el.innerHTML = `
+                        <div class="activity-info">
+                            <div class="activity-icon">
+                                ${getActivityIcon(activity.activityType.typeKey)}
+                            </div>
+                            <div class="activity-details">
+                                <h3>${activity.activityName}</h3>
+                                <div class="activity-meta">${date} • ${activity.activityType.display}</div>
+                            </div>
+                        </div>
+                        <div class="activity-stats">
+                            <div class="stat-group">
+                                <div>${distanceMi} mi / ${distanceKm} km</div>
+                                <div>distance</div>
+                            </div>
+                            <div class="stat-group">
+                                <div>${durationMin}</div>
+                                <div>min</div>
+                            </div>
+                        </div>
+                    `;
+                    activityList.appendChild(el);
+                });
+            } else {
+                activityList.innerHTML = '<div class="activity-item" style="justify-content: center;">No recent activities found</div>';
+            }
+        }
+
+        function getActivityIcon(type) {
+            // Simple mapping - in a real app use SVG icons
+            if (type.includes('running')) return '🏃';
+            if (type.includes('cycling')) return '🚴';
+            if (type.includes('swimming')) return '🏊';
+            if (type.includes('walking')) return '🚶';
+            return '⚡';
+        }
+
+        const chartInstances = {};
+
+        function renderYTDChart(canvasId, labels, data) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+
+            if (chartInstances[canvasId]) {
+                chartInstances[canvasId].destroy();
+            }
+
+            chartInstances[canvasId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '2024',
+                            data: data.years['2024'],
+                            borderColor: '#818cf8',
+                            backgroundColor: 'rgba(129, 140, 248, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.1,
+                            pointRadius: 0,
+                            pointHoverRadius: 4
+                        },
+                        {
+                            label: '2025',
+                            data: data.years['2025'],
+                            borderColor: '#38bdf8',
+                            backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.1,
+                            pointRadius: 0,
+                            pointHoverRadius: 4
+                        },
+                        {
+                            label: '2026 (Current)',
+                            data: data.years['2026'],
+                            borderColor: '#4ade80',
+                            backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                            borderWidth: 3,
+                            tension: 0.1,
+                            pointRadius: 0,
+                            pointHoverRadius: 4
+                        },
+                        {
+                            label: `Goal (${data.yearly_goal} mi)`,
+                            data: data.goal_line,
+                            borderColor: '#f87171',
+                            backgroundColor: 'rgba(248, 113, 113, 0.1)',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            tension: 0,
+                            pointRadius: 0,
+                            pointHoverRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: window.innerWidth < 768 ? 0.7 : 2.5,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                color: '#f1f5f9',
+                                font: {
+                                    size: window.innerWidth < 768 ? 11 : 14
+                                },
+                                padding: window.innerWidth < 768 ? 10 : 20
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    const label = context.dataset.label || '';
+                                    const value = context.parsed.y;
+                                    const km = (value * 1.60934).toFixed(1);
+                                    return `${label}: ${value.toFixed(1)} mi / ${km} km`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: '#94a3b8',
+                                font: {
+                                    size: window.innerWidth < 768 ? 10 : 12
+                                },
+                                callback: function (value) {
+                                    return value + ' mi';
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: '#94a3b8',
+                                font: {
+                                    size: window.innerWidth < 768 ? 10 : 12
+                                },
+                                maxTicksLimit: window.innerWidth < 768 ? 7 : 15
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Handle window resize/orientation change for all charts
+        window.addEventListener('resize', () => {
+            Object.values(chartInstances).forEach(chart => {
+                chart.options.aspectRatio = window.innerWidth < 768 ? 0.7 : 2.5;
+                chart.update();
+            });
+        });
+
+
+        function showError(msg) {
+            const el = document.getElementById('error-message');
+            el.textContent = msg;
+            el.style.display = 'block';
+            document.getElementById('last-sync').textContent = 'Error';
+            document.querySelector('.loading').style.display = 'none';
+        }
+
+        // Initial Load
+        fetchData();
+    </script>
+</body>
+
+</html>

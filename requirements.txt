@@ -1,0 +1,4 @@
+flask
+garminconnect
+python-dotenv
+gunicorn
