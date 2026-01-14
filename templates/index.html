@@ -102,6 +102,23 @@
             </div>
         </section>
 
+        <!-- Weight Progress -->
+        <section style="margin-bottom: 3rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2>Weight Progress</h2>
+                <div class="range-selector">
+                    <button class="range-btn active" onclick="updateWeightRange('1m', this)">1m</button>
+                    <button class="range-btn" onclick="updateWeightRange('6m', this)">6m</button>
+                    <button class="range-btn" onclick="updateWeightRange('1y', this)">1y</button>
+                    <button class="range-btn" onclick="updateWeightRange('2y', this)">2y</button>
+                    <button class="range-btn" onclick="updateWeightRange('5y', this)">5y</button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas id="weightHistoryChart"></canvas>
+            </div>
+        </section>
+
         <div class="grid">
             <div class="card">
                 <h2>Steps</h2>
@@ -121,6 +138,11 @@
                 <h2>Sleep</h2>
                 <div class="metric-value"><span id="sleep">--</span><span class="metric-unit">hrs</span></div>
                 <div class="metric-unit">Quality: <span id="sleep-score">--</span></div>
+            </div>
+            <div class="card">
+                <h2>Weight</h2>
+                <div class="metric-value"><span id="weight">--</span></div>
+                <div class="metric-unit" id="weight-dual">Latest weigh-in</div>
             </div>
         </div>
 
@@ -184,6 +206,9 @@
                     }
                 }
 
+                // Fetch Weight History
+                updateWeightRange('1m');
+
                 // Update timestamp
                 document.getElementById('last-sync').textContent = 'Synced: ' + new Date().toLocaleTimeString();
 
@@ -234,6 +259,14 @@
             document.getElementById('steps').textContent = data.steps || 0;
             document.getElementById('rhr').textContent = data.resting_hr || '--';
             document.getElementById('stress').textContent = data.stress_avg || '--';
+
+            // Weight
+            if (data.weight_grams) {
+                const kg = (data.weight_grams / 1000).toFixed(1);
+                const lbs = (kg * 2.20462).toFixed(1);
+                document.getElementById('weight').textContent = lbs + ' lbs';
+                document.getElementById('weight-dual').textContent = kg + ' kg';
+            }
 
             // Sleep - convert seconds to hours
             const sleepHours = data.sleep_seconds ? (data.sleep_seconds / 3600).toFixed(1) : '--';
@@ -415,6 +448,115 @@
             });
         });
 
+
+        async function updateWeightRange(range, btn) {
+            // Update UI buttons
+            if (btn) {
+                document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            }
+
+            try {
+                const res = await fetch(`/api/weight_history?range=${range}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.error) {
+                        renderWeightChart(data);
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching weight history:', err);
+            }
+        }
+
+        function renderWeightChart(history) {
+            const labels = history.map(d => {
+                const dateParts = d.date.split('-');
+                return `${dateParts[1]}/${dateParts[2]}`; // MM/DD
+            });
+            const valuesLbs = history.map(d => d.weight_lbs);
+            const valuesKg = history.map(d => d.weight_kg);
+
+            const data = {
+                labels: labels,
+                years: { // Reuse the same structure as other charts for simplicity
+                    'Weight': valuesLbs
+                },
+                goal_line: [], // No goal line for weight history for now
+                yearly_goal: 0
+            };
+
+            // Since renderYTDChart is generic, we can try to use it, 
+            // but weight needs its own specialized rendering for labels and tooltips
+            const canvasId = 'weightHistoryChart';
+            const ctx = document.getElementById(canvasId).getContext('2d');
+
+            if (chartInstances[canvasId]) {
+                chartInstances[canvasId].destroy();
+            }
+
+            chartInstances[canvasId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Weight (lbs)',
+                            data: valuesLbs,
+                            borderColor: '#818cf8',
+                            backgroundColor: 'rgba(129, 140, 248, 0.1)',
+                            borderWidth: 3,
+                            tension: 0.3,
+                            pointRadius: 2,
+                            pointHoverRadius: 6,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: window.innerWidth < 768 ? 0.7 : 2.5,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    const lbs = context.parsed.y;
+                                    const kg = (lbs / 2.20462).toFixed(1);
+                                    return `Weight: ${lbs} lbs / ${kg} kg`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            ticks: {
+                                color: '#94a3b8',
+                                callback: function (value) {
+                                    return value + ' lbs';
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: '#94a3b8',
+                                maxTicksLimit: window.innerWidth < 768 ? 6 : 12
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
 
         function showError(msg) {
             const el = document.getElementById('error-message');

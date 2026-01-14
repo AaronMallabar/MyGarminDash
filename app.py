@@ -1,6 +1,6 @@
 import os
 import logging
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from garminconnect import Garmin
 from datetime import date, timedelta
 from dotenv import load_dotenv
@@ -56,8 +56,18 @@ def get_stats():
         # Recent activities (last 5)
         activities = client.get_activities(0, 5)
         
-        # Extract relevant metrics
-        # Note: Garmin API structure can vary, safeguarding simple keys
+        # Weight (Body composition) - search last 7 days for most recent entry
+        weight_grams = None
+        for i in range(7):
+            check_date = (today - timedelta(days=i)).isoformat()
+            try:
+                body_comp = client.get_body_composition(check_date)
+                if body_comp and 'totalAverage' in body_comp and body_comp['totalAverage'].get('weight'):
+                    weight_grams = body_comp['totalAverage']['weight']
+                    break
+            except:
+                continue
+
         data = {
             'steps': stats.get('totalSteps'),
             'steps_goal': stats.get('totalStepsGoal'),
@@ -65,7 +75,8 @@ def get_stats():
             'stress_avg': stats.get('averageStressLevel'),
             'sleep_seconds': sleep.get('dailySleepDTO', {}).get('sleepTimeSeconds'),
             'sleep_score': sleep.get('dailySleepDTO', {}).get('sleepScoreFeedback'),
-            'activities': activities
+            'activities': activities,
+            'weight_grams': weight_grams
         }
         
         return jsonify(data)
@@ -245,6 +256,52 @@ def get_ytd_mileage_comparison():
         })
     except Exception as e:
         logger.error(f"Error fetching YTD mileage comparison: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/weight_history')
+def get_weight_history():
+    try:
+        range_val = request.args.get('range', '1m')
+        client = get_garmin_client()
+        end_date = date.today()
+        
+        if range_val == '1m':
+            start_date = end_date - timedelta(days=30)
+        elif range_val == '6m':
+            start_date = end_date - timedelta(days=180)
+        elif range_val == '1y':
+            start_date = end_date - timedelta(days=365)
+        elif range_val == '2y':
+            start_date = end_date - timedelta(days=730)
+        elif range_val == '5y':
+            start_date = end_date - timedelta(days=1825)
+        else:
+            start_date = end_date - timedelta(days=30)
+            
+        res = client.get_weigh_ins(start_date.isoformat(), end_date.isoformat())
+        
+        # Garmin API can return a list or a dict with 'dailyWeightSummaries'
+        summaries = []
+        if isinstance(res, list):
+            summaries = res
+        elif isinstance(res, dict) and 'dailyWeightSummaries' in res:
+            summaries = res['dailyWeightSummaries']
+            
+        # Format for chart (earliest to latest)
+        history = []
+        for day in reversed(summaries):
+            if 'latestWeight' in day and day['latestWeight'].get('weight'):
+                kg = day['latestWeight']['weight'] / 1000
+                lbs = kg * 2.20462
+                history.append({
+                    'date': day['summaryDate'],
+                    'weight_kg': round(kg, 1),
+                    'weight_lbs': round(lbs, 1)
+                })
+        
+        return jsonify(history)
+    except Exception as e:
+        logger.error(f"Error fetching weight history: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
