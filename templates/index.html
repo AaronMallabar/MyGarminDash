@@ -779,6 +779,25 @@
             const ctx = document.getElementById('activityPowerChart').getContext('2d');
             if (chartInstances['activityPowerChart']) chartInstances['activityPowerChart'].destroy();
 
+            // Assume FTP of 250 for zone calculation if not provided
+            const ftp = 250;
+            const zones = [
+                { limit: ftp * 0.55, color: '#94a3b8' }, // Z1: Grey
+                { limit: ftp * 0.75, color: '#3b82f6' }, // Z2: Blue
+                { limit: ftp * 0.90, color: '#22c55e' }, // Z3: Green
+                { limit: ftp * 1.05, color: '#eab308' }, // Z4: Yellow
+                { limit: ftp * 1.20, color: '#f97316' }, // Z5: Orange
+                { limit: ftp * 1.50, color: '#ef4444' }, // Z6: Red
+                { limit: 9999, color: '#a855f7' }  // Z7: Purple
+            ];
+
+            const getZoneColor = (val) => {
+                for (let z of zones) {
+                    if (val <= z.limit) return z.color;
+                }
+                return zones[zones.length - 1].color;
+            };
+
             chartInstances['activityPowerChart'] = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -786,21 +805,39 @@
                     datasets: [{
                         label: 'Power',
                         data: power,
-                        borderColor: '#818cf8',
                         borderWidth: 2,
                         pointRadius: 0,
-                        tension: 0.4,
+                        tension: 0.3,
                         fill: true,
+                        segment: {
+                            borderColor: ctx => getZoneColor(ctx.p0.parsed.y)
+                        },
                         backgroundColor: (context) => {
                             const chart = context.chart;
-                            const { ctx, chartArea } = chart;
+                            const { ctx, chartArea, scales } = chart;
                             if (!chartArea) return null;
+
+                            const yAxis = scales.y;
                             const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-                            gradient.addColorStop(0, 'rgba(148, 163, 184, 0.2)');
-                            gradient.addColorStop(0.2, 'rgba(74, 222, 128, 0.4)');
-                            gradient.addColorStop(0.4, 'rgba(250, 204, 21, 0.4)');
-                            gradient.addColorStop(0.6, 'rgba(251, 146, 60, 0.4)');
-                            gradient.addColorStop(0.8, 'rgba(248, 113, 113, 0.4)');
+
+                            // Map power zones to gradient stops (0 to 1)
+                            const addStop = (powerVal, color) => {
+                                let stop = 1 - (yAxis.getPixelForValue(powerVal) - chartArea.top) / chartArea.height;
+                                stop = Math.max(0, Math.min(1, stop));
+                                gradient.addColorStop(stop, color + '44');
+                            };
+
+                            // Add stops from bottom to top
+                            gradient.addColorStop(0, zones[0].color + '44');
+                            for (let i = 0; i < zones.length - 1; i++) {
+                                let stopPos = (yAxis.getPixelForValue(zones[i].limit) - chartArea.top) / chartArea.height;
+                                // Chart.js Y axis is inverted (0 at top)
+                                let stop = 1 - stopPos;
+                                if (stop >= 0 && stop <= 1) {
+                                    gradient.addColorStop(stop, zones[i].color + '44');
+                                    gradient.addColorStop(stop, zones[i + 1].color + '44');
+                                }
+                            }
                             return gradient;
                         }
                     }]
@@ -808,9 +845,17 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `Power: ${Math.round(ctx.parsed.y)} W`
+                            }
+                        }
+                    },
                     scales: {
                         y: {
+                            beginAtZero: true,
                             grid: { color: 'rgba(255,255,255,0.05)' },
                             ticks: { color: '#94a3b8', callback: val => val + ' W' }
                         },
