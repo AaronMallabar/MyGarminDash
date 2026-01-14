@@ -304,5 +304,55 @@ def get_weight_history():
         logger.error(f"Error fetching weight history: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/activity/<int:activity_id>')
+def get_activity_details(activity_id):
+    try:
+        client = get_garmin_client()
+        details = client.get_activity_details(activity_id)
+        
+        # Extract metrics and descriptors
+        descriptors = details.get('metricDescriptors', [])
+        metrics_list = details.get('activityDetailMetrics', [])
+        
+        # Create a mapping of key to index
+        key_map = {d['key']: d['metricsIndex'] for d in descriptors}
+        
+        charts = {
+            'heart_rate': [],
+            'speed': [],
+            'elevation': [],
+            'timestamps': []
+        }
+        
+        for m in metrics_list:
+            row = m.get('metrics', [])
+            if not row: continue
+            
+            # Timestamp (ms)
+            ts = row[key_map['directTimestamp']] if 'directTimestamp' in key_map else None
+            if ts:
+                charts['timestamps'].append(ts)
+                
+                # Heart Rate
+                if 'directHeartRate' in key_map:
+                    charts['heart_rate'].append(row[key_map['directHeartRate']])
+                
+                # Speed (m/s)
+                if 'directSpeed' in key_map:
+                    charts['speed'].append(row[key_map['directSpeed']])
+                
+                # Elevation (m)
+                if 'directElevation' in key_map:
+                    charts['elevation'].append(row[key_map['directElevation']])
+
+        return jsonify({
+            'activityId': activity_id,
+            'charts': charts,
+            'summary': details.get('summaryDTO', {}) # Basic summary like avgHR, maxHR, etc.
+        })
+    except Exception as e:
+        logger.error(f"Error fetching activity details: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

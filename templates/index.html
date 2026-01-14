@@ -157,6 +157,49 @@
         </section>
     </div>
 
+    <!-- Activity Detail Modal -->
+    <div id="activityModal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal()">×</button>
+            <h2 id="modal-title">Activity Details</h2>
+            <p id="modal-date" style="color: var(--text-secondary); margin-bottom: 2rem;"></p>
+
+            <div class="activity-detail-grid">
+                <div class="activity-detail-card">
+                    <div class="activity-detail-label">Distance</div>
+                    <div class="activity-detail-value" id="modal-distance">--</div>
+                </div>
+                <div class="activity-detail-card">
+                    <div class="activity-detail-label">Duration</div>
+                    <div class="activity-detail-value" id="modal-duration">--</div>
+                </div>
+                <div class="activity-detail-card">
+                    <div class="activity-detail-label">Avg HR</div>
+                    <div class="activity-detail-value" id="modal-hr">--</div>
+                </div>
+                <div class="activity-detail-card">
+                    <div class="activity-detail-label">Calories</div>
+                    <div class="activity-detail-value" id="modal-calories">--</div>
+                </div>
+            </div>
+
+            <h3 style="margin-bottom: 1rem;">Heart Rate Trend</h3>
+            <div class="small-chart-container">
+                <canvas id="activityHrChart"></canvas>
+            </div>
+
+            <h3 style="margin-bottom: 1rem;">Speed/Pace Trend</h3>
+            <div class="small-chart-container">
+                <canvas id="activitySpeedChart"></canvas>
+            </div>
+
+            <div style="display: flex; justify-content: center; margin-top: 2rem;">
+                <button class="range-btn active" style="padding: 0.8rem 2rem;" onclick="closeModal()">Close
+                    Details</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Helper to format distance in both miles and km
         function formatDualDistance(miles) {
@@ -308,6 +351,7 @@
                             </div>
                         </div>
                     `;
+                    el.onclick = () => openActivityDetail(activity.activityId, activity);
                     activityList.appendChild(el);
                 });
             } else {
@@ -564,6 +608,87 @@
             el.style.display = 'block';
             document.getElementById('last-sync').textContent = 'Error';
             document.querySelector('.loading').style.display = 'none';
+        }
+
+        async function openActivityDetail(activityId, basicData) {
+            const modal = document.getElementById('activityModal');
+            modal.classList.add('active');
+
+            // Populate basic data
+            document.getElementById('modal-title').textContent = basicData.activityName;
+            document.getElementById('modal-date').textContent = new Date(basicData.startTimeLocal).toLocaleString();
+            document.getElementById('modal-distance').textContent = formatDualDistance(basicData.distance / 1609.34);
+            document.getElementById('modal-duration').textContent = Math.round(basicData.duration / 60) + ' min';
+            document.getElementById('modal-hr').textContent = basicData.averageHR ? Math.round(basicData.averageHR) + ' bpm' : '--';
+            document.getElementById('modal-calories').textContent = Math.round(basicData.calories) + ' kcal';
+
+            try {
+                const res = await fetch(`/api/activity/${activityId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.error) {
+                        const isRunning = basicData.activityType.typeKey.includes('running');
+                        renderActivityCharts(data.charts, isRunning);
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching activity details:', err);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('activityModal').classList.remove('active');
+        }
+
+        function renderActivityCharts(charts, isRunning) {
+            // HR Chart
+            renderDetailChart('activityHrChart', charts.timestamps.map(t => ''), charts.heart_rate, 'Heart Rate', '#f87171', 'bpm');
+
+            // Speed/Pace Chart
+            if (isRunning) {
+                // Convert m/s to min/mile
+                const paces = charts.speed.map(s => s > 0.5 ? 26.8224 / s : null);
+                renderDetailChart('activitySpeedChart', charts.timestamps.map(t => ''), paces, 'Pace', '#38bdf8', 'min/mi', true);
+            } else {
+                // Convert m/s to mph
+                const speeds = charts.speed.map(s => s * 2.23694);
+                renderDetailChart('activitySpeedChart', charts.timestamps.map(t => ''), speeds, 'Speed', '#38bdf8', 'mph');
+            }
+        }
+
+        function renderDetailChart(canvasId, labels, data, label, color, unit, reversed = false) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+            chartInstances[canvasId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: data,
+                        borderColor: color,
+                        backgroundColor: color + '22',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: {
+                            reverse: reversed,
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#94a3b8', callback: val => val ? val.toFixed(1) + ' ' + unit : '' }
+                        },
+                        x: { display: false }
+                    }
+                }
+            });
         }
 
         // Initial Load
