@@ -696,7 +696,8 @@
                         // Handle Power Stats & Graph visibility
                         const validPower = data.charts.power ? data.charts.power.filter(p => p > 0 && p !== null) : [];
                         const hasPowerData = validPower.length > 0;
-                        const avgPower = (data.summary && data.summary.averagePower) || basicData.averagePower;
+                        const avgPower = (data.summary && data.summary.averagePower) || basicData.avgPower;
+                        const avgSpeed = (data.summary && data.summary.averageSpeed) || basicData.averageSpeed;
 
                         if (isCycling) {
                             document.getElementById('modal-pace-label').textContent = 'Avg Power';
@@ -705,7 +706,12 @@
                             document.getElementById('power-summary-card').style.display = 'none';
                         } else {
                             document.getElementById('modal-pace-label').textContent = 'Overall Pace';
-                            document.getElementById('modal-pace').textContent = (data.avg_pace_str || '--') + ' /mi';
+                            let paceStr = data.avg_pace_str;
+                            if ((!paceStr || paceStr === '--') && avgSpeed > 0.1) {
+                                const paceSeconds = 1609.34 / avgSpeed;
+                                paceStr = `${Math.floor(paceSeconds / 60)}:${Math.round(paceSeconds % 60).toString().padStart(2, '0')}`;
+                            }
+                            document.getElementById('modal-pace').textContent = (paceStr || '--') + ' /mi';
                         }
 
                         if (hasPowerData) {
