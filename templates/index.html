@@ -108,12 +108,19 @@
         <section style="margin-bottom: 3rem;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                 <h2>Weight Progress</h2>
-                <div class="range-selector">
-                    <button class="range-btn active" onclick="updateWeightRange('1m', this)">1m</button>
-                    <button class="range-btn" onclick="updateWeightRange('6m', this)">6m</button>
-                    <button class="range-btn" onclick="updateWeightRange('1y', this)">1y</button>
-                    <button class="range-btn" onclick="updateWeightRange('2y', this)">2y</button>
-                    <button class="range-btn" onclick="updateWeightRange('5y', this)">5y</button>
+                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
+                    <div class="range-selector" style="display: inline-flex;">
+                        <button class="range-btn active" onclick="updateWeightRange('1m', this)">1m</button>
+                        <button class="range-btn" onclick="updateWeightRange('6m', this)">6m</button>
+                        <button class="range-btn" onclick="updateWeightRange('1y', this)">1y</button>
+                        <button class="range-btn" onclick="updateWeightRange('2y', this)">2y</button>
+                        <button class="range-btn" onclick="updateWeightRange('5y', this)">5y</button>
+                    </div>
+                    <div class="range-selector" style="display: inline-flex; gap: 0.25rem;">
+                        <button class="range-btn" id="weight-prev" onclick="shiftWeightDate(-1)">←</button>
+                        <button class="range-btn" id="weight-next" onclick="shiftWeightDate(1)" disabled
+                            style="opacity: 0.5; cursor: not-allowed;">→</button>
+                    </div>
                 </div>
             </div>
             <div class="chart-container">
@@ -122,10 +129,50 @@
         </section>
 
         <div class="grid">
-            <div class="card">
-                <h2>Steps</h2>
-                <div class="metric-value"><span id="steps">--</span></div>
-                <div class="metric-unit">Goal: 10,000</div>
+            <div class="card" style="grid-column: span 2;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <div>
+                        <h2>Steps</h2>
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+                            <div class="metric-value" style="margin-bottom: 0;"><span id="steps">--</span></div>
+                            <div class="metric-unit" id="steps-goal-text">Goal: 10,000</div>
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Current
+                            Streak</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--success-color);"><span
+                                id="steps-streak">0</span> days</div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
+                    <div class="range-selector" style="display: inline-flex;">
+                        <button class="range-btn" onclick="updateStepsRange('1d', this)">1d</button>
+                        <button class="range-btn active" onclick="updateStepsRange('1w', this)">1w</button>
+                        <button class="range-btn" onclick="updateStepsRange('1m', this)">1m</button>
+                        <button class="range-btn" onclick="updateStepsRange('1y', this)">1y</button>
+                    </div>
+                    <div class="range-selector" style="display: inline-flex; gap: 0.25rem;">
+                        <button class="range-btn" id="steps-prev" onclick="shiftStepsDate(-1)">←</button>
+                        <button class="range-btn" id="steps-next" onclick="shiftStepsDate(1)" disabled
+                            style="opacity: 0.5; cursor: not-allowed;">→</button>
+                    </div>
+                </div>
+
+                <div id="steps-visual-container"
+                    style="height: 250px; position: relative; display: flex; align-items: center; justify-content: center;">
+                    <canvas id="stepsHistoryChart"></canvas>
+                    <div id="steps-donut-container"
+                        style="display: none; width: 200px; height: 200px; position: relative;">
+                        <div class="donut-chart" id="steps-day-chart" style="width: 100%; height: 100%; margin: 0;">
+                            <div class="donut-inner" style="width: 150px; height: 150px;">
+                                <span class="donut-percent" id="steps-day-percent" style="font-size: 2.2rem;">0%</span>
+                                <span class="donut-label">of goal</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="card">
                 <h2>Resting HR</h2>
@@ -292,6 +339,9 @@
 
                 // Fetch Weight History
                 updateWeightRange('1m');
+
+                // Fetch Steps History
+                updateStepsRange('1w');
 
                 // Update timestamp
                 document.getElementById('last-sync').textContent = 'Synced: ' + new Date().toLocaleTimeString();
@@ -534,19 +584,25 @@
         });
 
 
+        let currentStepsEndDate = new Date();
+        let currentStepsRange = '1w';
+        let currentWeightEndDate = new Date();
+        let currentWeightRange = '1m';
+
         async function updateWeightRange(range, btn) {
-            // Update UI buttons
+            if (range) currentWeightRange = range;
             if (btn) {
-                document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+                btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
             }
 
+            const end_date = currentWeightEndDate.toISOString().split('T')[0];
             try {
-                const res = await fetch(`/api/weight_history?range=${range}`);
+                const res = await fetch(`/api/weight_history?range=${currentWeightRange}&end_date=${end_date}`);
                 if (res.ok) {
                     const data = await res.json();
                     if (!data.error) {
-                        renderWeightChart(data, range);
+                        renderWeightChart(data, currentWeightRange);
                     }
                 }
             } catch (err) {
@@ -554,7 +610,149 @@
             }
         }
 
+        function shiftWeightDate(dir) {
+            const daysMap = { '1m': 30, '6m': 180, '1y': 365, '2y': 730, '5y': 1825 };
+            const shift = daysMap[currentWeightRange] || 30;
+            const newDate = new Date(currentWeightEndDate);
+            newDate.setDate(newDate.getDate() + (dir * shift));
+
+            if (newDate > new Date()) return;
+            currentWeightEndDate = newDate;
+            updateWeightRange();
+        }
+
+        async function updateStepsRange(range, btn) {
+            if (range) currentStepsRange = range;
+            if (btn) {
+                btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            }
+
+            const end_date = currentStepsEndDate.toISOString().split('T')[0];
+            try {
+                const res = await fetch(`/api/steps_history?range=${currentStepsRange}&end_date=${end_date}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.error) {
+                        renderStepsVisual(data);
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching steps history:', err);
+            }
+        }
+
+        function shiftStepsDate(dir) {
+            const daysMap = { '1d': 1, '1w': 7, '1m': 30, '1y': 365 };
+            const shift = daysMap[currentStepsRange] || 7;
+            const newDate = new Date(currentStepsEndDate);
+            newDate.setDate(newDate.getDate() + (dir * shift));
+
+            if (newDate > new Date()) return;
+            currentStepsEndDate = newDate;
+            updateStepsRange();
+        }
+
+        function renderStepsVisual(data) {
+            const canvasId = 'stepsHistoryChart';
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            const donutContainer = document.getElementById('steps-donut-container');
+            const canvas = document.getElementById(canvasId);
+            const streakEl = document.getElementById('steps-streak');
+            streakEl.textContent = data.streak;
+
+            // Update Nav Buttons
+            const isToday = currentStepsEndDate.toDateString() === new Date().toDateString();
+            const nextBtn = document.getElementById('steps-next');
+            nextBtn.disabled = isToday;
+            nextBtn.style.opacity = isToday ? '0.5' : '1';
+            nextBtn.style.cursor = isToday ? 'not-allowed' : 'pointer';
+
+            if (data.range === '1d') {
+                canvas.style.display = 'none';
+                donutContainer.style.display = 'flex';
+
+                const dayData = data.history[data.history.length - 1] || { totalSteps: 0, stepGoal: 10000 };
+                const steps = dayData.totalSteps;
+                const goal = dayData.stepGoal;
+                const percent = Math.min(100, Math.round((steps / goal) * 100));
+
+                const color = percent >= 100 ? 'var(--success-color)' : 'var(--accent-color)';
+                const percentEl = document.getElementById('steps-day-percent');
+                percentEl.textContent = percent + '%';
+                percentEl.style.color = color;
+                document.getElementById('steps-day-chart').style.background =
+                    `conic-gradient(${color} 0% ${percent}%, rgba(255,255,255,0.1) ${percent}% 100%)`;
+
+                // Also update the main metric display if it's today
+                if (dayData.calendarDate === new Date().toISOString().split('T')[0]) {
+                    document.getElementById('steps').textContent = steps.toLocaleString();
+                }
+            } else {
+                canvas.style.display = 'block';
+                donutContainer.style.display = 'none';
+
+                if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+                const labels = data.history ? data.history.map(d => {
+                    const parts = d.calendarDate.split('-');
+                    return data.range === '1y' ? `${parts[1]}/${parts[0].slice(2)}` : `${parts[1]}/${parts[2]}`;
+                }) : [];
+                const values = data.history ? data.history.map(d => d.totalSteps) : [];
+                const colors = data.history ? data.history.map(d => d.totalSteps >= d.stepGoal ? '#4ade80' : '#38bdf8') : [];
+
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Steps',
+                            data: values,
+                            backgroundColor: colors,
+                            borderRadius: 4,
+                            borderSkipped: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => `Steps: ${ctx.parsed.y.toLocaleString()}`
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { display: false },
+                                ticks: {
+                                    color: '#94a3b8',
+                                    maxRotation: 0,
+                                    autoSkip: true,
+                                    maxTicksLimit: data.range === '1y' ? 12 : 7
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: 'rgba(255,255,255,0.05)' },
+                                ticks: { color: '#94a3b8' }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
         function renderWeightChart(history, range) {
+            // Update Nav Buttons
+            const isToday = currentWeightEndDate.toDateString() === new Date().toDateString();
+            const nextBtn = document.getElementById('weight-next');
+            nextBtn.disabled = isToday;
+            nextBtn.style.opacity = isToday ? '0.5' : '1';
+            nextBtn.style.cursor = isToday ? 'not-allowed' : 'pointer';
+
             const chartData = history.map(d => ({
                 x: d.date,
                 y: d.weight_lbs
@@ -568,9 +766,12 @@
             }
 
             // Find min/max for better Y-axis scaling
-            const weights = history.map(d => d.weight_lbs);
-            const minWeight = Math.floor(Math.min(...weights) - 2);
-            const maxWeight = Math.ceil(Math.max(...weights) + 2);
+            let minWeight = 150, maxWeight = 200;
+            if (history.length > 0) {
+                const weights = history.map(d => d.weight_lbs);
+                minWeight = Math.floor(Math.min(...weights) - 2);
+                maxWeight = Math.ceil(Math.max(...weights) + 2);
+            }
 
             chartInstances[canvasId] = new Chart(ctx, {
                 type: 'line',

@@ -258,12 +258,75 @@ def get_ytd_mileage_comparison():
         logger.error(f"Error fetching YTD mileage comparison: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/steps_history')
+def get_steps_history():
+    try:
+        client = get_garmin_client()
+        range_val = request.args.get('range', '1w')
+        end_date_str = request.args.get('end_date')
+        
+        actual_today = date.today()
+        # ... rest of the code is already updated in previous turn but I need to make sure 'client' is there
+        # Since I'm replacing the whole function again to be safe:
+
+        if end_date_str:
+            end_date = date.fromisoformat(end_date_str)
+        else:
+            end_date = actual_today
+        
+        history_days = 90
+        if range_val == '1y': history_days = 366
+        elif range_val == '1m': history_days = max(history_days, 31)
+        
+        start_date = end_date - timedelta(days=history_days)
+        all_data = client.get_daily_steps(start_date.isoformat(), end_date.isoformat())
+        all_data.sort(key=lambda x: x['calendarDate'], reverse=True)
+        
+        streak = 0
+        streak_start = actual_today - timedelta(days=90)
+        streak_data = client.get_daily_steps(streak_start.isoformat(), actual_today.isoformat())
+        streak_data.sort(key=lambda x: x['calendarDate'], reverse=True)
+        
+        today_str = actual_today.isoformat()
+        temp_expected = actual_today
+        for day in streak_data:
+            d_str = day['calendarDate']
+            curr_d = date.fromisoformat(d_str)
+            if streak > 0 and (temp_expected - curr_d).days > 1: break
+            steps = day.get('totalSteps', 0); goal = day.get('stepGoal', 10000)
+            if d_str == today_str:
+                if steps >= goal: streak += 1
+                temp_expected = curr_d; continue
+            if steps >= goal: streak += 1; temp_expected = curr_d
+            else: break
+
+        requested_days = 7
+        if range_val == '1d': requested_days = 1
+        elif range_val == '1m': requested_days = 30
+        elif range_val == '1y': requested_days = 365
+        
+        history = list(reversed(all_data[:requested_days]))
+
+        return jsonify({
+            'history': history,
+            'streak': streak,
+            'range': range_val
+        })
+    except Exception as e:
+        logger.error(f"Error fetching steps history: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/weight_history')
 def get_weight_history():
     try:
         range_val = request.args.get('range', '1m')
+        end_date_str = request.args.get('end_date')
         client = get_garmin_client()
-        end_date = date.today()
+        
+        if end_date_str:
+            end_date = date.fromisoformat(end_date_str)
+        else:
+            end_date = date.today()
         
         if range_val == '1m':
             start_date = end_date - timedelta(days=30)
