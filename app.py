@@ -36,6 +36,19 @@ def get_garmin_client():
         logger.error(f"Failed to login to Garmin Connect: {e}")
         raise e
 
+def get_user_max_hr(client):
+    try:
+        profile = client.get_user_profile()
+        birth_str = profile.get('userData', {}).get('birthDate')
+        if birth_str:
+            birth_date = date.fromisoformat(birth_str)
+            today = date.today()
+            age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+            return 220 - age
+    except:
+        pass
+    return 190 # Default fallback
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -314,6 +327,77 @@ def get_steps_history():
         })
     except Exception as e:
         logger.error(f"Error fetching steps history: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/hr_history')
+def get_hr_history():
+    try:
+        client = get_garmin_client()
+        range_val = request.args.get('range', '1w')
+        end_date_str = request.args.get('end_date')
+        
+        if end_date_str:
+            end_date = date.fromisoformat(end_date_str)
+        else:
+            end_date = date.today()
+
+        max_hr = get_user_max_hr(client)
+        zones = [
+            round(max_hr * 0.5), # Z1 start
+            round(max_hr * 0.6), # Z2 start
+            round(max_hr * 0.7), # Z3 start
+            round(max_hr * 0.8), # Z4 start
+            round(max_hr * 0.9)  # Z5 start
+        ]
+
+        if range_val == '1d':
+            # Detailed daily view
+            hr_data = client.get_heart_rates(end_date.isoformat())
+            return jsonify({
+                'range': '1d',
+                'summary': {
+                    'rhr': hr_data.get('restingHeartRate'),
+                    'max': hr_data.get('maxHeartRate'),
+                    'min': hr_data.get('minHeartRate'),
+                    'avg_rhr_7d': hr_data.get('lastSevenDaysAvgRestingHeartRate')
+                },
+                'samples': hr_data.get('heartRateValues', []),
+                'zones': zones,
+                'max_hr': max_hr
+            })
+        else:
+            # ... rest of function ...
+            # I'll include zones here too
+            days = 7
+            if range_val == '1w': days = 7
+            elif range_val == '1m': days = 30
+            elif range_val == '1y': days = 365
+            
+            history = []
+            fetch_limit = min(days, 180) if range_val == '1y' else days
+            
+            for i in range(fetch_limit):
+                d = end_date - timedelta(days=i)
+                try:
+                    day_data = client.get_heart_rates(d.isoformat())
+                    if day_data.get('restingHeartRate'):
+                        history.append({
+                            'date': d.isoformat(),
+                            'rhr': day_data.get('restingHeartRate'),
+                            'max': day_data.get('maxHeartRate')
+                        })
+                except:
+                    continue
+            
+            return jsonify({
+                'range': range_val,
+                'history': list(reversed(history)),
+                'zones': zones,
+                'max_hr': max_hr
+            })
+
+    except Exception as e:
+        logger.error(f"Error fetching HR history: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/weight_history')

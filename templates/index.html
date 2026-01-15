@@ -192,9 +192,49 @@
                     </div>
                 </div>
             </div>
-            <div class="card">
-                <h2>Resting HR</h2>
-                <div class="metric-value"><span id="rhr">--</span><span class="metric-unit">bpm</span></div>
+            <div class="card" style="grid-column: span 2;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <div>
+                        <h2>Heart Rate</h2>
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+                            <div class="metric-value" style="margin-bottom: 0;"><span id="rhr">--</span><span
+                                    class="metric-unit">bpm (Rest)</span></div>
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Max HR
+                        </div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--danger-color);"><span
+                                id="hr-max-val">--</span> bpm</div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
+                    <div class="range-selector" style="display: inline-flex;">
+                        <button class="range-btn active" onclick="updateHRRange('1d', this)">1d</button>
+                        <button class="range-btn" onclick="updateHRRange('1w', this)">1w</button>
+                        <button class="range-btn" onclick="updateHRRange('1m', this)">1m</button>
+                        <button class="range-btn" onclick="updateHRRange('1y', this)">1y</button>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button class="nav-btn" id="hr-prev" onclick="shiftHRDate(-1)" title="Previous">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M15 18l-6-6 6-6" />
+                            </svg>
+                        </button>
+                        <button class="nav-btn" id="hr-next" onclick="shiftHRDate(1)" disabled title="Next">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 18l6-6-6-6" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="hr-visual-container" style="height: 250px;">
+                    <canvas id="hrHistoryChart"></canvas>
+                </div>
             </div>
             <div class="card">
                 <h2>Stress Score</h2>
@@ -360,6 +400,9 @@
 
                 // Fetch Steps History
                 updateStepsRange('1w');
+
+                // Fetch HR History
+                updateHRRange('1d');
 
                 // Update timestamp
                 document.getElementById('last-sync').textContent = 'Synced: ' + new Date().toLocaleTimeString();
@@ -669,6 +712,163 @@
             if (newDate > new Date()) return;
             currentStepsEndDate = newDate;
             updateStepsRange();
+        }
+
+        let currentHREndDate = new Date();
+        let currentHRRange = '1d';
+
+        async function updateHRRange(range, btn) {
+            if (range) currentHRRange = range;
+            if (btn) {
+                btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            }
+
+            const end_date = currentHREndDate.toISOString().split('T')[0];
+            try {
+                const res = await fetch(`/api/hr_history?range=${currentHRRange}&end_date=${end_date}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.error) {
+                        renderHRVisual(data);
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching HR history:', err);
+            }
+        }
+
+        function shiftHRDate(dir) {
+            const daysMap = { '1d': 1, '1w': 7, '1m': 30, '1y': 365 };
+            const shift = daysMap[currentHRRange] || 7;
+            const newDate = new Date(currentHREndDate);
+            newDate.setDate(newDate.getDate() + (dir * shift));
+
+            if (newDate > new Date()) return;
+            currentHREndDate = newDate;
+            updateHRRange();
+        }
+
+        function renderHRVisual(data) {
+            const canvasId = 'hrHistoryChart';
+            const ctx = document.getElementById(canvasId).getContext('2d');
+
+            // Update Nav Buttons
+            const isToday = currentHREndDate.toDateString() === new Date().toDateString();
+            document.getElementById('hr-next').disabled = isToday;
+
+            if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+            if (data.range === '1d') {
+                const maxHR = data.max_hr || 190;
+                const zones = data.zones || [95, 114, 133, 152, 171]; // Default fallback if missing
+                document.getElementById('rhr').textContent = data.summary.rhr || '--';
+                document.getElementById('hr-max-val').textContent = data.summary.max || '--';
+
+                const points = data.samples.map(s => ({ x: s[0], y: s[1] }));
+
+                const getZoneColor = (hr) => {
+                    if (hr >= zones[4]) return '#a855f7'; // Z5
+                    if (hr >= zones[3]) return '#ef4444'; // Z4
+                    if (hr >= zones[2]) return '#f97316'; // Z3
+                    if (hr >= zones[1]) return '#22c55e'; // Z2
+                    if (hr >= zones[0]) return '#3b82f6'; // Z1
+                    return '#94a3b8'; // Below Z1
+                };
+
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: 'Heart Rate',
+                            data: points,
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            segment: {
+                                borderColor: ctx => getZoneColor(ctx.p1.parsed.y)
+                            },
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: { unit: 'hour', displayFormats: { hour: 'HH:mm' } },
+                                grid: { display: false },
+                                ticks: { color: '#94a3b8' }
+                            },
+                            y: {
+                                min: 40,
+                                max: Math.max(200, maxHR + 5),
+                                grid: { color: 'rgba(255,255,255,0.05)' },
+                                ticks: { color: '#94a3b8' }
+                            }
+                        }
+                    }
+                });
+            } else {
+                const labels = data.history.map(d => d.date);
+                const rhrValues = data.history.map(d => d.rhr);
+                const maxValues = data.history.map(d => d.max);
+
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Resting HR',
+                                data: rhrValues,
+                                borderColor: '#38bdf8',
+                                backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                                borderWidth: 3,
+                                fill: true,
+                                tension: 0.3
+                            },
+                            {
+                                label: 'Max HR',
+                                data: maxValues,
+                                borderColor: '#ef4444',
+                                borderDash: [5, 5],
+                                borderWidth: 2,
+                                pointRadius: 2,
+                                tension: 0.3
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: { color: '#94a3b8', boxWidth: 12 }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: data.range === '1y' ? 'month' : 'day',
+                                    displayFormats: { day: 'MMM d', month: 'MMM' }
+                                },
+                                grid: { display: false },
+                                ticks: { color: '#94a3b8' }
+                            },
+                            y: {
+                                beginAtZero: false,
+                                grid: { color: 'rgba(255,255,255,0.05)' },
+                                ticks: { color: '#94a3b8' }
+                            }
+                        }
+                    }
+                });
+            }
         }
 
         function renderStepsVisual(data) {
