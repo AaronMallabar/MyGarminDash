@@ -525,24 +525,29 @@
 
 
 
+        function safeSetText(id, text) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        }
+
         function updateDashboard(data) {
             // Stats
-            document.getElementById('steps').textContent = data.steps || 0;
-            document.getElementById('rhr').textContent = data.resting_hr || '--';
-            document.getElementById('stress').textContent = data.stress_avg || '--';
+            safeSetText('steps', data.steps || 0);
+            safeSetText('rhr', data.resting_hr || '--');
+            safeSetText('stress', data.stress_avg || '--');
 
             // Weight
             if (data.weight_grams) {
                 const kg = (data.weight_grams / 1000).toFixed(1);
                 const lbs = (kg * 2.20462).toFixed(1);
-                document.getElementById('weight').textContent = lbs + ' lbs';
-                document.getElementById('weight-dual').textContent = kg + ' kg';
+                safeSetText('weight', lbs + ' lbs');
+                safeSetText('weight-dual', kg + ' kg');
             }
 
             // Sleep - convert seconds to hours
             const sleepHours = data.sleep_seconds ? (data.sleep_seconds / 3600).toFixed(1) : '--';
-            document.getElementById('sleep').textContent = sleepHours;
-            document.getElementById('sleep-score').textContent = data.sleep_score || '--';
+            safeSetText('sleep', sleepHours);
+            safeSetText('sleep-score-val', data.sleep_score || '--');
 
             // Activities
             const activityList = document.getElementById('activity-list');
