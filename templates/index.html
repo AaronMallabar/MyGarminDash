@@ -10,6 +10,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 
@@ -544,7 +546,7 @@
                 if (res.ok) {
                     const data = await res.json();
                     if (!data.error) {
-                        renderWeightChart(data);
+                        renderWeightChart(data, range);
                     }
                 }
             } catch (err) {
@@ -552,25 +554,12 @@
             }
         }
 
-        function renderWeightChart(history) {
-            const labels = history.map(d => {
-                const dateParts = d.date.split('-');
-                return `${dateParts[1]}/${dateParts[2]}`; // MM/DD
-            });
-            const valuesLbs = history.map(d => d.weight_lbs);
-            const valuesKg = history.map(d => d.weight_kg);
+        function renderWeightChart(history, range) {
+            const chartData = history.map(d => ({
+                x: d.date,
+                y: d.weight_lbs
+            }));
 
-            const data = {
-                labels: labels,
-                years: { // Reuse the same structure as other charts for simplicity
-                    'Weight': valuesLbs
-                },
-                goal_line: [], // No goal line for weight history for now
-                yearly_goal: 0
-            };
-
-            // Since renderYTDChart is generic, we can try to use it, 
-            // but weight needs its own specialized rendering for labels and tooltips
             const canvasId = 'weightHistoryChart';
             const ctx = document.getElementById(canvasId).getContext('2d');
 
@@ -578,19 +567,23 @@
                 chartInstances[canvasId].destroy();
             }
 
+            // Find min/max for better Y-axis scaling
+            const weights = history.map(d => d.weight_lbs);
+            const minWeight = Math.floor(Math.min(...weights) - 2);
+            const maxWeight = Math.ceil(Math.max(...weights) + 2);
+
             chartInstances[canvasId] = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: labels,
                     datasets: [
                         {
                             label: 'Weight (lbs)',
-                            data: valuesLbs,
+                            data: chartData,
                             borderColor: '#818cf8',
                             backgroundColor: 'rgba(129, 140, 248, 0.1)',
                             borderWidth: 3,
                             tension: 0.3,
-                            pointRadius: 2,
+                            pointRadius: 3,
                             pointHoverRadius: 6,
                             fill: true
                         }
@@ -598,42 +591,46 @@
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: true,
-                    aspectRatio: window.innerWidth < 768 ? 0.7 : 2.5,
+                    maintainAspectRatio: false,
                     plugins: {
-                        legend: {
-                            display: false
-                        },
+                        legend: { display: false },
                         tooltip: {
                             callbacks: {
                                 label: function (context) {
                                     const lbs = context.parsed.y;
                                     const kg = (lbs / 2.20462).toFixed(1);
-                                    return `Weight: ${lbs} lbs / ${kg} kg`;
+                                    return `Weight: ${lbs.toFixed(1)} lbs / ${kg} kg`;
                                 }
                             }
                         }
                     },
                     scales: {
-                        y: {
-                            beginAtZero: false,
-                            ticks: {
-                                color: '#94a3b8',
-                                callback: function (value) {
-                                    return value + ' lbs';
-                                }
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: (range === '2y' || range === '5y') ? 'month' : 'day',
+                                displayFormats: {
+                                    day: 'MMM d',
+                                    month: 'MMM yyyy'
+                                },
+                                tooltipFormat: 'PPP'
                             },
                             grid: {
                                 color: 'rgba(255, 255, 255, 0.05)'
+                            },
+                            ticks: {
+                                color: '#94a3b8'
                             }
                         },
-                        x: {
+                        y: {
+                            min: minWeight,
+                            max: maxWeight,
                             ticks: {
                                 color: '#94a3b8',
-                                maxTicksLimit: window.innerWidth < 768 ? 6 : 12
+                                callback: val => val + ' lbs'
                             },
                             grid: {
-                                color: 'rgba(255, 255, 255, 0.05)'
+                                color: 'rgba(255, 255, 255, 0.1)'
                             }
                         }
                     }
