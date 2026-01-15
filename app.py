@@ -400,6 +400,59 @@ def get_hr_history():
         logger.error(f"Error fetching HR history: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/stress_history')
+def get_stress_history():
+    try:
+        client = get_garmin_client()
+        range_val = request.args.get('range', '1w')
+        end_date_str = request.args.get('end_date')
+        
+        if end_date_str:
+            end_date = date.fromisoformat(end_date_str)
+        else:
+            end_date = date.today()
+
+        if range_val == '1d':
+            stress_data = client.get_stress_data(end_date.isoformat())
+            return jsonify({
+                'range': '1d',
+                'summary': {
+                    'avg': stress_data.get('avgStressLevel'),
+                    'max': stress_data.get('maxStressLevel')
+                },
+                'samples': stress_data.get('stressValuesArray', [])
+            })
+        else:
+            days = 7
+            if range_val == '1w': days = 7
+            elif range_val == '1m': days = 30
+            elif range_val == '1y': days = 365
+            
+            history = []
+            fetch_limit = min(days, 90) if range_val == '1y' else days
+            
+            for i in range(fetch_limit):
+                d = end_date - timedelta(days=i)
+                try:
+                    day_data = client.get_stress_data(d.isoformat())
+                    if day_data.get('avgStressLevel'):
+                        history.append({
+                            'date': d.isoformat(),
+                            'avg': day_data.get('avgStressLevel'),
+                            'max': day_data.get('maxStressLevel')
+                        })
+                except:
+                    continue
+            
+            return jsonify({
+                'range': range_val,
+                'history': list(reversed(history))
+            })
+
+    except Exception as e:
+        logger.error(f"Error fetching stress history: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/weight_history')
 def get_weight_history():
     try:
