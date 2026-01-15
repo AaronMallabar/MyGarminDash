@@ -104,38 +104,6 @@
             </div>
         </section>
 
-        <!-- Weight Progress -->
-        <section style="margin-bottom: 3rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h2>Weight Progress</h2>
-                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
-                    <div class="range-selector" style="display: inline-flex;">
-                        <button class="range-btn active" onclick="updateWeightRange('1m', this)">1m</button>
-                        <button class="range-btn" onclick="updateWeightRange('6m', this)">6m</button>
-                        <button class="range-btn" onclick="updateWeightRange('1y', this)">1y</button>
-                        <button class="range-btn" onclick="updateWeightRange('2y', this)">2y</button>
-                        <button class="range-btn" onclick="updateWeightRange('5y', this)">5y</button>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        <button class="nav-btn" id="weight-prev" onclick="shiftWeightDate(-1)" title="Previous">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M15 18l-6-6 6-6" />
-                            </svg>
-                        </button>
-                        <button class="nav-btn" id="weight-next" onclick="shiftWeightDate(1)" disabled title="Next">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M9 18l6-6-6-6" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div class="chart-container">
-                <canvas id="weightHistoryChart"></canvas>
-            </div>
-        </section>
 
         <div class="grid">
             <div class="card" style="grid-column: span 2;">
@@ -246,10 +214,44 @@
                 <div class="metric-value"><span id="sleep">--</span><span class="metric-unit">hrs</span></div>
                 <div class="metric-unit">Quality: <span id="sleep-score">--</span></div>
             </div>
-            <div class="card">
-                <h2>Weight</h2>
-                <div class="metric-value"><span id="weight">--</span></div>
-                <div class="metric-unit" id="weight-dual">Latest weigh-in</div>
+            <div class="card" style="grid-column: span 2;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <div>
+                        <h2>Weight</h2>
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+                            <div class="metric-value" style="margin-bottom: 0;"><span id="weight">--</span></div>
+                            <div class="metric-unit" id="weight-dual">Latest weigh-in</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
+                    <div class="range-selector" style="display: inline-flex;">
+                        <button class="range-btn active" onclick="updateWeightRange('1m', this)">1m</button>
+                        <button class="range-btn" onclick="updateWeightRange('6m', this)">6m</button>
+                        <button class="range-btn" onclick="updateWeightRange('1y', this)">1y</button>
+                        <button class="range-btn" onclick="updateWeightRange('2y', this)">2y</button>
+                        <button class="range-btn" onclick="updateWeightRange('5y', this)">5y</button>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button class="nav-btn" id="weight-prev" onclick="shiftWeightDate(-1)" title="Previous">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M15 18l-6-6 6-6" />
+                            </svg>
+                        </button>
+                        <button class="nav-btn" id="weight-next" onclick="shiftWeightDate(1)" disabled title="Next">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 18l6-6-6-6" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div style="height: 250px;">
+                    <canvas id="weightHistoryChart"></canvas>
+                </div>
             </div>
         </div>
 
