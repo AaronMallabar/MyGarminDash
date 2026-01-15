@@ -453,6 +453,70 @@ def get_stress_history():
         logger.error(f"Error fetching stress history: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/sleep_history')
+def get_sleep_history():
+    try:
+        client = get_garmin_client()
+        range_val = request.args.get('range', '1w')
+        end_date_str = request.args.get('end_date')
+        
+        if end_date_str:
+            end_date = date.fromisoformat(end_date_str)
+        else:
+            end_date = date.today()
+
+        if range_val == '1d':
+            sleep_data = client.get_sleep_data(end_date.isoformat())
+            dto = sleep_data.get('dailySleepDTO', {})
+            scores = dto.get('sleepScores', {})
+            overall_score = scores.get('overall', {}).get('value')
+            
+            return jsonify({
+                'range': '1d',
+                'summary': {
+                    'score': overall_score,
+                    'total': dto.get('sleepTimeSeconds'),
+                    'deep': dto.get('deepSleepSeconds'),
+                    'light': dto.get('lightSleepSeconds'),
+                    'rem': dto.get('remSleepSeconds'),
+                    'awake': dto.get('awakeSleepSeconds')
+                }
+            })
+        else:
+            days = 7
+            if range_val == '1w': days = 7
+            elif range_val == '1m': days = 30
+            elif range_val == '1y': days = 365
+            
+            history = []
+            fetch_limit = min(days, 90) if range_val == '1y' else days
+            
+            for i in range(fetch_limit):
+                d = end_date - timedelta(days=i)
+                try:
+                    day_data = client.get_sleep_data(d.isoformat())
+                    dto = day_data.get('dailySleepDTO', {})
+                    scores = dto.get('sleepScores', {})
+                    score = scores.get('overall', {}).get('value')
+                    
+                    if dto.get('sleepTimeSeconds'):
+                        history.append({
+                            'date': d.isoformat(),
+                            'score': score,
+                            'total': dto.get('sleepTimeSeconds')
+                        })
+                except:
+                    continue
+            
+            return jsonify({
+                'range': range_val,
+                'history': list(reversed(history))
+            })
+
+    except Exception as e:
+        logger.error(f"Error fetching sleep history: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/weight_history')
 def get_weight_history():
     try:

@@ -243,10 +243,44 @@
                     <canvas id="stressHistoryChart"></canvas>
                 </div>
             </div>
-            <div class="card">
-                <h2>Sleep</h2>
-                <div class="metric-value"><span id="sleep">--</span><span class="metric-unit">hrs</span></div>
-                <div class="metric-unit">Quality: <span id="sleep-score">--</span></div>
+            <div class="card" style="grid-column: span 2;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <div>
+                        <h2>Sleep</h2>
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+                            <div class="metric-value" style="margin-bottom: 0;"><span id="sleep">--</span><span
+                                    class="metric-unit">hrs</span></div>
+                            <div class="metric-unit">Score: <span id="sleep-score-val">--</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
+                    <div class="range-selector" style="display: inline-flex;">
+                        <button class="range-btn active" onclick="updateSleepRange('1d', this)">1d</button>
+                        <button class="range-btn" onclick="updateSleepRange('1w', this)">1w</button>
+                        <button class="range-btn" onclick="updateSleepRange('1m', this)">1m</button>
+                        <button class="range-btn" onclick="updateSleepRange('1y', this)">1y</button>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button class="nav-btn" id="sleep-prev" onclick="shiftSleepDate(-1)" title="Previous">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M15 18l-6-6 6-6" />
+                            </svg>
+                        </button>
+                        <button class="nav-btn" id="sleep-next" onclick="shiftSleepDate(1)" disabled title="Next">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 18l6-6-6-6" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="sleep-visual-container" style="height: 250px; position: relative;">
+                    <canvas id="sleepHistoryChart"></canvas>
+                </div>
             </div>
             <div class="card" style="grid-column: span 2;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
@@ -442,6 +476,9 @@
 
                 // Fetch Stress History
                 updateStressRange('1d');
+
+                // Fetch Sleep History
+                updateSleepRange('1d');
 
                 // Update timestamp
                 document.getElementById('last-sync').textContent = 'Synced: ' + new Date().toLocaleTimeString();
@@ -943,6 +980,145 @@
             if (newDate > new Date()) return;
             currentStressEndDate = newDate;
             updateStressRange();
+        }
+
+        let currentSleepEndDate = new Date();
+        let currentSleepRange = '1d';
+
+        async function updateSleepRange(range, btn) {
+            if (range) currentSleepRange = range;
+            if (btn) {
+                btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            }
+
+            const end_date = currentSleepEndDate.toISOString().split('T')[0];
+            try {
+                const res = await fetch(`/api/sleep_history?range=${currentSleepRange}&end_date=${end_date}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.error) {
+                        renderSleepVisual(data);
+                    }
+                }
+            } catch (err) {
+                console.error('Error fetching sleep history:', err);
+            }
+        }
+
+        function shiftSleepDate(dir) {
+            const daysMap = { '1d': 1, '1w': 7, '1m': 30, '1y': 365 };
+            const shift = daysMap[currentSleepRange] || 7;
+            const newDate = new Date(currentSleepEndDate);
+            newDate.setDate(newDate.getDate() + (dir * shift));
+
+            if (newDate > new Date()) return;
+            currentSleepEndDate = newDate;
+            updateSleepRange();
+        }
+
+        function renderSleepVisual(data) {
+            const canvasId = 'sleepHistoryChart';
+            const ctx = document.getElementById(canvasId).getContext('2d');
+
+            const isToday = currentSleepEndDate.toDateString() === new Date().toDateString();
+            document.getElementById('sleep-next').disabled = isToday;
+
+            if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+            if (data.range === '1d') {
+                const s = data.summary;
+                const hours = (s.total / 3600).toFixed(1);
+                document.getElementById('sleep').textContent = hours;
+                document.getElementById('sleep-score-val').textContent = s.score || '--';
+
+                const stageData = [
+                    { label: 'Deep', value: s.deep || 0, color: '#6366f1' },
+                    { label: 'Light', value: s.light || 0, color: '#3b82f6' },
+                    { label: 'REM', value: s.rem || 0, color: '#2dd4bf' },
+                    { label: 'Awake', value: s.awake || 0, color: '#f97316' }
+                ].filter(d => d.value > 0);
+
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: stageData.map(d => d.label),
+                        datasets: [{
+                            data: stageData.map(d => d.value),
+                            backgroundColor: stageData.map(d => d.color),
+                            borderWidth: 0,
+                            hoverOffset: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        cutout: '70%',
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'right',
+                                labels: { color: '#94a3b8', boxWidth: 12, padding: 20 }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function (context) {
+                                        const seconds = context.raw;
+                                        const hrs = Math.floor(seconds / 3600);
+                                        const mins = Math.round((seconds % 3600) / 60);
+                                        return `${context.label}: ${hrs}h ${mins}m`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                const labels = data.history.map(d => d.date);
+                const scores = data.history.map(d => d.score);
+
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Sleep Score',
+                            data: scores,
+                            borderColor: '#818cf8',
+                            backgroundColor: 'rgba(129, 140, 248, 0.1)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointBackgroundColor: '#818cf8'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: data.range === '1y' ? 'month' : 'day',
+                                    displayFormats: { day: 'MMM d', month: 'MMM' }
+                                },
+                                grid: { display: false },
+                                ticks: { color: '#94a3b8' }
+                            },
+                            y: {
+                                min: 0,
+                                max: 100,
+                                grid: { color: 'rgba(255,255,255,0.05)' },
+                                ticks: { color: '#94a3b8' }
+                            }
+                        }
+                    }
+                });
+            }
         }
 
         function renderStressVisual(data) {
