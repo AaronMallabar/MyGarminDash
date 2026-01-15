@@ -116,10 +116,19 @@
                         <button class="range-btn" onclick="updateWeightRange('2y', this)">2y</button>
                         <button class="range-btn" onclick="updateWeightRange('5y', this)">5y</button>
                     </div>
-                    <div class="range-selector" style="display: inline-flex; gap: 0.25rem;">
-                        <button class="range-btn" id="weight-prev" onclick="shiftWeightDate(-1)">←</button>
-                        <button class="range-btn" id="weight-next" onclick="shiftWeightDate(1)" disabled
-                            style="opacity: 0.5; cursor: not-allowed;">→</button>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button class="nav-btn" id="weight-prev" onclick="shiftWeightDate(-1)" title="Previous">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M15 18l-6-6 6-6" />
+                            </svg>
+                        </button>
+                        <button class="nav-btn" id="weight-next" onclick="shiftWeightDate(1)" disabled title="Next">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 18l6-6-6-6" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -153,10 +162,19 @@
                         <button class="range-btn" onclick="updateStepsRange('1m', this)">1m</button>
                         <button class="range-btn" onclick="updateStepsRange('1y', this)">1y</button>
                     </div>
-                    <div class="range-selector" style="display: inline-flex; gap: 0.25rem;">
-                        <button class="range-btn" id="steps-prev" onclick="shiftStepsDate(-1)">←</button>
-                        <button class="range-btn" id="steps-next" onclick="shiftStepsDate(1)" disabled
-                            style="opacity: 0.5; cursor: not-allowed;">→</button>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button class="nav-btn" id="steps-prev" onclick="shiftStepsDate(-1)" title="Previous">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M15 18l-6-6 6-6" />
+                            </svg>
+                        </button>
+                        <button class="nav-btn" id="steps-next" onclick="shiftStepsDate(1)" disabled title="Next">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 18l6-6-6-6" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
 
@@ -663,10 +681,7 @@
 
             // Update Nav Buttons
             const isToday = currentStepsEndDate.toDateString() === new Date().toDateString();
-            const nextBtn = document.getElementById('steps-next');
-            nextBtn.disabled = isToday;
-            nextBtn.style.opacity = isToday ? '0.5' : '1';
-            nextBtn.style.cursor = isToday ? 'not-allowed' : 'pointer';
+            document.getElementById('steps-next').disabled = isToday;
 
             if (data.range === '1d') {
                 canvas.style.display = 'none';
@@ -748,10 +763,7 @@
         function renderWeightChart(history, range) {
             // Update Nav Buttons
             const isToday = currentWeightEndDate.toDateString() === new Date().toDateString();
-            const nextBtn = document.getElementById('weight-next');
-            nextBtn.disabled = isToday;
-            nextBtn.style.opacity = isToday ? '0.5' : '1';
-            nextBtn.style.cursor = isToday ? 'not-allowed' : 'pointer';
+            document.getElementById('weight-next').disabled = isToday;
 
             const chartData = history.map(d => ({
                 x: d.date,
