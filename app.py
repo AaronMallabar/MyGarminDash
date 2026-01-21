@@ -2,7 +2,7 @@ import os
 import logging
 from flask import Flask, render_template, jsonify, request
 from garminconnect import Garmin
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -689,6 +689,28 @@ def get_activity_details(activity_id):
         })
     except Exception as e:
         logger.error(f"Error fetching activity details: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/add_weight', methods=['POST'])
+def add_weight():
+    try:
+        data = request.json
+        weight = data.get('weight') # in kg
+        
+        if not weight:
+            return jsonify({'error': 'Weight is required'}), 400
+            
+        client = get_garmin_client()
+        
+        # GarminConnect library requires timestamp as the first argument
+        timestamp = datetime.now().isoformat()
+        
+        client.add_body_composition(timestamp, float(weight))
+        
+        return jsonify({'status': 'success', 'message': 'Weight added successfully'})
+
+    except Exception as e:
+        logger.error(f"Error adding weight: {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

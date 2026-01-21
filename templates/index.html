@@ -309,6 +309,10 @@
                             <div class="metric-unit" id="weight-dual">Latest weigh-in</div>
                         </div>
                     </div>
+                    <div style="text-align: right;">
+                        <button class="range-btn" onclick="openWeightModal()" style="padding: 0.5rem 1rem;">+ Log
+                            Weight</button>
+                    </div>
                 </div>
 
                 <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
@@ -433,6 +437,34 @@
                 <button class="range-btn active" style="padding: 0.8rem 2rem;" onclick="closeModal()">Close
                     Details</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Weight Log Modal -->
+    <div id="weightModal" class="modal">
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+            <button class="modal-close" onclick="closeWeightModal()">×</button>
+            <h2 style="margin-bottom: 2rem;">Log Weight</h2>
+
+            <div style="margin-bottom: 2rem;">
+                <div style="display: flex; justify-content: center; align-items: baseline; gap: 0.5rem;">
+                    <input type="number" id="weight-input" placeholder="0.0" step="0.1"
+                        style="font-size: 2.5rem; width: 180px; text-align: center; padding: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); border-radius: 0.5rem; font-weight: 700;">
+                </div>
+                <div style="margin-top: 1.5rem; display: flex; justify-content: center; gap: 2rem;">
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="radio" name="weight-unit" value="lbs" checked style="transform: scale(1.5);">
+                        <span style="font-size: 1.1rem;">lbs</span>
+                    </label>
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="radio" name="weight-unit" value="kg" style="transform: scale(1.5);">
+                        <span style="font-size: 1.1rem;">kg</span>
+                    </label>
+                </div>
+            </div>
+
+            <button class="range-btn active" style="padding: 0.8rem 2rem; width: 100%; font-size: 1.1rem;"
+                onclick="submitWeight()">Save Weight</button>
         </div>
     </div>
 
@@ -1633,13 +1665,61 @@
 
             table.innerHTML = html;
         }
-
         function closeModal() {
             document.getElementById('activityModal').classList.remove('active');
             // Reset zoom on close to avoid state issues
             activityChartIds.forEach(id => {
                 if (chartInstances[id]) chartInstances[id].resetZoom();
             });
+        }
+
+        function openWeightModal() {
+            document.getElementById('weightModal').classList.add('active');
+            document.getElementById('weight-input').value = '';
+            document.getElementById('weight-input').focus();
+        }
+
+        function closeWeightModal() {
+            document.getElementById('weightModal').classList.remove('active');
+        }
+
+        async function submitWeight() {
+            const weightVal = parseFloat(document.getElementById('weight-input').value);
+            const unit = document.querySelector('input[name="weight-unit"]:checked').value;
+
+            if (!weightVal || isNaN(weightVal)) {
+                alert("Please enter a valid weight.");
+                return;
+            }
+
+            // Convert to kg if lbs
+            let weightKg = weightVal;
+            if (unit === 'lbs') {
+                weightKg = weightVal / 2.20462;
+            }
+
+            try {
+                const res = await fetch('/api/add_weight', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ weight: weightKg })
+                });
+
+                const result = await res.json();
+                if (res.ok && result.status === 'success') {
+                    closeWeightModal();
+                    // Refresh data
+                    fetchData();
+                    // Also refresh history explicitly
+                    updateWeightRange(currentWeightRange);
+                    alert("Weight logged successfully!");
+                } else {
+                    alert("Error: " + (result.error || "Unknown error"));
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Failed to submit weight.");
+            }
         }
 
         // Timer helper
