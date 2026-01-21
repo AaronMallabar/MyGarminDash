@@ -563,9 +563,73 @@ def get_weight_history():
                     'weight_lbs': round(lbs, 1)
                 })
         
-        return jsonify(history)
+            return jsonify(history)
     except Exception as e:
         logger.error(f"Error fetching weight history: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/hydration')
+def get_hydration():
+    try:
+        client = get_garmin_client()
+        today = date.today().isoformat()
+        data = client.get_hydration_data(today)
+        return jsonify({
+            'date': today,
+            'intake': data.get('valueInML', 0),
+            'goal': data.get('goalInML', 2000)
+        })
+    except Exception as e:
+        logger.error(f"Error fetching hydration: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/hydration_history')
+def get_hydration_history():
+    try:
+        client = get_garmin_client()
+        range_val = request.args.get('range', '1w')
+        end_date_str = request.args.get('end_date')
+        
+        if end_date_str:
+            end_date = date.fromisoformat(end_date_str)
+        else:
+            end_date = date.today()
+
+        if range_val == '1d':
+            data = client.get_hydration_data(end_date.isoformat())
+            return jsonify({
+                'range': '1d',
+                'summary': {
+                    'intake': data.get('valueInML', 0),
+                    'goal': data.get('goalInML', 2000)
+                }
+            })
+        else:
+            if range_val == '1w': days = 7
+            elif range_val == '1m': days = 30
+            elif range_val == '1y': days = 365
+            
+            history = []
+            for i in range(days):
+                d = end_date - timedelta(days=i)
+                try:
+                    day_data = client.get_hydration_data(d.isoformat())
+                    if day_data.get('goalInML'): # Only add if goal exists or use default
+                        history.append({
+                            'date': d.isoformat(),
+                            'intake': day_data.get('valueInML', 0),
+                            'goal': day_data.get('goalInML', 2000)
+                        })
+                except:
+                    continue
+            
+            return jsonify({
+                'range': range_val,
+                'history': list(reversed(history))
+            })
+
+    except Exception as e:
+        logger.error(f"Error fetching hydration history: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/activity/<int:activity_id>')
