@@ -1,0 +1,19 @@
+/* Dashboard Grids */
+.dashboard-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 3rem;
+}
+
+@media (max-width: 900px) {
+    .dashboard-grid-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Make Chart Containers Responsive in Grid */
+.chart-container {
+    min-height: 250px;
+    /* Reduced from 400px for compactness */
+}

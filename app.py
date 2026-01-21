@@ -186,73 +186,86 @@ def get_ytd_mileage_comparison():
     try:
         client = get_garmin_client()
         today = date.today()
-        current_day = today.timetuple().tm_yday
+        current_day_of_year = today.timetuple().tm_yday
         
         # Build daily cumulative data for each year
         cycling_daily_data = {}
         running_daily_data = {}
         
         for year in [2024, 2025, 2026]:
-            cycle_cumulative = []
-            run_cumulative = []
-            cumulative_cycle_miles = 0
-            cumulative_run_miles = 0
+            # Target date range: Jan 1 to same day-of-year as today
+            start_date = date(year, 1, 1)
+            end_date = start_date + timedelta(days=current_day_of_year - 1)
             
-            # For each day from Jan 1 to current day of year
-            for day_num in range(1, current_day + 1):
-                try:
-                    # Calculate the date for this day number
-                    current_date = date(year, 1, 1) + timedelta(days=day_num - 1)
+            # Don't query future for current year
+            if year == today.year and end_date > today:
+                end_date = today
+
+            try:
+                logger.info(f"Fetching activities for YTD {year} ({start_date} to {end_date})")
+                activities = client.get_activities_by_date(start_date.isoformat(), end_date.isoformat())
+                
+                day_map_cycle = {}
+                day_map_run = {}
+                
+                for act in activities:
+                    start_local = act.get('startTimeLocal')
+                    if not start_local: continue
                     
-                    # Skip future dates
-                    if current_date > date.today():
-                        break
+                    # Extract day of year
+                    d_str = start_local.split(' ')[0]
+                    d = date.fromisoformat(d_str)
+                    d_num = d.timetuple().tm_yday
                     
-                    # Fetch data for this single day
-                    summary = client.get_progress_summary_between_dates(
-                        current_date.isoformat(), 
-                        current_date.isoformat()
-                    )
+                    dist_meters = act.get('distance', 0)
+                    type_key = act.get('activityType', {}).get('typeKey', '')
                     
-                    day_cycle_cm = 0
-                    day_run_cm = 0
-                    for item in summary:
-                        stats = item.get('stats', {})
-                        # Cycling
-                        if 'cycling' in stats:
-                            day_cycle_cm += stats['cycling'].get('distance', {}).get('sum', 0)
-                        # Running
-                        if 'running' in stats:
-                            day_run_cm += stats['running'].get('distance', {}).get('sum', 0)
+                    # Cycling
+                    if 'cycling' in type_key or 'ride' in type_key:
+                        day_map_cycle[d_num] = day_map_cycle.get(d_num, 0) + dist_meters
+                    # Running
+                    elif 'running' in type_key or 'run' in type_key:
+                        day_map_run[d_num] = day_map_run.get(d_num, 0) + dist_meters
+
+                # Now build cumulative arrays
+                cycle_cumulative = []
+                run_cumulative = []
+                cumulative_cycle_miles = 0
+                cumulative_run_miles = 0
+                
+                # Conversion factor: meters to miles
+                M_TO_MI = 0.000621371
+                
+                for d in range(1, current_day_of_year + 1):
+                    # Get daily distance (meters) or 0
+                    c_m = day_map_cycle.get(d, 0)
+                    r_m = day_map_run.get(d, 0)
                     
-                    # Add to cumulative totals
-                    cumulative_cycle_miles += day_cycle_cm * 0.00000621371
-                    cumulative_run_miles += day_run_cm * 0.00000621371
+                    cumulative_cycle_miles += c_m * M_TO_MI
+                    cumulative_run_miles += r_m * M_TO_MI
                     
                     cycle_cumulative.append(round(cumulative_cycle_miles, 1))
                     run_cumulative.append(round(cumulative_run_miles, 1))
-                    
-                except Exception as e:
-                    logger.warning(f"Error fetching data for {year}-{day_num}: {e}")
-                    # Use previous values if error
-                    cycle_cumulative.append(cycle_cumulative[-1] if cycle_cumulative else 0)
-                    run_cumulative.append(run_cumulative[-1] if run_cumulative else 0)
-            
-            cycling_daily_data[str(year)] = cycle_cumulative
-            running_daily_data[str(year)] = run_cumulative
-        
-        # Calculate goal lines
+                
+                cycling_daily_data[str(year)] = cycle_cumulative
+                running_daily_data[str(year)] = run_cumulative
+
+            except Exception as e:
+                logger.error(f"Error processing YTD for {year}: {e}")
+                cycling_daily_data[str(year)] = [0] * current_day_of_year
+                running_daily_data[str(year)] = [0] * current_day_of_year
+
+        # Get goals from config
         cycle_goal = float(os.getenv('YEARLY_CYCLING_GOAL', 5000))
         run_goal = float(os.getenv('YEARLY_RUNNING_GOAL', 365))
         
         cycle_goal_increment = cycle_goal / 365
         run_goal_increment = run_goal / 365
         
-        cycle_goal_line = [round(cycle_goal_increment * (i + 1), 1) for i in range(current_day)]
-        run_goal_line = [round(run_goal_increment * (i + 1), 1) for i in range(current_day)]
+        cycle_goal_line = [round(cycle_goal_increment * (i + 1), 1) for i in range(current_day_of_year)]
+        run_goal_line = [round(run_goal_increment * (i + 1), 1) for i in range(current_day_of_year)]
         
-        # Create day labels
-        day_labels = [f"Day {i+1}" for i in range(current_day)]
+        day_labels = [f"Day {i+1}" for i in range(current_day_of_year)]
         
         return jsonify({
             'labels': day_labels,
@@ -429,7 +442,8 @@ def get_stress_history():
             elif range_val == '1y': days = 365
             
             history = []
-            fetch_limit = min(days, 90) if range_val == '1y' else days
+            # Safety limit to avoid timeout
+            fetch_limit = min(days, 180) if range_val == '1y' else days
             
             for i in range(fetch_limit):
                 d = end_date - timedelta(days=i)
@@ -489,7 +503,7 @@ def get_sleep_history():
             elif range_val == '1y': days = 365
             
             history = []
-            fetch_limit = min(days, 90) if range_val == '1y' else days
+            fetch_limit = min(days, 180) if range_val == '1y' else days
             
             for i in range(fetch_limit):
                 d = end_date - timedelta(days=i)
@@ -563,7 +577,7 @@ def get_weight_history():
                     'weight_lbs': round(lbs, 1)
                 })
         
-            return jsonify(history)
+        return jsonify(history)
     except Exception as e:
         logger.error(f"Error fetching weight history: {e}")
         return jsonify({'error': str(e)}), 500
@@ -610,11 +624,13 @@ def get_hydration_history():
             elif range_val == '1y': days = 365
             
             history = []
-            for i in range(days):
+            fetch_limit = min(days, 180) if range_val == '1y' else days
+            
+            for i in range(fetch_limit):
                 d = end_date - timedelta(days=i)
                 try:
                     day_data = client.get_hydration_data(d.isoformat())
-                    if day_data.get('goalInML'): # Only add if goal exists or use default
+                    if day_data.get('goalInML') or day_data.get('valueInML'):
                         history.append({
                             'date': d.isoformat(),
                             'intake': day_data.get('valueInML', 0),

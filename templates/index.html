@@ -1,607 +1,1140 @@
 <!DOCTYPE html>
+
 <html lang="en">
 
 <head>
+
     <meta charset="UTF-8">
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Garmin Dashboard</title>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
+
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+
         rel="stylesheet">
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
     <script
+
         src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
 </head>
 
 <body>
+
     <div class="container">
+
         <header>
+
             <h1>Garmin Dashboard</h1>
+
             <div id="last-sync" class="last-sync">Syncing...</div>
+
         </header>
 
         <div id="error-message"
+
             style="display: none; color: #f87171; background: rgba(248, 113, 113, 0.1); padding: 1rem; border-radius: 0.5rem; margin-bottom: 2rem;">
+
+        </div>
+
+        <!-- Health Metrics Grid (Small, Side-by-Side) -->
+
+        <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Daily Health</h2>
+
+        <div class="dashboard-grid-2">
+
+            <!-- Steps -->
+
+            <div class="card">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+
+                    <div>
+
+                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Steps</h2>
+
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+
+                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
+
+                                    id="steps">--</span></div>
+
+                            <div class="metric-unit" id="steps-goal-text" style="font-size: 0.8rem;">/ 10k</div>
+
+                        </div>
+
+                    </div>
+
+                    <div style="text-align: right;">
+
+                        <div style="font-size: 0.7rem; color: var(--text-secondary);">Streak</div>
+
+                        <div style="font-size: 1.2rem; font-weight: 700; color: var(--success-color);"><span
+
+                                id="steps-streak">--</span></div>
+
+                    </div>
+
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
+
+                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
+
+                        <button class="range-btn" onclick="updateStepsRange('1d', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
+
+                        <button class="range-btn active" onclick="updateStepsRange('1w', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
+
+                        <button class="range-btn" onclick="updateStepsRange('1m', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
+
+                        <button class="range-btn" onclick="updateStepsRange('1y', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
+
+                    </div>
+
+                    <div style="flex-grow:1"></div>
+
+                    <button class="nav-btn" id="steps-prev" onclick="shiftStepsDate(-1)"
+
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+
+                            fill="none">
+
+                            <polyline points="15 18 9 12 15 6"></polyline>
+
+                        </svg></button>
+
+                    <button class="nav-btn" id="steps-next" onclick="shiftStepsDate(1)" disabled
+
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+
+                            fill="none">
+
+                            <polyline points="9 18 15 12 9 6"></polyline>
+
+                        </svg></button>
+
+                </div>
+
+                <div id="steps-visual-container" class="chart-container"
+
+                    style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
+
+                    <canvas id="stepsHistoryChart"></canvas>
+
+                    <div id="steps-donut-container"
+
+                        style="display: none; width: 100%; height: 100%; position: relative;">
+
+                        <!-- Donut logic kept, just resized via CSS or inline -->
+
+                        <div class="donut-chart" id="steps-day-chart"
+
+                            style="width: 140px; height: 140px; margin: 0 auto;">
+
+                            <div class="donut-inner" style="width: 110px; height: 110px;">
+
+                                <span class="donut-percent" id="steps-day-percent" style="font-size: 1.5rem;">0%</span>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Sleep -->
+
+            <div class="card">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+
+                    <div>
+
+                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Sleep</h2>
+
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+
+                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
+
+                                    id="sleep">--</span><span class="metric-unit">h</span></div>
+
+                            <div class="metric-unit">Score: <span id="sleep-score-val">--</span></div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
+
+                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
+
+                        <button class="range-btn active" onclick="updateSleepRange('1d', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
+
+                        <button class="range-btn" onclick="updateSleepRange('1w', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
+
+                        <button class="range-btn" onclick="updateSleepRange('1m', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
+
+                        <button class="range-btn" onclick="updateSleepRange('1y', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
+
+                    </div>
+
+                    <div style="flex-grow:1"></div>
+
+                    <button class="nav-btn" id="sleep-prev" onclick="shiftSleepDate(-1)"
+
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+
+                            fill="none">
+
+                            <polyline points="15 18 9 12 15 6"></polyline>
+
+                        </svg></button>
+
+                    <button class="nav-btn" id="sleep-next" onclick="shiftSleepDate(1)" disabled
+
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+
+                            fill="none">
+
+                            <polyline points="9 18 15 12 9 6"></polyline>
+
+                        </svg></button>
+
+                </div>
+
+                <div id="sleep-visual-container" class="chart-container"
+
+                    style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
+
+                    <canvas id="sleepHistoryChart"></canvas>
+
+                </div>
+
+            </div>
+
+            <!-- Hydration -->
+
+            <div class="card">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+
+                    <div>
+
+                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Hydration</h2>
+
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+
+                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
+
+                                    id="hydration-val">--</span></div>
+
+                            <div class="metric-unit">oz</div>
+
+                        </div>
+
+                    </div>
+
+                    <div style="text-align: right;">
+
+                        <div id="hydration-goal" style="font-size: 0.8rem; color: var(--text-secondary);">Goal: -- oz
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
+
+                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
+
+                        <button class="range-btn active" onclick="updateHydrationRange('1d', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
+
+                        <button class="range-btn" onclick="updateHydrationRange('1w', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
+
+                        <button class="range-btn" onclick="updateHydrationRange('1m', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
+
+                        <button class="range-btn" onclick="updateHydrationRange('1y', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
+
+                    </div>
+
+                    <div style="flex-grow:1"></div>
+
+                    <button class="nav-btn" id="hydration-prev" onclick="shiftHydrationDate(-1)"
+
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+
+                            fill="none">
+
+                            <polyline points="15 18 9 12 15 6"></polyline>
+
+                        </svg></button>
+
+                    <button class="nav-btn" id="hydration-next" onclick="shiftHydrationDate(1)" disabled
+
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+
+                            fill="none">
+
+                            <polyline points="9 18 15 12 9 6"></polyline>
+
+                        </svg></button>
+
+                </div>
+
+                <div id="hydration-visual-container" class="chart-container"
+
+                    style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
+
+                    <canvas id="hydrationHistoryChart"></canvas>
+
+                    <div id="hydration-donut-container"
+
+                        style="display: none; width: 100%; height: 100%; position: relative;">
+
+                        <div class="donut-chart" id="hydration-chart"
+
+                            style="width: 140px; height: 140px; margin: 0 auto;">
+
+                            <div class="donut-inner" style="width: 110px; height: 110px;">
+
+                                <span class="donut-percent" id="hydration-percent" style="font-size: 1.5rem;">0%</span>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Heart Rate -->
+
+            <div class="card">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+
+                    <div>
+
+                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Heart Rate</h2>
+
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+
+                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
+
+                                    id="rhr">--</span></div>
+
+                            <div class="metric-unit">RHR</div>
+
+                        </div>
+
+                    </div>
+
+                    <div style="text-align: right;">
+
+                        <div style="font-size: 0.7rem; color: var(--text-secondary);">Max</div>
+
+                        <div style="font-size: 1.2rem; font-weight: 700; color: var(--danger-color);"><span
+
+                                id="hr-max-val">--</span></div>
+
+                    </div>
+
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
+
+                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
+
+                        <button class="range-btn active" onclick="updateHRRange('1d', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
+
+                        <button class="range-btn" onclick="updateHRRange('1w', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
+
+                        <button class="range-btn" onclick="updateHRRange('1m', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
+
+                        <button class="range-btn" onclick="updateHRRange('1y', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
+
+                    </div>
+
+                    <div style="flex-grow:1"></div>
+
+                    <button class="nav-btn" id="hr-prev" onclick="shiftHRDate(-1)" style="width:24px; height:24px;"><svg
+
+                            viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+
+                            <polyline points="15 18 9 12 15 6"></polyline>
+
+                        </svg></button>
+
+                    <button class="nav-btn" id="hr-next" onclick="shiftHRDate(1)" disabled
+
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+
+                            fill="none">
+
+                            <polyline points="9 18 15 12 9 6"></polyline>
+
+                        </svg></button>
+
+                </div>
+
+                <div id="hr-visual-container" class="chart-container"
+
+                    style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
+
+                    <canvas id="hrHistoryChart"></canvas>
+
+                </div>
+
+            </div>
+
+            <!-- Stress -->
+
+            <div class="card">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+
+                    <div>
+
+                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Stress</h2>
+
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+
+                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
+
+                                    id="stress">--</span></div>
+
+                            <div class="metric-unit">Avg</div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
+
+                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
+
+                        <button class="range-btn active" onclick="updateStressRange('1d', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
+
+                        <button class="range-btn" onclick="updateStressRange('1w', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
+
+                        <button class="range-btn" onclick="updateStressRange('1m', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
+
+                        <button class="range-btn" onclick="updateStressRange('1y', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
+
+                    </div>
+
+                    <div style="flex-grow:1"></div>
+
+                    <button class="nav-btn" id="stress-prev" onclick="shiftStressDate(-1)"
+
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+
+                            fill="none">
+
+                            <polyline points="15 18 9 12 15 6"></polyline>
+
+                        </svg></button>
+
+                    <button class="nav-btn" id="stress-next" onclick="shiftStressDate(1)" disabled
+
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+
+                            fill="none">
+
+                            <polyline points="9 18 15 12 9 6"></polyline>
+
+                        </svg></button>
+
+                </div>
+
+                <div style="height: 200px;">
+
+                    <canvas id="stressHistoryChart"></canvas>
+
+                </div>
+
+            </div>
+
+            <!-- Weight -->
+
+            <div class="card">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+
+                    <div>
+
+                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Weight</h2>
+
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+
+                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
+
+                                    id="weight">--</span></div>
+
+                            <div class="metric-unit">lbs</div>
+
+                        </div>
+
+                    </div>
+
+                    <button class="range-btn" onclick="openWeightModal()"
+
+                        style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">+ Log</button>
+
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
+
+                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
+
+                        <button class="range-btn active" onclick="updateWeightRange('1m', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
+
+                        <button class="range-btn" onclick="updateWeightRange('6m', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">6m</button>
+
+                        <button class="range-btn" onclick="updateWeightRange('1y', this)"
+
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
+
+                    </div>
+
+                    <div style="flex-grow:1"></div>
+
+                    <button class="nav-btn" id="weight-prev" onclick="shiftWeightDate(-1)"
+
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+
+                            fill="none">
+
+                            <polyline points="15 18 9 12 15 6"></polyline>
+
+                        </svg></button>
+
+                    <button class="nav-btn" id="weight-next" onclick="shiftWeightDate(1)" disabled
+
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+
+                            fill="none">
+
+                            <polyline points="9 18 15 12 9 6"></polyline>
+
+                        </svg></button>
+
+                </div>
+
+                <div style="height: 200px;">
+
+                    <canvas id="weightHistoryChart"></canvas>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Performance Trends Grid -->
+
+        <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Performance Goals & Trends</h2>
+
+        <div class="dashboard-grid-2">
+
+            <!-- Monthly Goals -->
+
+            <div class="card">
+
+                <h2 style="font-size: 1rem; margin-bottom: 1rem;">Monthly Goals</h2>
+
+                <div class="goals-grid" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+
+                    <div style="text-align: center;">
+
+                        <div style="font-size: 0.9rem; margin-bottom: 0.5rem;">Run</div>
+
+                        <div class="donut-chart" id="month-run-chart"
+
+                            style="width: 100px; height: 100px; margin: 0 auto 0.5rem auto;">
+
+                            <div class="donut-inner" style="width: 80px; height: 80px;">
+
+                                <span class="donut-percent" id="month-run-percent" style="font-size: 1.2rem;">0%</span>
+
+                            </div>
+
+                        </div>
+
+                        <div id="month-run" style="font-size: 1rem; font-weight: 600; margin-bottom: 0.2rem;">--</div>
+
+                        <div style="font-size: 0.8rem; color: var(--text-secondary);">Goal: <span
+
+                                id="month-run-goal">20</span></div>
+
+                    </div>
+
+                    <div style="text-align: center;">
+
+                        <div style="font-size: 0.9rem; margin-bottom: 0.5rem;">Cycle</div>
+
+                        <div class="donut-chart" id="month-cycle-chart"
+
+                            style="width: 100px; height: 100px; margin: 0 auto 0.5rem auto;">
+
+                            <div class="donut-inner" style="width: 80px; height: 80px;">
+
+                                <span class="donut-percent" id="month-cycle-percent"
+
+                                    style="font-size: 1.2rem;">0%</span>
+
+                            </div>
+
+                        </div>
+
+                        <div id="month-cycle" style="font-size: 1rem; font-weight: 600; margin-bottom: 0.2rem;">--</div>
+
+                        <div style="font-size: 0.8rem; color: var(--text-secondary);">Goal: <span
+
+                                id="month-cycle-goal">200</span></div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Yearly Goals -->
+
+            <div class="card">
+
+                <h2 style="font-size: 1rem; margin-bottom: 1rem;">Yearly Goals</h2>
+
+                <div class="goals-grid" style="grid-template-columns: 1fr 1fr; gap: 1rem;">
+
+                    <div style="text-align: center;">
+
+                        <div style="font-size: 0.9rem; margin-bottom: 0.5rem;">Run</div>
+
+                        <div class="donut-chart" id="year-run-chart"
+
+                            style="width: 100px; height: 100px; margin: 0 auto 0.5rem auto;">
+
+                            <div class="donut-inner" style="width: 80px; height: 80px;">
+
+                                <span class="donut-percent" id="year-run-percent" style="font-size: 1.2rem;">0%</span>
+
+                            </div>
+
+                        </div>
+
+                        <div id="year-run" style="font-size: 1rem; font-weight: 600; margin-bottom: 0.2rem;">--</div>
+
+                        <div style="font-size: 0.8rem; color: var(--text-secondary);">Goal: <span
+
+                                id="year-run-goal">600</span></div>
+
+                    </div>
+
+                    <div style="text-align: center;">
+
+                        <div style="font-size: 0.9rem; margin-bottom: 0.5rem;">Cycle</div>
+
+                        <div class="donut-chart" id="year-cycle-chart"
+
+                            style="width: 100px; height: 100px; margin: 0 auto 0.5rem auto;">
+
+                            <div class="donut-inner" style="width: 80px; height: 80px;">
+
+                                <span class="donut-percent" id="year-cycle-percent" style="font-size: 1.2rem;">0%</span>
+
+                            </div>
+
+                        </div>
+
+                        <div id="year-cycle" style="font-size: 1rem; font-weight: 600; margin-bottom: 0.2rem;">--</div>
+
+                        <div style="font-size: 0.8rem; color: var(--text-secondary);">Goal: <span
+
+                                id="year-cycle-goal">2400</span></div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- YTD Cycling -->
+
+            <div class="card">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+
+                    <h2 style="font-size: 1rem; margin-bottom: 0;">YTD Cycling Trend</h2>
+
+                    <button class="range-btn" onclick="resetChartZoom('ytdCyclingChart')"
+
+                        style="padding: 0.2rem 0.5rem; font-size: 0.7rem;">Reset</button>
+
+                </div>
+
+                <div style="height: 350px;">
+
+                    <canvas id="ytdCyclingChart"></canvas>
+
+                </div>
+
+            </div>
+
+            <!-- YTD Running -->
+
+            <div class="card">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+
+                    <h2 style="font-size: 1rem; margin-bottom: 0;">YTD Running Trend</h2>
+
+                    <button class="range-btn" onclick="resetChartZoom('ytdRunningChart')"
+
+                        style="padding: 0.2rem 0.5rem; font-size: 0.7rem;">Reset</button>
+
+                </div>
+
+                <div style="height: 350px;">
+
+                    <canvas id="ytdRunningChart"></canvas>
+
+                </div>
+
+            </div>
+
         </div>
 
         <!-- Activity Heatmap -->
+
         <section style="margin-bottom: 3rem;">
+
             <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1rem;">
+
                 <h2>Activity Calendar</h2>
+
                 <div
+
                     style="font-size: 0.9rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
+
                     <span>Less</span>
+
                     <div style="display: flex; gap: 2px;">
+
                         <div style="width: 10px; height: 10px; background: rgba(255,255,255,0.05); border-radius: 2px;">
+
                         </div>
+
                         <div style="width: 10px; height: 10px; background: rgba(34, 197, 94, 0.3); border-radius: 2px;">
+
                         </div>
+
                         <div style="width: 10px; height: 10px; background: rgba(34, 197, 94, 0.6); border-radius: 2px;">
+
                         </div>
+
                         <div style="width: 10px; height: 10px; background: rgba(34, 197, 94, 1); border-radius: 2px;">
+
                         </div>
+
                     </div>
+
                     <span>More</span>
+
                 </div>
+
             </div>
 
             <div id="heatmap-scroll-container" style="overflow-x: auto; padding-bottom: 1rem;">
+
                 <div id="activity-heatmap" style="display: flex; gap: 4px; min-width: max-content;">
+
                     <!-- Heatmap injected via JS -->
+
                 </div>
+
             </div>
+
         </section>
 
         <!-- Detailed Calendar Widget -->
+
         <section class="calendar-widget">
+
             <div class="calendar-header">
+
                 <div class="calendar-nav">
+
                     <button class="nav-btn" onclick="shiftCalendarMonth(-1)">
+
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+
                             stroke-linecap="round" stroke-linejoin="round">
+
                             <polyline points="15 18 9 12 15 6"></polyline>
+
                         </svg>
+
                     </button>
+
                     <div class="calendar-title" id="calendar-title">January 2026</div>
+
                     <button class="nav-btn" onclick="shiftCalendarMonth(1)">
+
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+
                             stroke-linecap="round" stroke-linejoin="round">
+
                             <polyline points="9 18 15 12 9 6"></polyline>
+
                         </svg>
+
                     </button>
+
                     <button class="range-btn" onclick="resetCalendarToToday()">Today</button>
+
                 </div>
+
                 <div class="range-selector">
+
                     <button class="range-btn" id="cal-view-week" onclick="setCalendarView('week')">Week</button>
+
                     <button class="range-btn active" id="cal-view-month"
+
                         onclick="setCalendarView('month')">Month</button>
+
                     <button class="range-btn" id="cal-view-year" onclick="setCalendarView('year')">Year</button>
+
                 </div>
+
             </div>
 
             <div class="calendar-layout">
+
                 <!-- Sidebar Totals -->
+
                 <div class="calendar-totals" id="calendar-totals">
+
                     <!-- Totals injected via JS -->
+
                 </div>
 
                 <!-- Calendar Grid -->
+
                 <div>
+
                     <div class="calendar-grid" style="margin-bottom: 0;">
+
                         <div class="calendar-day-header">Mon</div>
+
                         <div class="calendar-day-header">Tue</div>
+
                         <div class="calendar-day-header">Wed</div>
+
                         <div class="calendar-day-header">Thu</div>
+
                         <div class="calendar-day-header">Fri</div>
+
                         <div class="calendar-day-header">Sat</div>
+
                         <div class="calendar-day-header">Sun</div>
+
                     </div>
+
                     <div class="calendar-grid" id="calendar-grid">
+
                         <!-- Days injected via JS -->
+
                     </div>
+
                 </div>
+
             </div>
+
         </section>
-
-        <!-- Monthly Distance -->
-        <section style="margin-bottom: 3rem;">
-            <h2>Monthly Distance</h2>
-            <div class="goals-grid">
-                <div class="goal-card">
-                    <div class="goal-header">🏃 Running</div>
-                    <div class="donut-chart" id="month-run-chart">
-                        <div class="donut-inner">
-                            <span class="donut-percent" id="month-run-percent">0%</span>
-                        </div>
-                    </div>
-                    <div class="goal-values">
-                        <div><span id="month-run">--</span></div>
-                        <div>Goal: <span id="month-run-goal">20</span></div>
-                    </div>
-                </div>
-                <div class="goal-card">
-                    <div class="goal-header">🚴 Cycling</div>
-                    <div class="donut-chart" id="month-cycle-chart">
-                        <div class="donut-inner">
-                            <span class="donut-percent" id="month-cycle-percent">0%</span>
-                        </div>
-                    </div>
-                    <div class="goal-values">
-                        <div><span id="month-cycle">--</span></div>
-                        <div>Goal: <span id="month-cycle-goal">200</span></div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Yearly Distance -->
-        <section style="margin-bottom: 3rem;">
-            <h2>Yearly Distance</h2>
-            <div class="goals-grid">
-                <div class="goal-card">
-                    <div class="goal-header">🏃 Running</div>
-                    <div class="donut-chart" id="year-run-chart">
-                        <div class="donut-inner">
-                            <span class="donut-percent" id="year-run-percent">0%</span>
-                        </div>
-                    </div>
-                    <div class="goal-values">
-                        <div><span id="year-run">--</span></div>
-                        <div>Goal: <span id="year-run-goal">600</span></div>
-                    </div>
-                </div>
-                <div class="goal-card">
-                    <div class="goal-header">🚴 Cycling</div>
-                    <div class="donut-chart" id="year-cycle-chart">
-                        <div class="donut-inner">
-                            <span class="donut-percent" id="year-cycle-percent">0%</span>
-                        </div>
-                    </div>
-                    <div class="goal-values">
-                        <div><span id="year-cycle">--</span></div>
-                        <div>Goal: <span id="year-cycle-goal">2400</span></div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- YTD Cycling Comparison -->
-        <section style="margin-bottom: 3rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h2>Year-to-Date Cycling Comparison</h2>
-                <button class="range-btn" onclick="resetChartZoom('ytdCyclingChart')"
-                    style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Reset Zoom</button>
-            </div>
-            <div class="chart-container">
-                <canvas id="ytdCyclingChart"></canvas>
-            </div>
-        </section>
-
-        <!-- YTD Running Comparison -->
-        <section style="margin-bottom: 3rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h2>Year-to-Date Running Comparison</h2>
-                <button class="range-btn" onclick="resetChartZoom('ytdRunningChart')"
-                    style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Reset Zoom</button>
-            </div>
-            <div class="chart-container">
-                <canvas id="ytdRunningChart"></canvas>
-            </div>
-        </section>
-
-
-        <div class="grid">
-            <div class="card" style="grid-column: span 2;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                    <div>
-                        <h2>Steps</h2>
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                            <div class="metric-value" style="margin-bottom: 0;"><span id="steps">--</span></div>
-                            <div class="metric-unit" id="steps-goal-text">Goal: 10,000</div>
-                        </div>
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Current
-                            Streak</div>
-                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--success-color);"><span
-                                id="steps-streak">0</span> days</div>
-                    </div>
-                </div>
-
-                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
-                    <div class="range-selector" style="display: inline-flex;">
-                        <button class="range-btn" onclick="updateStepsRange('1d', this)">1d</button>
-                        <button class="range-btn active" onclick="updateStepsRange('1w', this)">1w</button>
-                        <button class="range-btn" onclick="updateStepsRange('1m', this)">1m</button>
-                        <button class="range-btn" onclick="updateStepsRange('1y', this)">1y</button>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        <button class="nav-btn" id="steps-prev" onclick="shiftStepsDate(-1)" title="Previous">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M15 18l-6-6 6-6" />
-                            </svg>
-                        </button>
-                        <button class="nav-btn" id="steps-next" onclick="shiftStepsDate(1)" disabled title="Next">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M9 18l6-6-6-6" />
-                            </svg>
-                        </button>
-                        <button class="range-btn" onclick="resetChartZoom('stepsHistoryChart')"
-                            style="padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-left: 0.5rem;">Reset</button>
-                    </div>
-                </div>
-
-                <div id="steps-visual-container"
-                    style="height: 250px; position: relative; display: flex; align-items: center; justify-content: center;">
-                    <canvas id="stepsHistoryChart"></canvas>
-                    <div id="steps-donut-container"
-                        style="display: none; width: 200px; height: 200px; position: relative;">
-                        <div class="donut-chart" id="steps-day-chart" style="width: 100%; height: 100%; margin: 0;">
-                            <div class="donut-inner" style="width: 150px; height: 150px;">
-                                <span class="donut-percent" id="steps-day-percent" style="font-size: 2.2rem;">0%</span>
-                                <span class="donut-label">of goal</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Hydration Card -->
-            <div class="card" style="grid-column: span 2;">
-                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
-                    <div>
-                        <h2>Hydration</h2>
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                            <div class="metric-value" style="margin-bottom: 0;"><span id="hydration-val">--</span></div>
-                            <div class="metric-unit" id="hydration-goal">Goal: -- oz</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
-                    <div class="range-selector" style="display: inline-flex;">
-                        <button class="range-btn active" onclick="updateHydrationRange('1d', this)">1d</button>
-                        <button class="range-btn" onclick="updateHydrationRange('1w', this)">1w</button>
-                        <button class="range-btn" onclick="updateHydrationRange('1m', this)">1m</button>
-                        <button class="range-btn" onclick="updateHydrationRange('1y', this)">1y</button>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        <button class="nav-btn" id="hydration-prev" onclick="shiftHydrationDate(-1)" title="Previous">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M15 18l-6-6 6-6" />
-                            </svg>
-                        </button>
-                        <button class="nav-btn" id="hydration-next" onclick="shiftHydrationDate(1)" disabled
-                            title="Next">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M9 18l6-6-6-6" />
-                            </svg>
-                        </button>
-                        <button class="range-btn" onclick="resetChartZoom('hydrationHistoryChart')"
-                            style="padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-left: 0.5rem;">Reset</button>
-                    </div>
-                </div>
-
-                <div id="hydration-visual-container"
-                    style="height: 250px; position: relative; display: flex; align-items: center; justify-content: center;">
-                    <canvas id="hydrationHistoryChart"></canvas>
-                    <div id="hydration-donut-container"
-                        style="display: none; width: 200px; height: 200px; position: relative;">
-                        <div class="donut-chart" id="hydration-chart" style="width: 100%; height: 100%; margin: 0;">
-                            <div class="donut-inner" style="width: 150px; height: 150px;">
-                                <span class="donut-percent" id="hydration-percent" style="font-size: 2.2rem;">0%</span>
-                                <span class="donut-label">of goal</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card" style="grid-column: span 2;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                    <div>
-                        <h2>Heart Rate</h2>
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                            <div class="metric-value" style="margin-bottom: 0;"><span id="rhr">--</span><span
-                                    class="metric-unit">bpm (Rest)</span></div>
-                        </div>
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.25rem;">Max HR
-                        </div>
-                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--danger-color);"><span
-                                id="hr-max-val">--</span> bpm</div>
-                    </div>
-                </div>
-
-                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
-                    <div class="range-selector" style="display: inline-flex;">
-                        <button class="range-btn active" onclick="updateHRRange('1d', this)">1d</button>
-                        <button class="range-btn" onclick="updateHRRange('1w', this)">1w</button>
-                        <button class="range-btn" onclick="updateHRRange('1m', this)">1m</button>
-                        <button class="range-btn" onclick="updateHRRange('1y', this)">1y</button>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        <button class="nav-btn" id="hr-prev" onclick="shiftHRDate(-1)" title="Previous">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M15 18l-6-6 6-6" />
-                            </svg>
-                        </button>
-                        <button class="nav-btn" id="hr-next" onclick="shiftHRDate(1)" disabled title="Next">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M9 18l6-6-6-6" />
-                            </svg>
-                        </button>
-                        <button class="range-btn" onclick="resetChartZoom('hrHistoryChart')"
-                            style="padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-left: 0.5rem;">Reset</button>
-                    </div>
-                </div>
-
-                <div id="hr-visual-container" style="height: 250px;">
-                    <canvas id="hrHistoryChart"></canvas>
-                </div>
-            </div>
-
-            <div class="card" style="grid-column: span 2;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                    <div>
-                        <h2>Stress Level</h2>
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                            <div class="metric-value" style="margin-bottom: 0;"><span id="stress">--</span></div>
-                            <div class="metric-unit">Avg Score</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
-                    <div class="range-selector" style="display: inline-flex;">
-                        <button class="range-btn active" onclick="updateStressRange('1d', this)">1d</button>
-                        <button class="range-btn" onclick="updateStressRange('1w', this)">1w</button>
-                        <button class="range-btn" onclick="updateStressRange('1m', this)">1m</button>
-                        <button class="range-btn" onclick="updateStressRange('1y', this)">1y</button>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        <button class="nav-btn" id="stress-prev" onclick="shiftStressDate(-1)" title="Previous">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M15 18l-6-6 6-6" />
-                            </svg>
-                        </button>
-                        <button class="nav-btn" id="stress-next" onclick="shiftStressDate(1)" disabled title="Next">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M9 18l6-6-6-6" />
-                            </svg>
-                        </button>
-                        <button class="range-btn" onclick="resetChartZoom('stressHistoryChart')"
-                            style="padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-left: 0.5rem;">Reset</button>
-                    </div>
-                </div>
-
-                <div style="height: 250px;">
-                    <canvas id="stressHistoryChart"></canvas>
-                </div>
-            </div>
-            <div class="card" style="grid-column: span 2;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                    <div>
-                        <h2>Sleep</h2>
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                            <div class="metric-value" style="margin-bottom: 0;"><span id="sleep">--</span><span
-                                    class="metric-unit">hrs</span></div>
-                            <div class="metric-unit">Score: <span id="sleep-score-val">--</span></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
-                    <div class="range-selector" style="display: inline-flex;">
-                        <button class="range-btn active" onclick="updateSleepRange('1d', this)">1d</button>
-                        <button class="range-btn" onclick="updateSleepRange('1w', this)">1w</button>
-                        <button class="range-btn" onclick="updateSleepRange('1m', this)">1m</button>
-                        <button class="range-btn" onclick="updateSleepRange('1y', this)">1y</button>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        <button class="nav-btn" id="sleep-prev" onclick="shiftSleepDate(-1)" title="Previous">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M15 18l-6-6 6-6" />
-                            </svg>
-                        </button>
-                        <button class="nav-btn" id="sleep-next" onclick="shiftSleepDate(1)" disabled title="Next">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M9 18l6-6-6-6" />
-                            </svg>
-                        </button>
-                        <button class="range-btn" onclick="resetChartZoom('sleepHistoryChart')"
-                            style="padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-left: 0.5rem;">Reset</button>
-                    </div>
-                </div>
-
-                <div id="sleep-visual-container" style="height: 250px; position: relative;">
-                    <canvas id="sleepHistoryChart"></canvas>
-                </div>
-            </div>
-            <div class="card" style="grid-column: span 2;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                    <div>
-                        <h2>Weight</h2>
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-                            <div class="metric-value" style="margin-bottom: 0;"><span id="weight">--</span></div>
-                            <div class="metric-unit" id="weight-dual">Latest weigh-in</div>
-                        </div>
-                    </div>
-                    <div style="text-align: right;">
-                        <button class="range-btn" onclick="openWeightModal()" style="padding: 0.5rem 1rem;">+ Log
-                            Weight</button>
-                    </div>
-                </div>
-
-                <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1.5rem;">
-                    <div class="range-selector" style="display: inline-flex;">
-                        <button class="range-btn active" onclick="updateWeightRange('1m', this)">1m</button>
-                        <button class="range-btn" onclick="updateWeightRange('6m', this)">6m</button>
-                        <button class="range-btn" onclick="updateWeightRange('1y', this)">1y</button>
-                        <button class="range-btn" onclick="updateWeightRange('2y', this)">2y</button>
-                        <button class="range-btn" onclick="updateWeightRange('5y', this)">5y</button>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        <button class="nav-btn" id="weight-prev" onclick="shiftWeightDate(-1)" title="Previous">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M15 18l-6-6 6-6" />
-                            </svg>
-                        </button>
-                        <button class="nav-btn" id="weight-next" onclick="shiftWeightDate(1)" disabled title="Next">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M9 18l6-6-6-6" />
-                            </svg>
-                        </button>
-                        <button class="range-btn" onclick="resetChartZoom('weightHistoryChart')"
-                            style="padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-left: 0.5rem;">Reset</button>
-                    </div>
-                </div>
-
-                <div style="height: 250px;">
-                    <canvas id="weightHistoryChart"></canvas>
-                </div>
-            </div>
-        </div>
 
         <section class="activities-section">
+
             <h2>Recent Activities</h2>
+
             <div id="activity-list" class="activity-list">
+
                 <!-- Activities will be injected here -->
+
                 <div class="activity-item" style="justify-content: center; padding: 2rem;">
+
                     <div class="loading"></div>
+
                 </div>
+
             </div>
+
         </section>
+
     </div>
 
     <!-- Activity Detail Modal -->
+
     <div id="activityModal" class="modal">
+
         <div class="modal-content">
-            <button class="modal-close" onclick="closeModal()">×</button>
+
+            <button class="modal-close" onclick="closeModal()">Ã—</button>
+
             <h2 id="modal-title">Activity Details</h2>
+
             <p id="modal-date" style="color: var(--text-secondary); margin-bottom: 2rem;"></p>
 
             <div class="activity-detail-grid">
+
                 <div class="activity-detail-card">
+
                     <div class="activity-detail-label">Distance</div>
+
                     <div class="activity-detail-value" id="modal-distance">--</div>
+
                 </div>
-                <div class="activity-detail-card">
+
+                <div class="activity-detail-card" id="modal-pace-label-container">
+
                     <div class="activity-detail-label" id="modal-pace-label">Overall Pace</div>
-                    <div class="activity-detail-value" id="modal-pace" style="color: var(--accent-color);">--</div>
+
+                    <div class="activity-detail-value" id="modal-pace">--</div>
+
                 </div>
+
                 <div class="activity-detail-card">
+
                     <div class="activity-detail-label">Duration</div>
+
                     <div class="activity-detail-value" id="modal-duration">--</div>
+
                 </div>
+
                 <div class="activity-detail-card">
+
                     <div class="activity-detail-label">Avg HR</div>
+
                     <div class="activity-detail-value" id="modal-hr">--</div>
+
                 </div>
+
                 <div class="activity-detail-card">
-                    <div class="activity-detail-label">Avg Cadence</div>
-                    <div class="activity-detail-value" id="modal-cadence">--</div>
-                </div>
-                <div class="activity-detail-card" id="power-summary-card" style="display: none;">
-                    <div class="activity-detail-label">Avg Power</div>
-                    <div class="activity-detail-value" id="modal-power">--</div>
-                </div>
-                <div class="activity-detail-card">
-                    <div class="activity-detail-label">Elev Gain</div>
+
+                    <div class="activity-detail-label">Elevation</div>
+
                     <div class="activity-detail-value" id="modal-elevation">--</div>
+
                 </div>
+
                 <div class="activity-detail-card">
-                    <div class="activity-detail-label">Calories</div>
-                    <div class="activity-detail-value" id="modal-calories">--</div>
+
+                    <div class="activity-detail-label">Avg Cadence</div>
+
+                    <div class="activity-detail-value" id="modal-cadence">--</div>
+
                 </div>
+
+                <div class="activity-detail-card" id="power-summary-card" style="display: none;">
+
+                    <div class="activity-detail-label">Avg Power</div>
+
+                    <div class="activity-detail-value" id="modal-power">--</div>
+
+                </div>
+
+                <div class="activity-detail-card">
+
+                    <div class="activity-detail-label">Calories</div>
+
+                    <div class="activity-detail-value" id="modal-calories">--</div>
+
+                </div>
+
             </div>
 
             <div id="splits-section" style="display: none; margin-bottom: 2rem;">
+
                 <h3 style="margin-bottom: 1rem;">Mile Splits</h3>
-                <div id="splits-table"
-                    style="background: rgba(255,255,255,0.05); border-radius: 1rem; overflow: hidden;">
-                    <!-- Splits injected here -->
+
+                <div id="splits-table">
+
+                    <!-- Splits table injected here -->
+
                 </div>
+
             </div>
 
             <h3 style="margin-bottom: 1rem;">Elevation</h3>
+
             <div class="small-chart-container">
+
                 <canvas id="activityElevChart"></canvas>
+
             </div>
 
             <h3 style="margin-bottom: 1rem;">Heart Rate</h3>
+
             <div class="small-chart-container">
+
                 <canvas id="activityHrChart"></canvas>
+
             </div>
 
-            <h3 style="margin-bottom: 1rem;" id="cadence-title">Cadence</h3>
-            <div class="small-chart-container" id="cadence-chart-container">
+            <h3 style="margin-bottom: 1rem;">Cadence</h3>
+
+            <div class="small-chart-container">
+
                 <canvas id="activityCadenceChart"></canvas>
+
             </div>
 
-            <h3 style="margin-bottom: 1rem; display: none;" id="power-title">Power (Zones)</h3>
+            <h3 style="margin-bottom: 1rem;" id="power-title">Power</h3>
+
             <div class="small-chart-container" id="power-chart-container" style="display: none;">
+
                 <canvas id="activityPowerChart"></canvas>
+
             </div>
 
             <h3 style="margin-bottom: 1rem;">Speed/Pace</h3>
+
             <div class="small-chart-container">
+
                 <canvas id="activitySpeedChart"></canvas>
+
             </div>
 
             <div style="display: flex; justify-content: center; margin-top: 2rem;">
+
                 <button class="range-btn active" style="padding: 0.8rem 2rem;" onclick="closeModal()">Close
+
                     Details</button>
+
             </div>
+
         </div>
+
     </div>
 
     <!-- Weight Log Modal -->
+
     <div id="weightModal" class="modal">
+
         <div class="modal-content" style="max-width: 400px; text-align: center;">
-            <button class="modal-close" onclick="closeWeightModal()">×</button>
+
+            <button class="modal-close" onclick="closeWeightModal()">Ã—</button>
+
             <h2 style="margin-bottom: 2rem;">Log Weight</h2>
 
             <div style="margin-bottom: 2rem;">
-                <div style="display: flex; justify-content: center; align-items: baseline; gap: 0.5rem;">
-                    <input type="number" id="weight-input" placeholder="0.0" step="0.1"
-                        style="font-size: 2.5rem; width: 180px; text-align: center; padding: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); border-radius: 0.5rem; font-weight: 700;">
-                </div>
-                <div style="margin-top: 1.5rem; display: flex; justify-content: center; gap: 2rem;">
-                    <label style="cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+
+                <input type="number" id="weight-input" step="0.1" placeholder="Enter weight"
+
+                    style="width: 100%; padding: 1rem; border-radius: 0.5rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: white; font-size: 1.5rem; text-align: center; margin-bottom: 1rem;">
+
+                <div style="display: flex; justify-content: center; gap: 2rem;">
+
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+
                         <input type="radio" name="weight-unit" value="lbs" checked style="transform: scale(1.5);">
+
                         <span style="font-size: 1.1rem;">lbs</span>
+
                     </label>
-                    <label style="cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+
                         <input type="radio" name="weight-unit" value="kg" style="transform: scale(1.5);">
+
                         <span style="font-size: 1.1rem;">kg</span>
+
                     </label>
+
                 </div>
+
             </div>
 
             <button class="range-btn active" style="padding: 0.8rem 2rem; width: 100%; font-size: 1.1rem;"
+
                 onclick="submitWeight()">Save Weight</button>
+
         </div>
+
     </div>
 
     <script>
+        // Global chart instances
+        const chartInstances = {};
+
+        // Helper to get local date string YYYY-MM-DD
         function getLocalDateStr(date = new Date()) {
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -621,6 +1154,20 @@
             return `${mi} mi / ${km} km`;
         }
 
+        function safeSetText(id, text) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('error-message');
+            if (el) {
+                el.textContent = msg;
+                el.style.display = 'block';
+            }
+            safeSetText('last-sync', 'Error');
+        }
+
         async function fetchData() {
             try {
                 // Fetch basic stats
@@ -631,25 +1178,28 @@
                     else showError(stats.error);
                 }
 
-
+                // Fetch Goals Config
+                const goalsConfigRes = await fetch('/api/goals_config');
+                if (goalsConfigRes.ok) {
+                    const goalsConfig = await goalsConfigRes.json();
+                    if (!goalsConfig.error) {
+                        const runGoalEl = document.getElementById('month-run-goal');
+                        const cycleGoalEl = document.getElementById('month-cycle-goal');
+                        const yearRunGoalEl = document.getElementById('year-run-goal');
+                        const yearCycleGoalEl = document.getElementById('year-cycle-goal');
+                        
+                        if (runGoalEl) runGoalEl.innerHTML = formatDualDistance(goalsConfig.monthly.running);
+                        if (cycleGoalEl) cycleGoalEl.innerHTML = formatDualDistance(goalsConfig.monthly.cycling);
+                        if (yearRunGoalEl) yearRunGoalEl.innerHTML = formatDualDistance(goalsConfig.yearly.running);
+                        if (yearCycleGoalEl) yearCycleGoalEl.innerHTML = formatDualDistance(goalsConfig.yearly.cycling);
+                    }
+                }
 
                 // Fetch Longterm Stats
                 const ltRes = await fetch('/api/longterm_stats');
                 if (ltRes.ok) {
                     const ltStats = await ltRes.json();
                     if (!ltStats.error) updateLongtermStats(ltStats);
-                }
-
-                // Fetch Goals Config
-                const goalsConfigRes = await fetch('/api/goals_config');
-                if (goalsConfigRes.ok) {
-                    const goalsConfig = await goalsConfigRes.json();
-                    if (!goalsConfig.error) {
-                        document.getElementById('month-run-goal').innerHTML = formatDualDistance(goalsConfig.monthly.running);
-                        document.getElementById('month-cycle-goal').innerHTML = formatDualDistance(goalsConfig.monthly.cycling);
-                        document.getElementById('year-run-goal').innerHTML = formatDualDistance(goalsConfig.yearly.running);
-                        document.getElementById('year-cycle-goal').innerHTML = formatDualDistance(goalsConfig.yearly.cycling);
-                    }
                 }
 
                 // Fetch YTD Mileage Comparison
@@ -662,29 +1212,19 @@
                     }
                 }
 
-                // Fetch Weight History
+                // Initialize historical charts
                 updateWeightRange('1m');
-
-                // Fetch Steps History
                 updateStepsRange('1w');
-
-                // Fetch HR History
                 updateHRRange('1d');
-
-                // Fetch Stress History
                 updateStressRange('1d');
-
-                // Fetch Sleep History
                 updateSleepRange('1d');
-
-                // Fetch Sleep History
-                updateSleepRange('1d');
-
-                // Fetch Activity Heatmap
+                updateHydrationRange('1d');
                 fetchActivityHeatmap();
+                fetchCalendarData();
 
                 // Update timestamp
-                document.getElementById('last-sync').textContent = 'Synced: ' + new Date().toLocaleTimeString();
+                const syncEl = document.getElementById('last-sync');
+                if (syncEl) syncEl.textContent = 'Synced: ' + new Date().toLocaleTimeString();
 
             } catch (err) {
                 console.error(err);
@@ -692,54 +1232,11 @@
             }
         }
 
-        function updateLongtermStats(data) {
-            // Update monthly running
-            const monthRunGoal = parseFloat(document.getElementById('month-run-goal').textContent);
-            const monthRunPercent = Math.min(100, Math.round((data.month.running / monthRunGoal) * 100));
-            document.getElementById('month-run').innerHTML = formatDualDistance(data.month.running);
-            document.getElementById('month-run-percent').textContent = monthRunPercent + '%';
-            document.getElementById('month-run-chart').style.background =
-                `conic-gradient(var(--accent-color) 0% ${monthRunPercent}%, rgba(255,255,255,0.1) ${monthRunPercent}% 100%)`;
-
-            // Update monthly cycling
-            const monthCycleGoal = parseFloat(document.getElementById('month-cycle-goal').textContent);
-            const monthCyclePercent = Math.min(100, Math.round((data.month.cycling / monthCycleGoal) * 100));
-            document.getElementById('month-cycle').innerHTML = formatDualDistance(data.month.cycling);
-            document.getElementById('month-cycle-percent').textContent = monthCyclePercent + '%';
-            document.getElementById('month-cycle-chart').style.background =
-                `conic-gradient(var(--accent-color) 0% ${monthCyclePercent}%, rgba(255,255,255,0.1) ${monthCyclePercent}% 100%)`;
-
-            // Update yearly running
-            const yearRunGoal = parseFloat(document.getElementById('year-run-goal').textContent);
-            const yearRunPercent = Math.min(100, Math.round((data.year.running / yearRunGoal) * 100));
-            document.getElementById('year-run').innerHTML = formatDualDistance(data.year.running);
-            document.getElementById('year-run-percent').textContent = yearRunPercent + '%';
-            document.getElementById('year-run-chart').style.background =
-                `conic-gradient(var(--accent-color) 0% ${yearRunPercent}%, rgba(255,255,255,0.1) ${yearRunPercent}% 100%)`;
-
-            // Update yearly cycling
-            const yearCycleGoal = parseFloat(document.getElementById('year-cycle-goal').textContent);
-            const yearCyclePercent = Math.min(100, Math.round((data.year.cycling / yearCycleGoal) * 100));
-            document.getElementById('year-cycle').innerHTML = formatDualDistance(data.year.cycling);
-            document.getElementById('year-cycle-percent').textContent = yearCyclePercent + '%';
-            document.getElementById('year-cycle-chart').style.background =
-                `conic-gradient(var(--accent-color) 0% ${yearCyclePercent}%, rgba(255,255,255,0.1) ${yearCyclePercent}% 100%)`;
-        }
-
-
-
-        function safeSetText(id, text) {
-            const el = document.getElementById(id);
-            if (el) el.textContent = text;
-        }
-
         function updateDashboard(data) {
-            // Stats
-            safeSetText('steps', data.steps || 0);
+            safeSetText('steps', data.steps ? data.steps.toLocaleString() : '0');
             safeSetText('rhr', data.resting_hr || '--');
             safeSetText('stress', data.stress_avg || '--');
 
-            // Weight
             if (data.weight_grams) {
                 const kg = (data.weight_grams / 1000).toFixed(1);
                 const lbs = (kg * 2.20462).toFixed(1);
@@ -747,338 +1244,260 @@
                 safeSetText('weight-dual', kg + ' kg');
             }
 
-            // Sleep - convert seconds to hours
             const sleepHours = data.sleep_seconds ? (data.sleep_seconds / 3600).toFixed(1) : '--';
             safeSetText('sleep', sleepHours);
             safeSetText('sleep-score-val', data.sleep_score || '--');
 
-            // Activities
             const activityList = document.getElementById('activity-list');
-            activityList.innerHTML = '';
+            if (activityList) {
+                activityList.innerHTML = '';
+                if (data.activities && data.activities.length > 0) {
+                    data.activities.forEach(activity => {
+                        const el = document.createElement('div');
+                        el.className = 'activity-item';
+                        const date = new Date(activity.startTimeLocal).toLocaleDateString([], { month: 'short', day: 'numeric' });
+                        const distanceKm = (activity.distance / 1000).toFixed(2);
+                        const distanceMi = (activity.distance / 1609.34).toFixed(2);
+                        const durationMin = Math.round(activity.duration / 60);
 
-            if (data.activities && data.activities.length > 0) {
-                data.activities.forEach(activity => {
-                    const el = document.createElement('div');
-                    el.className = 'activity-item';
-
-                    const date = new Date(activity.startTimeLocal).toLocaleDateString([], { month: 'short', day: 'numeric' });
-                    const distanceKm = (activity.distance / 1000).toFixed(2);
-                    const distanceMi = (activity.distance / 1609.34).toFixed(2);
-                    const durationMin = Math.round(activity.duration / 60);
-
-                    el.innerHTML = `
-                        <div class="activity-info">
-                            <div class="activity-icon">
-                                ${getActivityIcon(activity.activityType.typeKey)}
+                        el.innerHTML = `
+                            <div class="activity-info">
+                                <div class="activity-icon">${getActivityIcon(activity.activityType.typeKey)}</div>
+                                <div class="activity-details">
+                                    <h3>${activity.activityName}</h3>
+                                    <div class="activity-meta">${date} • ${activity.activityType.display}</div>
+                                </div>
                             </div>
-                            <div class="activity-details">
-                                <h3>${activity.activityName}</h3>
-                                <div class="activity-meta">${date} • ${activity.activityType.display}</div>
+                            <div class="activity-stats">
+                                <div class="stat-group">
+                                    <div>${distanceMi} mi / ${distanceKm} km</div>
+                                    <div>distance</div>
+                                </div>
+                                <div class="stat-group">
+                                    <div>${durationMin}</div>
+                                    <div>min</div>
+                                </div>
                             </div>
-                        </div>
-                        <div class="activity-stats">
-                            <div class="stat-group">
-                                <div>${distanceMi} mi / ${distanceKm} km</div>
-                                <div>distance</div>
-                            </div>
-                            <div class="stat-group">
-                                <div>${durationMin}</div>
-                                <div>min</div>
-                            </div>
-                        </div>
-                    `;
-                    el.onclick = () => openActivityDetail(activity.activityId, activity);
-                    activityList.appendChild(el);
-                });
-            } else {
-                activityList.innerHTML = '<div class="activity-item" style="justify-content: center;">No recent activities found</div>';
+                        `;
+                        el.onclick = () => openActivityDetail(activity.activityId, activity);
+                        activityList.appendChild(el);
+                    });
+                } else {
+                    activityList.innerHTML = '<div class="activity-item" style="justify-content: center;">No recent activities found</div>';
+                }
             }
         }
 
         function getActivityIcon(type) {
-            // Simple mapping - in a real app use SVG icons
             if (type.includes('running')) return '🏃';
             if (type.includes('cycling')) return '🚴';
             if (type.includes('swimming')) return '🏊';
             if (type.includes('walking')) return '🚶';
+            if (type.includes('strength')) return '💪';
             return '⚡';
         }
 
-        const chartInstances = {};
+        function updateLongtermStats(data) {
+            const getSafeGoal = (id) => {
+                const el = document.getElementById(id);
+                if (!el) return 1;
+                const val = parseFloat(el.textContent);
+                return (isNaN(val) || val <= 0) ? 1 : val;
+            };
+
+            const updateMetric = (type, timeframe, goalId, valId, percentId, chartId) => {
+                const goal = getSafeGoal(goalId);
+                const value = data[timeframe][type];
+                const percent = Math.min(100, Math.round((value / goal) * 100));
+                
+                const valEl = document.getElementById(valId);
+                const percentEl = document.getElementById(percentId);
+                const chartEl = document.getElementById(chartId);
+                
+                if (valEl) valEl.innerHTML = formatDualDistance(value);
+                if (percentEl) percentEl.textContent = percent + '%';
+                if (chartEl) chartEl.style.background = `conic-gradient(var(--accent-color) 0% ${percent}%, rgba(255,255,255,0.1) ${percent}% 100%)`;
+            };
+
+            updateMetric('running', 'month', 'month-run-goal', 'month-run', 'month-run-percent', 'month-run-chart');
+            updateMetric('cycling', 'month', 'month-cycle-goal', 'month-cycle', 'month-cycle-percent', 'month-cycle-chart');
+            updateMetric('running', 'year', 'year-run-goal', 'year-run', 'year-run-percent', 'year-run-chart');
+            updateMetric('cycling', 'year', 'year-cycle-goal', 'year-cycle', 'year-cycle-percent', 'year-cycle-chart');
+        }
+
+        // --- Historical & Chart Functions ---
 
         function renderYTDChart(canvasId, labels, data) {
-            const ctx = document.getElementById(canvasId).getContext('2d');
-
-            if (chartInstances[canvasId]) {
-                chartInstances[canvasId].destroy();
-            }
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
             chartInstances[canvasId] = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [
-                        {
-                            label: '2024',
-                            data: data.years['2024'],
-                            borderColor: '#818cf8',
-                            backgroundColor: 'rgba(129, 140, 248, 0.1)',
-                            borderWidth: 2,
-                            tension: 0.1,
-                            pointRadius: 0,
-                            pointHoverRadius: 4
-                        },
-                        {
-                            label: '2025',
-                            data: data.years['2025'],
-                            borderColor: '#38bdf8',
-                            backgroundColor: 'rgba(56, 189, 248, 0.1)',
-                            borderWidth: 2,
-                            tension: 0.1,
-                            pointRadius: 0,
-                            pointHoverRadius: 4
-                        },
-                        {
-                            label: '2026 (Current)',
-                            data: data.years['2026'],
-                            borderColor: '#4ade80',
-                            backgroundColor: 'rgba(74, 222, 128, 0.1)',
-                            borderWidth: 3,
-                            tension: 0.1,
-                            pointRadius: 0,
-                            pointHoverRadius: 4
-                        },
-                        {
-                            label: `Goal (${data.yearly_goal} mi)`,
-                            data: data.goal_line,
-                            borderColor: '#f87171',
-                            backgroundColor: 'rgba(248, 113, 113, 0.1)',
-                            borderWidth: 2,
-                            borderDash: [5, 5],
-                            tension: 0,
-                            pointRadius: 0,
-                            pointHoverRadius: 4
-                        }
+                        { label: '2024', data: data.years['2024'], borderColor: '#818cf8', backgroundColor: 'rgba(129, 140, 248, 0.1)', borderWidth: 2, tension: 0.1, pointRadius: 0 },
+                        { label: '2025', data: data.years['2025'], borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.1)', borderWidth: 2, tension: 0.1, pointRadius: 0 },
+                        { label: '2026 (Current)', data: data.years['2026'], borderColor: '#4ade80', backgroundColor: 'rgba(74, 222, 128, 0.1)', borderWidth: 3, tension: 0.1, pointRadius: 0 },
+                        { label: `Goal (${data.yearly_goal} mi)`, data: data.goal_line, borderColor: '#f87171', backgroundColor: 'rgba(248, 113, 113, 0.1)', borderWidth: 2, borderDash: [5, 5], tension: 0, pointRadius: 0 }
                     ]
                 },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    aspectRatio: window.innerWidth < 768 ? 0.7 : 2.5,
-                    plugins: {
-                        zoom: {
-                            pan: {
-                                enabled: true,
-                                mode: 'x'
-                            },
-                            zoom: {
-                                wheel: {
-                                    enabled: true,
-                                },
-                                pinch: {
-                                    enabled: true
-                                },
-                                mode: 'x',
-                            }
-                        },
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                color: '#f1f5f9',
-                                font: {
-                                    size: window.innerWidth < 768 ? 11 : 14
-                                },
-                                padding: window.innerWidth < 768 ? 10 : 20
-                            }
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function (context) {
-                                    const label = context.dataset.label || '';
-                                    const value = context.parsed.y;
-                                    const km = (value * 1.60934).toFixed(1);
-                                    return `${label}: ${value.toFixed(1)} mi / ${km} km`;
-                                }
-                            }
-                        }
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { 
+                        zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } },
+                        legend: { position: 'top', labels: { color: '#f1f5f9', boxWidth: 12, boxHeight: 2, padding: 10, font: { size: 11 } } },
+                        tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} mi / ${(ctx.parsed.y * 1.60934).toFixed(1)} km` } }
                     },
                     scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: {
-                                color: '#94a3b8',
-                                font: {
-                                    size: window.innerWidth < 768 ? 10 : 12
-                                },
-                                callback: function (value) {
-                                    return value + ' mi';
-                                }
-                            },
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                            }
-                        },
-                        x: {
-                            ticks: {
-                                color: '#94a3b8',
-                                font: {
-                                    size: window.innerWidth < 768 ? 10 : 12
-                                },
-                                maxTicksLimit: window.innerWidth < 768 ? 7 : 15
-                            },
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                            }
-                        }
+                        y: { beginAtZero: true, ticks: { color: '#94a3b8', font: { size: 12 }, callback: val => val + ' mi' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
+                        x: { ticks: { color: '#94a3b8', font: { size: 12 }, maxTicksLimit: 15 }, grid: { color: 'rgba(255, 255, 255, 0.1)' } }
                     }
                 }
             });
         }
 
-        // Handle window resize/orientation change for all charts
-        window.addEventListener('resize', () => {
-            Object.values(chartInstances).forEach(chart => {
-                chart.options.aspectRatio = window.innerWidth < 768 ? 0.7 : 2.5;
-                chart.update();
-            });
-        });
-
-        function resetChartZoom(canvasId) {
-            if (chartInstances[canvasId]) {
-                chartInstances[canvasId].resetZoom();
-            }
-        }
-
-
-        let currentStepsEndDate = new Date();
-        let currentStepsRange = '1w';
         let currentWeightEndDate = new Date();
         let currentWeightRange = '1m';
-
         async function updateWeightRange(range, btn) {
             if (range) currentWeightRange = range;
             if (btn) {
                 btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
             }
-
-            const end_date = getLocalDateStr(currentWeightEndDate);
             try {
-                const res = await fetch(`/api/weight_history?range=${currentWeightRange}&end_date=${end_date}`);
+                const res = await fetch(`/api/weight_history?range=${currentWeightRange}&end_date=${getLocalDateStr(currentWeightEndDate)}`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (!data.error) {
-                        renderWeightChart(data, currentWeightRange);
+                    if (!data.error) renderWeightChart(data, currentWeightRange);
+                }
+            } catch (err) { console.error('Weight history error:', err); }
+        }
+
+        function renderWeightChart(history, range) {
+            const canvasId = 'weightHistoryChart';
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+            const weights = history.map(d => d.weight_lbs);
+            const min = Math.floor(Math.min(...weights) - 2);
+            const max = Math.ceil(Math.max(...weights) + 2);
+
+            chartInstances[canvasId] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{ label: 'Weight (lbs)', data: history.map(d => ({ x: d.date, y: d.weight_lbs })), borderColor: '#818cf8', backgroundColor: 'rgba(129, 140, 248, 0.1)', borderWidth: 3, tension: 0.3, pointRadius: 3, fill: true }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Weight: ${ctx.parsed.y.toFixed(1)} lbs` } } },
+                    scales: {
+                        x: { type: 'time', time: { unit: 'month' }, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+                        y: { min, max, ticks: { color: '#94a3b8', callback: v => v + ' lbs' }, grid: { color: 'rgba(255,255,255,0.1)' } }
                     }
                 }
-            } catch (err) {
-                console.error('Error fetching weight history:', err);
-            }
+            });
         }
 
-        function shiftWeightDate(dir) {
-            const daysMap = { '1m': 30, '6m': 180, '1y': 365, '2y': 730, '5y': 1825 };
-            const shift = daysMap[currentWeightRange] || 30;
-            const newDate = new Date(currentWeightEndDate);
-            newDate.setDate(newDate.getDate() + (dir * shift));
-
-            if (newDate > new Date()) return;
-            currentWeightEndDate = newDate;
-            updateWeightRange();
-        }
-
+        let currentStepsEndDate = new Date();
+        let currentStepsRange = '1w';
         async function updateStepsRange(range, btn) {
             if (range) currentStepsRange = range;
             if (btn) {
                 btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
             }
-
-            const end_date = getLocalDateStr(currentStepsEndDate);
             try {
-                const res = await fetch(`/api/steps_history?range=${currentStepsRange}&end_date=${end_date}`);
+                const res = await fetch(`/api/steps_history?range=${currentStepsRange}&end_date=${getLocalDateStr(currentStepsEndDate)}`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (!data.error) {
-                        renderStepsVisual(data);
-                    }
+                    if (!data.error) renderStepsVisual(data);
                 }
-            } catch (err) {
-                console.error('Error fetching steps history:', err);
-            }
+            } catch (err) { console.error('Steps history error:', err); }
         }
 
-        function shiftStepsDate(dir) {
-            const daysMap = { '1d': 1, '1w': 7, '1m': 30, '1y': 365 };
-            const shift = daysMap[currentStepsRange] || 7;
-            const newDate = new Date(currentStepsEndDate);
-            newDate.setDate(newDate.getDate() + (dir * shift));
+        function renderStepsVisual(data) {
+            const canvasId = 'stepsHistoryChart';
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const donutContainer = document.getElementById('steps-donut-container');
+            const streakEl = document.getElementById('steps-streak');
+            if (streakEl) streakEl.textContent = data.streak || 0;
 
-            if (newDate > new Date()) return;
-            currentStepsEndDate = newDate;
-            updateStepsRange();
+            if (data.range === '1d') {
+                if (canvas) canvas.style.display = 'none';
+                if (donutContainer) donutContainer.style.display = 'flex';
+                const day = data.history[data.history.length - 1] || { totalSteps: 0, stepGoal: 10000 };
+                const percent = Math.min(100, Math.round((day.totalSteps / day.stepGoal) * 100));
+                safeSetText('steps', day.totalSteps.toLocaleString());
+                safeSetText('steps-day-percent', percent + '%');
+                const chart = document.getElementById('steps-day-chart');
+                if (chart) chart.style.background = `conic-gradient(${percent >= 100 ? 'var(--success-color)' : 'var(--accent-color)'} 0% ${percent}%, rgba(255,255,255,0.1) ${percent}% 100%)`;
+            } else {
+                if (canvas) canvas.style.display = 'block';
+                if (donutContainer) donutContainer.style.display = 'none';
+                if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.history.map(d => { const p = d.calendarDate.split('-'); return `${p[1]}/${p[2]}`; }),
+                        datasets: [{ label: 'Steps', data: data.history.map(d => d.totalSteps), backgroundColor: data.history.map(d => d.totalSteps >= d.stepGoal ? '#4ade80' : '#38bdf8'), borderRadius: 4 }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Steps: ${ctx.parsed.y.toLocaleString()}` } } },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 7 } },
+                            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                        }
+                    }
+                });
+            }
         }
 
         let currentHREndDate = new Date();
         let currentHRRange = '1d';
-
         async function updateHRRange(range, btn) {
             if (range) currentHRRange = range;
             if (btn) {
                 btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
             }
-
-            const end_date = getLocalDateStr(currentHREndDate);
             try {
-                const res = await fetch(`/api/hr_history?range=${currentHRRange}&end_date=${end_date}`);
+                const res = await fetch(`/api/hr_history?range=${currentHRRange}&end_date=${getLocalDateStr(currentHREndDate)}`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (!data.error) {
-                        renderHRVisual(data);
-                    }
+                    if (!data.error) renderHRVisual(data);
                 }
-            } catch (err) {
-                console.error('Error fetching HR history:', err);
-            }
-        }
-
-        function shiftHRDate(dir) {
-            const daysMap = { '1d': 1, '1w': 7, '1m': 30, '1y': 365 };
-            const shift = daysMap[currentHRRange] || 7;
-            const newDate = new Date(currentHREndDate);
-            newDate.setDate(newDate.getDate() + (dir * shift));
-
-            if (newDate > new Date()) return;
-            currentHREndDate = newDate;
-            updateHRRange();
+            } catch (err) { console.error('HR history error:', err); }
         }
 
         function renderHRVisual(data) {
             const canvasId = 'hrHistoryChart';
-            const ctx = document.getElementById(canvasId).getContext('2d');
-
-            // Update Nav Buttons
-            const isToday = currentHREndDate.toDateString() === new Date().toDateString();
-            document.getElementById('hr-next').disabled = isToday;
-
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
             if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
             if (data.range === '1d') {
                 const maxHR = data.max_hr || 190;
-                const zones = data.zones || [95, 114, 133, 152, 171]; // Default fallback if missing
-                document.getElementById('rhr').textContent = data.summary.rhr || '--';
-                document.getElementById('hr-max-val').textContent = data.summary.max || '--';
+                const zones = data.zones || [95, 114, 133, 152, 171];
+                safeSetText('hr-max-val', data.summary.max || '--');
 
                 const points = data.samples.map(s => ({ x: s[0], y: s[1] }));
-
                 const getZoneColor = (hr) => {
-                    if (hr >= zones[4]) return '#a855f7'; // Z5
-                    if (hr >= zones[3]) return '#ef4444'; // Z4
-                    if (hr >= zones[2]) return '#f97316'; // Z3
-                    if (hr >= zones[1]) return '#22c55e'; // Z2
-                    if (hr >= zones[0]) return '#3b82f6'; // Z1
-                    return '#94a3b8'; // Below Z1
+                    if (hr >= zones[4]) return '#a855f7';
+                    if (hr >= zones[3]) return '#ef4444';
+                    if (hr >= zones[2]) return '#f97316';
+                    if (hr >= zones[1]) return '#22c55e';
+                    if (hr >= zones[0]) return '#3b82f6';
+                    return '#94a3b8';
                 };
 
                 chartInstances[canvasId] = new Chart(ctx, {
@@ -1089,105 +1508,38 @@
                             data: points,
                             borderWidth: 2,
                             pointRadius: 0,
-                            segment: {
-                                borderColor: ctx => getZoneColor(ctx.p1.parsed.y)
-                            },
+                            segment: { borderColor: ctx => getZoneColor(ctx.p1.parsed.y) },
                             tension: 0.4
                         }]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            zoom: {
-                                pan: { enabled: true, mode: 'x' },
-                                zoom: {
-                                    wheel: { enabled: true },
-                                    pinch: { enabled: true },
-                                    mode: 'x'
-                                }
-                            }
-                        },
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false }, zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } },
                         scales: {
-                            x: {
-                                type: 'time',
-                                time: { displayFormats: { hour: 'HH:mm', minute: 'HH:mm' } },
-                                grid: { display: false },
-                                ticks: { color: '#94a3b8' }
-                            },
-                            y: {
-                                min: 40,
-                                max: Math.max(200, maxHR + 5),
-                                grid: { color: 'rgba(255,255,255,0.05)' },
-                                ticks: { color: '#94a3b8' }
-                            }
+                            x: { type: 'time', time: { displayFormats: { hour: 'HH:mm', minute: 'HH:mm' } }, grid: { display: false }, ticks: { color: '#94a3b8' } },
+                            y: { min: 40, max: Math.max(200, maxHR + 5), grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
                         }
                     }
                 });
             } else {
-                const labels = data.history.map(d => d.date);
-                const rhrValues = data.history.map(d => d.rhr);
-                const maxValues = data.history.map(d => d.max);
-
                 chartInstances[canvasId] = new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: labels,
+                        labels: data.history.map(d => d.date),
                         datasets: [
-                            {
-                                label: 'Resting HR',
-                                data: rhrValues,
-                                borderColor: '#38bdf8',
-                                backgroundColor: 'rgba(56, 189, 248, 0.1)',
-                                borderWidth: 3,
-                                fill: true,
-                                tension: 0.3
-                            },
-                            {
-                                label: 'Max HR',
-                                data: maxValues,
-                                borderColor: '#ef4444',
-                                borderDash: [5, 5],
-                                borderWidth: 2,
-                                pointRadius: 2,
-                                tension: 0.3
-                            }
+                            { label: 'Resting HR', data: data.history.map(d => d.rhr), borderColor: '#38bdf8', backgroundColor: 'rgba(56, 189, 248, 0.1)', borderWidth: 3, fill: true, tension: 0.3 },
+                            { label: 'Max HR', data: data.history.map(d => d.max), borderColor: '#ef4444', borderDash: [5, 5], borderWidth: 2, pointRadius: 2, tension: 0.3 }
                         ]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            zoom: {
-                                pan: { enabled: true, mode: 'x' },
-                                zoom: {
-                                    wheel: { enabled: true },
-                                    pinch: { enabled: true },
-                                    mode: 'x'
-                                }
-                            },
-                            legend: {
-                                display: true,
-                                position: 'top',
-                                labels: { color: '#94a3b8', boxWidth: 12 }
-                            }
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { 
+                            zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } },
+                            legend: { display: true, position: 'top', labels: { color: '#94a3b8', boxWidth: 12 } }
                         },
                         scales: {
-                            x: {
-                                type: 'time',
-                                time: {
-                                    unit: data.range === '1y' ? 'month' : 'day',
-                                    displayFormats: { day: 'MMM d', month: 'MMM' }
-                                },
-                                grid: { display: false },
-                                ticks: { color: '#94a3b8' }
-                            },
-                            y: {
-                                beginAtZero: false,
-                                grid: { color: 'rgba(255,255,255,0.05)' },
-                                ticks: { color: '#94a3b8' }
-                            }
+                            x: { type: 'time', time: { unit: 'day' }, grid: { display: false }, ticks: { color: '#94a3b8' } },
+                            y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
                         }
                     }
                 });
@@ -1196,205 +1548,37 @@
 
         let currentStressEndDate = new Date();
         let currentStressRange = '1d';
-
         async function updateStressRange(range, btn) {
             if (range) currentStressRange = range;
             if (btn) {
                 btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
             }
-
-            const end_date = getLocalDateStr(currentStressEndDate);
             try {
-                const res = await fetch(`/api/stress_history?range=${currentStressRange}&end_date=${end_date}`);
+                const res = await fetch(`/api/stress_history?range=${currentStressRange}&end_date=${getLocalDateStr(currentStressEndDate)}`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (!data.error) {
-                        renderStressVisual(data);
-                    }
+                    if (!data.error) renderStressVisual(data);
                 }
-            } catch (err) {
-                console.error('Error fetching stress history:', err);
-            }
-        }
-
-        function shiftStressDate(dir) {
-            const daysMap = { '1d': 1, '1w': 7, '1m': 30, '1y': 365 };
-            const shift = daysMap[currentStressRange] || 7;
-            const newDate = new Date(currentStressEndDate);
-            newDate.setDate(newDate.getDate() + (dir * shift));
-
-            if (newDate > new Date()) return;
-            currentStressEndDate = newDate;
-            updateStressRange();
-        }
-
-        let currentSleepEndDate = new Date();
-        let currentSleepRange = '1d';
-
-        async function updateSleepRange(range, btn) {
-            if (range) currentSleepRange = range;
-            if (btn) {
-                btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-            }
-
-            const end_date = getLocalDateStr(currentSleepEndDate);
-            try {
-                const res = await fetch(`/api/sleep_history?range=${currentSleepRange}&end_date=${end_date}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (!data.error) {
-                        renderSleepVisual(data);
-                    }
-                }
-            } catch (err) {
-                console.error('Error fetching sleep history:', err);
-            }
-        }
-
-        function shiftSleepDate(dir) {
-            const daysMap = { '1d': 1, '1w': 7, '1m': 30, '1y': 365 };
-            const shift = daysMap[currentSleepRange] || 7;
-            const newDate = new Date(currentSleepEndDate);
-            newDate.setDate(newDate.getDate() + (dir * shift));
-
-            if (newDate > new Date()) return;
-            currentSleepEndDate = newDate;
-            updateSleepRange();
-        }
-
-        function renderSleepVisual(data) {
-            const canvasId = 'sleepHistoryChart';
-            const ctx = document.getElementById(canvasId).getContext('2d');
-
-            const isToday = currentSleepEndDate.toDateString() === new Date().toDateString();
-            document.getElementById('sleep-next').disabled = isToday;
-
-            if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
-
-            if (data.range === '1d') {
-                const s = data.summary;
-                const hours = (s.total / 3600).toFixed(1);
-                document.getElementById('sleep').textContent = hours;
-                document.getElementById('sleep-score-val').textContent = s.score || '--';
-
-                const stageData = [
-                    { label: 'Deep', value: s.deep || 0, color: '#6366f1' },
-                    { label: 'Light', value: s.light || 0, color: '#3b82f6' },
-                    { label: 'REM', value: s.rem || 0, color: '#2dd4bf' },
-                    { label: 'Awake', value: s.awake || 0, color: '#f97316' }
-                ].filter(d => d.value > 0);
-
-                chartInstances[canvasId] = new Chart(ctx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: stageData.map(d => d.label),
-                        datasets: [{
-                            data: stageData.map(d => d.value),
-                            backgroundColor: stageData.map(d => d.color),
-                            borderWidth: 0,
-                            hoverOffset: 4
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        cutout: '70%',
-                        plugins: {
-                            legend: {
-                                display: true,
-                                position: 'right',
-                                labels: { color: '#94a3b8', boxWidth: 12, padding: 20 }
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function (context) {
-                                        const seconds = context.raw;
-                                        const hrs = Math.floor(seconds / 3600);
-                                        const mins = Math.round((seconds % 3600) / 60);
-                                        return `${context.label}: ${hrs}h ${mins}m`;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            } else {
-                const labels = data.history.map(d => d.date);
-                const scores = data.history.map(d => d.score);
-
-                chartInstances[canvasId] = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: 'Sleep Score',
-                            data: scores,
-                            borderColor: '#818cf8',
-                            backgroundColor: 'rgba(129, 140, 248, 0.1)',
-                            borderWidth: 3,
-                            fill: true,
-                            tension: 0.3,
-                            pointRadius: 4,
-                            pointBackgroundColor: '#818cf8'
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            zoom: {
-                                pan: { enabled: true, mode: 'x' },
-                                zoom: {
-                                    wheel: { enabled: true },
-                                    pinch: { enabled: true },
-                                    mode: 'x'
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                type: 'time',
-                                time: {
-                                    unit: data.range === '1y' ? 'month' : 'day',
-                                    displayFormats: { day: 'MMM d', month: 'MMM' }
-                                },
-                                grid: { display: false },
-                                ticks: { color: '#94a3b8' }
-                            },
-                            y: {
-                                min: 0,
-                                max: 100,
-                                grid: { color: 'rgba(255,255,255,0.05)' },
-                                ticks: { color: '#94a3b8' }
-                            }
-                        }
-                    }
-                });
-            }
+            } catch (err) { console.error('Stress history error:', err); }
         }
 
         function renderStressVisual(data) {
             const canvasId = 'stressHistoryChart';
-            const ctx = document.getElementById(canvasId).getContext('2d');
-
-            const isToday = currentStressEndDate.toDateString() === new Date().toDateString();
-            document.getElementById('stress-next').disabled = isToday;
-
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
             if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
             if (data.range === '1d') {
-                document.getElementById('stress').textContent = data.summary.avg || '--';
+                safeSetText('stress', data.summary.avg || '--');
                 const points = data.samples.map(s => ({ x: s[0], y: s[1] }));
-
                 const getStressColor = (val) => {
-                    if (val < 0) return 'rgba(148, 163, 184, 0.1)'; // No data/Unmeasurable
-                    if (val <= 25) return '#94a3b8'; // Rest - Gray
-                    if (val <= 50) return '#f97316'; // Low - Orange
-                    if (val <= 75) return '#f43f5e'; // Med - Rose/Red
-                    return '#ef4444'; // High - Red
+                    if (val < 0) return 'rgba(148, 163, 184, 0.1)';
+                    if (val <= 25) return '#94a3b8';
+                    if (val <= 50) return '#f97316';
+                    if (val <= 75) return '#f43f5e';
+                    return '#ef4444';
                 };
 
                 chartInstances[canvasId] = new Chart(ctx, {
@@ -1405,931 +1589,263 @@
                             data: points,
                             borderWidth: 2,
                             pointRadius: 0,
-                            segment: {
-                                borderColor: ctx => getStressColor(ctx.p1.parsed.y)
-                            },
+                            segment: { borderColor: ctx => getStressColor(ctx.p1.parsed.y) },
                             tension: 0.4
                         }]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            zoom: {
-                                pan: { enabled: true, mode: 'x' },
-                                zoom: {
-                                    wheel: { enabled: true },
-                                    pinch: { enabled: true },
-                                    mode: 'x'
-                                }
-                            }
-                        },
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false }, zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } },
                         scales: {
-                            x: {
-                                type: 'time',
-                                time: { displayFormats: { hour: 'HH:mm', minute: 'HH:mm' } },
-                                grid: { display: false },
-                                ticks: { color: '#94a3b8' }
-                            },
-                            y: {
-                                min: 0,
-                                max: 100,
-                                grid: { color: 'rgba(255,255,255,0.05)' },
-                                ticks: { color: '#94a3b8' }
-                            }
+                            x: { type: 'time', time: { displayFormats: { hour: 'HH:mm', minute: 'HH:mm' } }, grid: { display: false }, ticks: { color: '#94a3b8' } },
+                            y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
                         }
                     }
                 });
             } else {
-                const labels = data.history.map(d => d.date);
-                const avgValues = data.history.map(d => d.avg);
-                const maxValues = data.history.map(d => d.max);
-
                 chartInstances[canvasId] = new Chart(ctx, {
                     type: 'line',
                     data: {
-                        labels: labels,
+                        labels: data.history.map(d => d.date),
                         datasets: [
-                            {
-                                label: 'Avg Stress',
-                                data: avgValues,
-                                borderColor: '#f97316',
-                                backgroundColor: 'rgba(249, 115, 22, 0.1)',
-                                borderWidth: 3,
-                                fill: true,
-                                tension: 0.3
-                            },
-                            {
-                                label: 'Max Stress',
-                                data: maxValues,
-                                borderColor: '#ef4444',
-                                borderDash: [5, 5],
-                                borderWidth: 2,
-                                pointRadius: 2,
-                                tension: 0.3
-                            }
+                            { label: 'Avg Stress', data: data.history.map(d => d.avg), borderColor: '#f97316', backgroundColor: 'rgba(249, 115, 22, 0.1)', borderWidth: 3, fill: true, tension: 0.3 },
+                            { label: 'Max Stress', data: data.history.map(d => d.max), borderColor: '#ef4444', borderDash: [5, 5], borderWidth: 2, pointRadius: 2, tension: 0.3 }
                         ]
                     },
                     options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: true,
-                                labels: { color: '#94a3b8' }
-                            },
-                            zoom: {
-                                pan: { enabled: true, mode: 'x' },
-                                zoom: {
-                                    wheel: { enabled: true },
-                                    pinch: { enabled: true },
-                                    mode: 'x'
-                                }
-                            }
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { 
+                            zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } },
+                            legend: { display: true, labels: { color: '#94a3b8' } }
                         },
                         scales: {
-                            x: {
-                                type: 'time',
-                                time: {
-                                    unit: data.range === '1y' ? 'month' : 'day',
-                                    displayFormats: { day: 'MMM d', month: 'MMM' }
-                                },
-                                grid: { display: false },
-                                ticks: { color: '#94a3b8' }
-                            },
-                            y: {
-                                min: 0,
-                                max: 100,
-                                grid: { color: 'rgba(255,255,255,0.05)' },
-                                ticks: { color: '#94a3b8' }
-                            }
+                            x: { type: 'time', time: { unit: 'day' }, grid: { display: false }, ticks: { color: '#94a3b8' } },
+                            y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
                         }
                     }
                 });
             }
         }
 
-        function renderStepsVisual(data) {
-            const canvasId = 'stepsHistoryChart';
-            const ctx = document.getElementById(canvasId).getContext('2d');
-            const donutContainer = document.getElementById('steps-donut-container');
-            const canvas = document.getElementById(canvasId);
-            const streakEl = document.getElementById('steps-streak');
-            streakEl.textContent = data.streak;
-
-            // Update Nav Buttons
-            const isToday = currentStepsEndDate.toDateString() === new Date().toDateString();
-            document.getElementById('steps-next').disabled = isToday;
-
-            if (data.range === '1d') {
-                canvas.style.display = 'none';
-                donutContainer.style.display = 'flex';
-
-                const dayData = data.history[data.history.length - 1] || { totalSteps: 0, stepGoal: 10000 };
-                const steps = dayData.totalSteps;
-                const goal = dayData.stepGoal;
-                const percent = Math.min(100, Math.round((steps / goal) * 100));
-
-                const color = percent >= 100 ? 'var(--success-color)' : 'var(--accent-color)';
-                const percentEl = document.getElementById('steps-day-percent');
-                percentEl.textContent = percent + '%';
-                percentEl.style.color = color;
-                document.getElementById('steps-day-chart').style.background =
-                    `conic-gradient(${color} 0% ${percent}%, rgba(255,255,255,0.1) ${percent}% 100%)`;
-
-                // Also update the main metric display if it's today
-                if (dayData.calendarDate === getLocalDateStr()) {
-                    document.getElementById('steps').textContent = steps.toLocaleString();
-                }
-            } else {
-                canvas.style.display = 'block';
-                donutContainer.style.display = 'none';
-
-                if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
-
-                const labels = data.history ? data.history.map(d => {
-                    const parts = d.calendarDate.split('-');
-                    return data.range === '1y' ? `${parts[1]}/${parts[0].slice(2)}` : `${parts[1]}/${parts[2]}`;
-                }) : [];
-                const values = data.history ? data.history.map(d => d.totalSteps) : [];
-                const colors = data.history ? data.history.map(d => d.totalSteps >= d.stepGoal ? '#4ade80' : '#38bdf8') : [];
-
-                chartInstances[canvasId] = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: 'Steps',
-                            data: values,
-                            backgroundColor: colors,
-                            borderRadius: 4,
-                            borderSkipped: false
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            zoom: {
-                                pan: { enabled: true, mode: 'x' },
-                                zoom: {
-                                    wheel: { enabled: true },
-                                    pinch: { enabled: true },
-                                    mode: 'x'
-                                }
-                            },
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    label: (ctx) => `Steps: ${ctx.parsed.y.toLocaleString()}`
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                grid: { display: false },
-                                ticks: {
-                                    color: '#94a3b8',
-                                    maxRotation: 0,
-                                    autoSkip: true,
-                                    maxTicksLimit: data.range === '1y' ? 12 : 7
-                                }
-                            },
-                            y: {
-                                beginAtZero: true,
-                                grid: { color: 'rgba(255,255,255,0.05)' },
-                                ticks: { color: '#94a3b8' }
-                            }
-                        }
-                    }
-                });
+        let currentSleepEndDate = new Date();
+        let currentSleepRange = '1d';
+        async function updateSleepRange(range, btn) {
+            if (range) currentSleepRange = range;
+            if (btn) {
+                btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
             }
-        }
-
-        function renderWeightChart(history, range) {
-            // Update Nav Buttons
-            const isToday = currentWeightEndDate.toDateString() === new Date().toDateString();
-            document.getElementById('weight-next').disabled = isToday;
-
-            const chartData = history.map(d => ({
-                x: d.date,
-                y: d.weight_lbs
-            }));
-
-            const canvasId = 'weightHistoryChart';
-            const ctx = document.getElementById(canvasId).getContext('2d');
-
-            if (chartInstances[canvasId]) {
-                chartInstances[canvasId].destroy();
-            }
-
-            // Find min/max for better Y-axis scaling
-            let minWeight = 150, maxWeight = 200;
-            if (history.length > 0) {
-                const weights = history.map(d => d.weight_lbs);
-                minWeight = Math.floor(Math.min(...weights) - 2);
-                maxWeight = Math.ceil(Math.max(...weights) + 2);
-            }
-
-            chartInstances[canvasId] = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    datasets: [
-                        {
-                            label: 'Weight (lbs)',
-                            data: chartData,
-                            borderColor: '#818cf8',
-                            backgroundColor: 'rgba(129, 140, 248, 0.1)',
-                            borderWidth: 3,
-                            tension: 0.3,
-                            pointRadius: 3,
-                            pointHoverRadius: 6,
-                            fill: true
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        zoom: {
-                            pan: { enabled: true, mode: 'x' },
-                            zoom: {
-                                wheel: { enabled: true },
-                                pinch: { enabled: true },
-                                mode: 'x'
-                            }
-                        },
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: function (context) {
-                                    const lbs = context.parsed.y;
-                                    const kg = (lbs / 2.20462).toFixed(1);
-                                    return `Weight: ${lbs.toFixed(1)} lbs / ${kg} kg`;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                unit: (range === '2y' || range === '5y') ? 'month' : 'day',
-                                displayFormats: {
-                                    day: 'MMM d',
-                                    month: 'MMM yyyy'
-                                },
-                                tooltipFormat: 'PPP'
-                            },
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.05)'
-                            },
-                            ticks: {
-                                color: '#94a3b8'
-                            }
-                        },
-                        y: {
-                            min: minWeight,
-                            max: maxWeight,
-                            ticks: {
-                                color: '#94a3b8',
-                                callback: val => val + ' lbs'
-                            },
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        function showError(msg) {
-            const el = document.getElementById('error-message');
-            el.textContent = msg;
-            el.style.display = 'block';
-            document.getElementById('last-sync').textContent = 'Error';
-            document.querySelector('.loading').style.display = 'none';
-        }
-
-        async function openActivityDetail(activityId, basicData) {
-            const modal = document.getElementById('activityModal');
-            modal.classList.add('active');
-
-            // Initial UI reset
-            document.getElementById('splits-section').style.display = 'none';
-            document.getElementById('power-summary-card').style.display = 'none';
-            document.getElementById('power-title').style.display = 'none';
-            document.getElementById('power-chart-container').style.display = 'none';
-            document.getElementById('modal-pace-label').textContent = 'Overall Pace';
-
-            // Populate basic data
-            const isRunning = basicData.activityType.typeKey.includes('running') || basicData.activityType.typeKey.includes('walking');
-            const isCycling = basicData.activityType.typeKey.includes('cycling') || basicData.activityType.typeKey.includes('ride');
-
-            document.getElementById('modal-title').textContent = basicData.activityName;
-            document.getElementById('modal-date').textContent = new Date(basicData.startTimeLocal).toLocaleString();
-            document.getElementById('modal-distance').textContent = formatDualDistance(basicData.distance / 1609.34);
-            document.getElementById('modal-duration').textContent = Math.round(basicData.duration / 60) + ' min';
-            document.getElementById('modal-hr').textContent = basicData.averageHR ? Math.round(basicData.averageHR) + ' bpm' : '--';
-            document.getElementById('modal-calories').textContent = Math.round(basicData.calories) + ' kcal';
-            document.getElementById('modal-elevation').textContent = basicData.elevationGain ? Math.round(basicData.elevationGain * 3.28084) + ' ft' : '--';
-
             try {
-                const res = await fetch(`/api/activity/${activityId}`);
+                const res = await fetch(`/api/sleep_history?range=${currentSleepRange}&end_date=${getLocalDateStr(currentSleepEndDate)}`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (!data.error) {
-                        renderActivityCharts(data.charts, isRunning, isCycling);
+                    if (!data.error) renderSleepVisual(data);
+                }
+            } catch (err) { console.error('Sleep history error:', err); }
+        }
 
-                        // Populate calculated stats
+        function renderSleepVisual(data) {
+            const canvasId = 'sleepHistoryChart';
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
-                        let avgCadence = 0;
-                        if (data.charts.cadence && data.charts.cadence.length > 0) {
-                            const validCadence = data.charts.cadence.filter(c => c > 0 && c !== null);
-                            if (validCadence.length > 0) {
-                                const sum = validCadence.reduce((a, b) => a + b, 0);
-                                avgCadence = Math.round(sum / validCadence.length);
-                            }
-                        }
-                        document.getElementById('modal-cadence').textContent = avgCadence > 0 ? avgCadence + (isRunning ? ' spm' : ' rpm') : '--';
+            if (data.range === '1d') {
+                const s = data.summary;
+                safeSetText('sleep', (s.total / 3600).toFixed(1));
+                safeSetText('sleep-score-val', s.score || '--');
+                const stageData = [
+                    { label: 'Deep', value: s.deep || 0, color: '#6366f1' },
+                    { label: 'Light', value: s.light || 0, color: '#3b82f6' },
+                    { label: 'REM', value: s.rem || 0, color: '#2dd4bf' },
+                    { label: 'Awake', value: s.awake || 0, color: '#f97316' }
+                ].filter(d => d.value > 0);
 
-                        // Handle Splits
-                        if (isRunning && data.splits && data.splits.length > 0) {
-                            renderSplits(data.splits);
-                        }
-
-                        // Handle Power Stats & Graph visibility
-                        const validPower = data.charts.power ? data.charts.power.filter(p => p > 0 && p !== null) : [];
-                        const hasPowerData = validPower.length > 0;
-                        const avgPower = (data.summary && data.summary.averagePower) || basicData.avgPower;
-                        const avgSpeed = (data.summary && data.summary.averageSpeed) || basicData.averageSpeed;
-
-                        if (isCycling) {
-                            document.getElementById('modal-pace-label').textContent = 'Avg Power';
-                            document.getElementById('modal-pace').textContent = avgPower ? Math.round(avgPower) + ' W' : '--';
-                            // Hide redundant power card if we put it in the main slot
-                            document.getElementById('power-summary-card').style.display = 'none';
-                        } else {
-                            document.getElementById('modal-pace-label').textContent = 'Overall Pace';
-                            let paceStr = data.avg_pace_str;
-                            if ((!paceStr || paceStr === '--') && avgSpeed > 0.1) {
-                                const paceSeconds = 1609.34 / avgSpeed;
-                                paceStr = `${Math.floor(paceSeconds / 60)}:${Math.round(paceSeconds % 60).toString().padStart(2, '0')}`;
-                            }
-                            document.getElementById('modal-pace').textContent = (paceStr || '--') + ' /mi';
-                        }
-
-                        if (hasPowerData) {
-                            document.getElementById('power-title').style.display = 'block';
-                            document.getElementById('power-chart-container').style.display = 'block';
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: { labels: stageData.map(d => d.label), datasets: [{ data: stageData.map(d => d.value), backgroundColor: stageData.map(d => d.color), borderWidth: 0 }] },
+                    options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { 
+                        legend: { display: true, position: 'right', labels: { color: '#94a3b8', boxWidth: 12, padding: 20 } },
+                        tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${Math.floor(ctx.raw / 3600)}h ${Math.round((ctx.raw % 3600) / 60)}m` } }
+                    } }
+                });
+            } else {
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.history.map(d => d.date),
+                        datasets: [{ label: 'Sleep Score', data: data.history.map(d => d.score), borderColor: '#818cf8', backgroundColor: 'rgba(129, 140, 248, 0.1)', borderWidth: 3, fill: true, tension: 0.3, pointRadius: 4 }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false }, zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } },
+                        scales: {
+                            x: { type: 'time', time: { unit: 'day' }, grid: { display: false }, ticks: { color: '#94a3b8' } },
+                            y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
                         }
                     }
-                }
-            } catch (err) {
-                console.error('Error fetching activity details:', err);
-            }
-        }
-
-        function renderSplits(splits) {
-            const container = document.getElementById('splits-section');
-            const table = document.getElementById('splits-table');
-            container.style.display = 'block';
-
-            let html = `
-                <div style="display: grid; grid-template-columns: 1fr 1fr; padding: 0.75rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); font-weight: 600; font-size: 0.85rem; color: var(--text-secondary);">
-                    <div>MILE</div>
-                    <div style="text-align: right;">PACE</div>
-                </div>
-            `;
-
-            splits.forEach(s => {
-                html += `
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; padding: 1rem 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 1.1rem;">
-                        <div style="font-weight: 500;">${s.mile}</div>
-                        <div style="text-align: right; color: var(--accent-color); font-weight: 600;">${s.pace_str}</div>
-                    </div>
-                `;
-            });
-
-            table.innerHTML = html;
-        }
-        function closeModal() {
-            document.getElementById('activityModal').classList.remove('active');
-            // Reset zoom on close to avoid state issues
-            activityChartIds.forEach(id => {
-                if (chartInstances[id]) chartInstances[id].resetZoom();
-            });
-        }
-
-        function openWeightModal() {
-            document.getElementById('weightModal').classList.add('active');
-            document.getElementById('weight-input').value = '';
-            document.getElementById('weight-input').focus();
-        }
-
-        function closeWeightModal() {
-            document.getElementById('weightModal').classList.remove('active');
-        }
-
-        async function submitWeight() {
-            const weightVal = parseFloat(document.getElementById('weight-input').value);
-            const unit = document.querySelector('input[name="weight-unit"]:checked').value;
-
-            if (!weightVal || isNaN(weightVal)) {
-                alert("Please enter a valid weight.");
-                return;
-            }
-
-            // Convert to kg if lbs
-            let weightKg = weightVal;
-            if (unit === 'lbs') {
-                weightKg = weightVal / 2.20462;
-            }
-
-            try {
-                const res = await fetch('/api/add_weight', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ weight: weightKg })
                 });
-
-                const result = await res.json();
-                if (res.ok && result.status === 'success') {
-                    closeWeightModal();
-                    // Refresh data
-                    fetchData();
-                    // Also refresh history explicitly
-                    updateWeightRange(currentWeightRange);
-                    alert("Weight logged successfully!");
-                } else {
-                    alert("Error: " + (result.error || "Unknown error"));
-                }
-            } catch (err) {
-                console.error(err);
-                alert("Failed to submit weight.");
-            }
-        }
-
-        // Timer helper
-        function formatDuration(seconds) {
-            const h = Math.floor(seconds / 3600);
-            const m = Math.floor((seconds % 3600) / 60);
-            const s = Math.floor(seconds % 60);
-            if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-            return `${m}:${s.toString().padStart(2, '0')}`;
-        }
-
-        const activityChartIds = ['activityElevChart', 'activityHrChart', 'activityCadenceChart', 'activityPowerChart', 'activitySpeedChart'];
-
-        function syncActivityCharts(sourceChart) {
-            const min = sourceChart.scales.x.min;
-            const max = sourceChart.scales.x.max;
-
-            activityChartIds.forEach(id => {
-                const chart = chartInstances[id];
-                if (chart && chart !== sourceChart) {
-                    // Update scale limits to match source
-                    chart.options.scales.x.min = min;
-                    chart.options.scales.x.max = max;
-                    chart.update('none');
-                }
-            });
-        }
-
-        function renderActivityCharts(charts, isRunning, isCycling) {
-            // Calculate elapsed time in seconds
-            const startStr = charts.timestamps[0];
-            // charts.timestamps are ISO strings or timestamps.
-            // app.py sends timestamps from row[key_map['directTimestamp']] which are usually epoch millis
-            const start = new Date(charts.timestamps[0]).getTime();
-            const elapsedSeconds = charts.timestamps.map(t => (new Date(t).getTime() - start) / 1000);
-
-            // Elevation
-            renderDetailChart('activityElevChart', elapsedSeconds, charts.elevation.map(e => e * 3.28084), 'Elevation', '#94a3b8', 'ft');
-
-            // HR Chart
-            renderDetailChart('activityHrChart', elapsedSeconds, charts.heart_rate, 'Heart Rate', '#f87171', 'bpm');
-
-            // Cadence Chart
-            renderDetailChart('activityCadenceChart', elapsedSeconds, charts.cadence, isRunning ? 'Steps/Min' : 'RPM', '#4ade80', '');
-
-            // Power Chart
-            if (isCycling && charts.power && charts.power.length > 0) {
-                renderPowerChart(elapsedSeconds, charts.power);
-            }
-
-            // Speed/Pace Chart
-            if (isRunning) {
-                const paces = charts.speed.map(s => s > 0.5 ? 26.8224 / s : null);
-                renderDetailChart('activitySpeedChart', elapsedSeconds, paces, 'Pace', '#38bdf8', 'min/mi', true);
-            } else {
-                const speeds = charts.speed.map(s => s * 2.23694);
-                renderDetailChart('activitySpeedChart', elapsedSeconds, speeds, 'Speed', '#38bdf8', 'mph');
             }
         }
 
         let currentHydrationRange = '1d';
         let currentHydrationEndDate = new Date();
-
         async function updateHydrationRange(range, btn) {
-            currentHydrationRange = range;
-            if (btn) {
-                const buttons = btn.parentElement.querySelectorAll('.range-btn');
-                buttons.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-            }
-
-            // Toggle visibility
-            const donutContainer = document.getElementById('hydration-donut-container');
-            const historyChartCanvas = document.getElementById('hydrationHistoryChart');
-
-            if (range === '1d') {
-                donutContainer.style.display = 'block';
-                historyChartCanvas.style.display = 'none';
-            } else {
-                donutContainer.style.display = 'none';
-                historyChartCanvas.style.display = 'block';
-            }
-
+            if (range) currentHydrationRange = range;
+            if (btn) { btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+            const donut = document.getElementById('hydration-donut-container');
+            const hChartCanvas = document.getElementById('hydrationHistoryChart');
+            if (donut) donut.style.display = currentHydrationRange === '1d' ? 'block' : 'none';
+            if (hChartCanvas) hChartCanvas.style.display = currentHydrationRange === '1d' ? 'none' : 'block';
             await renderHydrationVisual();
-        }
-
-        function shiftHydrationDate(dir) {
-            const daysMap = { '1d': 1, '1w': 7, '1m': 30, '1y': 365 };
-            const shift = daysMap[currentHydrationRange] || 7;
-            const newDate = new Date(currentHydrationEndDate);
-            newDate.setDate(newDate.getDate() + (dir * shift));
-
-            const today = new Date();
-            if (newDate > today) {
-                currentHydrationEndDate = today;
-            } else {
-                currentHydrationEndDate = newDate;
-            }
-            renderHydrationVisual();
         }
 
         async function renderHydrationVisual() {
             try {
-                const url = `/api/hydration_history?range=${currentHydrationRange}&end_date=${getLocalDateStr(currentHydrationEndDate)}`;
-                const res = await fetch(url);
+                const res = await fetch(`/api/hydration_history?range=${currentHydrationRange}&end_date=${getLocalDateStr(currentHydrationEndDate)}`);
                 if (res.ok) {
                     const data = await res.json();
                     if (data.error) return;
-
-                    const mlToOz = (ml) => (ml * 0.033814).toFixed(1);
-
+                    const oz = (ml) => (ml * 0.033814).toFixed(1);
                     if (currentHydrationRange === '1d') {
-                        const intakeMl = data.summary.intake;
-                        const goalMl = data.summary.goal;
-                        const percent = Math.min(100, Math.round((intakeMl / goalMl) * 100));
-
-                        document.getElementById('hydration-val').textContent = mlToOz(intakeMl) + ' oz';
-                        document.getElementById('hydration-goal').textContent = 'Goal: ' + mlToOz(goalMl) + ' oz';
-                        document.getElementById('hydration-percent').textContent = percent + '%';
-
-                        const color = percent >= 100 ? '#22c55e' : '#38bdf8';
-                        document.getElementById('hydration-chart').style.background = `conic-gradient(${color} ${percent}%, rgba(255,255,255,0.05) ${percent}% 100%)`;
+                        const p = Math.min(100, Math.round((data.summary.intake / data.summary.goal) * 100));
+                        safeSetText('hydration-val', oz(data.summary.intake) + ' oz');
+                        safeSetText('hydration-goal', 'Goal: ' + oz(data.summary.goal) + ' oz');
+                        safeSetText('hydration-percent', p + '%');
+                        const hChart = document.getElementById('hydration-chart');
+                        if (hChart) hChart.style.background = `conic-gradient(${p >= 100 ? '#22c55e' : '#38bdf8'} ${p}%, rgba(255,255,255,0.05) ${p}% 100%)`;
                     } else {
-                        // Render Bar Chart
                         const ctx = document.getElementById('hydrationHistoryChart').getContext('2d');
                         if (chartInstances['hydrationHistoryChart']) chartInstances['hydrationHistoryChart'].destroy();
-
-                        const labels = data.history.map(d => parseLocalDate(d.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }));
-                        const intakes = data.history.map(d => parseFloat(mlToOz(d.intake)));
-                        const goals = data.history.map(d => parseFloat(mlToOz(d.goal)));
-
-                        const backgroundColors = data.history.map(d => d.intake >= d.goal ? '#22c55e' : '#38bdf8');
-
                         chartInstances['hydrationHistoryChart'] = new Chart(ctx, {
                             type: 'bar',
-                            data: {
-                                labels: labels,
-                                datasets: [{
-                                    label: 'Intake (oz)',
-                                    data: intakes,
-                                    backgroundColor: backgroundColors,
-                                    borderRadius: 6
-                                }]
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {
-                                    legend: { display: false },
-                                    tooltip: {
-                                        callbacks: {
-                                            afterLabel: (ctx) => {
-                                                const goal = goals[ctx.dataIndex];
-                                                return `Goal: ${goal} oz`;
-                                            }
-                                        }
-                                    },
-                                    zoom: {
-                                        pan: { enabled: true, mode: 'x' },
-                                        zoom: {
-                                            wheel: { enabled: true },
-                                            pinch: { enabled: true },
-                                            mode: 'x'
-                                        }
-                                    }
-                                },
-                                scales: {
-                                    y: {
-                                        beginAtZero: true,
-                                        grid: { color: 'rgba(255,255,255,0.05)' },
-                                        ticks: { color: '#94a3b8' }
-                                    },
-                                    x: {
-                                        grid: { display: false },
-                                        ticks: { color: '#94a3b8' }
-                                    }
-                                }
-                            }
+                            data: { labels: data.history.map(d => parseLocalDate(d.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })), datasets: [{ label: 'oz', data: data.history.map(d => parseFloat(oz(d.intake))), backgroundColor: data.history.map(d => d.intake >= d.goal ? '#22c55e' : '#38bdf8'), borderRadius: 6 }] },
+                            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } }, x: { grid: { display: false } } } }
                         });
-
-                        // Update summary text
-                        const todayStr = getLocalDateStr();
-                        const last = data.history.find(d => d.date === todayStr) || data.history[data.history.length - 1];
-                        if (last) {
-                            document.getElementById('hydration-val').textContent = mlToOz(last.intake) + ' oz';
-                            document.getElementById('hydration-goal').textContent = 'Goal: ' + mlToOz(last.goal) + ' oz';
-                        }
-
-                        // Handle next button state
-                        const isToday = currentHydrationEndDate.toDateString() === new Date().toDateString();
-                        document.getElementById('hydration-next').disabled = isToday;
                     }
                 }
-            } catch (err) {
-                console.error('Error fetching hydration:', err);
-            }
+            } catch (err) { console.error('Hydration error:', err); }
         }
 
-        function renderPowerChart(timestamps, power) {
-            const ctx = document.getElementById('activityPowerChart').getContext('2d');
-            if (chartInstances['activityPowerChart']) chartInstances['activityPowerChart'].destroy();
+        function shiftHydrationDate(dir) {
+            currentHydrationEndDate.setDate(currentHydrationEndDate.getDate() + (dir * (currentHydrationRange === '1d' ? 1 : 7)));
+            if (currentHydrationEndDate > new Date()) currentHydrationEndDate = new Date();
+            renderHydrationVisual();
+        }
 
-            // Assume FTP of 250 for zone calculation if not provided
-            const ftp = 250;
-            const zones = [
-                { limit: ftp * 0.55, color: '#94a3b8' }, // Z1: Grey
-                { limit: ftp * 0.75, color: '#3b82f6' }, // Z2: Blue
-                { limit: ftp * 0.90, color: '#22c55e' }, // Z3: Green
-                { limit: ftp * 1.05, color: '#eab308' }, // Z4: Yellow
-                { limit: ftp * 1.20, color: '#f97316' }, // Z5: Orange
-                { limit: ftp * 1.50, color: '#ef4444' }, // Z6: Red
-                { limit: 9999, color: '#a855f7' }  // Z7: Purple
-            ];
+        // --- Activity Modal & Detail Charts ---
 
-            const getZoneColor = (val) => {
-                for (let z of zones) {
-                    if (val <= z.limit) return z.color;
+        async function openActivityDetail(id, basic) {
+            const modal = document.getElementById('activityModal');
+            if (!modal) return;
+            modal.classList.add('active');
+
+            const isRun = basic.activityType.typeKey.includes('running');
+            const isCycle = basic.activityType.typeKey.includes('cycling');
+
+            safeSetText('modal-title', basic.activityName);
+            safeSetText('modal-date', new Date(basic.startTimeLocal).toLocaleString());
+            safeSetText('modal-distance', formatDualDistance(basic.distance / 1609.34));
+            safeSetText('modal-duration', Math.round(basic.duration / 60) + ' min');
+            safeSetText('modal-hr', basic.averageHR ? Math.round(basic.averageHR) + ' bpm' : '--');
+            safeSetText('modal-calories', Math.round(basic.calories) + ' kcal');
+
+            try {
+                const res = await fetch(`/api/activity/${id}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.error) renderActivityCharts(data.charts, isRun, isCycle);
                 }
-                return zones[zones.length - 1].color;
-            };
+            } catch (err) { console.error('Activity detail error:', err); }
+        }
 
-            chartInstances['activityPowerChart'] = new Chart(ctx, {
+        function closeModal() { document.getElementById('activityModal').classList.remove('active'); }
+
+        const activityChartIds = ['activityElevChart', 'activityHrChart', 'activityCadenceChart', 'activityPowerChart', 'activitySpeedChart'];
+        function syncActivityCharts(source) {
+            const { min, max } = source.scales.x;
+            activityChartIds.forEach(id => {
+                const chart = chartInstances[id];
+                if (chart && chart !== source) { chart.options.scales.x.min = min; chart.options.scales.x.max = max; chart.update('none'); }
+            });
+        }
+
+        function renderActivityCharts(charts, isRun, isCycle) {
+            if (!charts.timestamps) return;
+            const start = new Date(charts.timestamps[0]).getTime();
+            const elapsed = charts.timestamps.map(t => (new Date(t).getTime() - start) / 1000);
+
+            renderDetailChart('activityElevChart', elapsed, charts.elevation.map(e => e * 3.28084), 'Elevation', '#94a3b8', 'ft');
+            renderDetailChart('activityHrChart', elapsed, charts.heart_rate, 'Heart Rate', '#f87171', 'bpm');
+            renderDetailChart('activityCadenceChart', elapsed, charts.cadence, isRun ? 'spm' : 'rpm', '#4ade80', '');
+            if (isRun) renderDetailChart('activitySpeedChart', elapsed, charts.speed.map(s => s > 0.5 ? 26.8224 / s : null), 'Pace', '#38bdf8', '/mi', true);
+            else renderDetailChart('activitySpeedChart', elapsed, charts.speed.map(s => s * 2.23694), 'Speed', '#38bdf8', 'mph');
+        }
+
+        function renderDetailChart(id, x, y, label, color, unit, rev = false) {
+            const canvas = document.getElementById(id);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (chartInstances[id]) chartInstances[id].destroy();
+            chartInstances[id] = new Chart(ctx, {
                 type: 'line',
-                data: {
-                    labels: timestamps,
-                    datasets: [{
-                        label: 'Power',
-                        data: power,
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        tension: 0.3,
-                        fill: true,
-                        segment: {
-                            borderColor: ctx => getZoneColor(ctx.p0.parsed.y)
-                        },
-                        backgroundColor: (context) => {
-                            const chart = context.chart;
-                            const { ctx, chartArea, scales } = chart;
-                            if (!chartArea) return null;
-
-                            const yAxis = scales.y;
-                            const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-
-                            // Map power zones to gradient stops (0 to 1)
-                            const addStop = (powerVal, color) => {
-                                let stop = 1 - (yAxis.getPixelForValue(powerVal) - chartArea.top) / chartArea.height;
-                                stop = Math.max(0, Math.min(1, stop));
-                                gradient.addColorStop(stop, color + '44');
-                            };
-
-                            // Add stops from bottom to top
-                            gradient.addColorStop(0, zones[0].color + '44');
-                            for (let i = 0; i < zones.length - 1; i++) {
-                                let stopPos = (yAxis.getPixelForValue(zones[i].limit) - chartArea.top) / chartArea.height;
-                                // Chart.js Y axis is inverted (0 at top)
-                                let stop = 1 - stopPos;
-                                if (stop >= 0 && stop <= 1) {
-                                    gradient.addColorStop(stop, zones[i].color + '44');
-                                    gradient.addColorStop(stop, zones[i + 1].color + '44');
-                                }
-                            }
-                            return gradient;
-                        }
-                    }]
-                },
+                data: { labels: x, datasets: [{ label, data: y, borderColor: color, backgroundColor: color + '22', fill: true, pointRadius: 0, tension: 0.4 }] },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        zoom: {
-                            pan: {
-                                enabled: true,
-                                mode: 'x',
-                                onPan: ({ chart }) => syncActivityCharts(chart)
-                            },
-                            zoom: {
-                                wheel: { enabled: true },
-                                pinch: { enabled: true },
-                                mode: 'x',
-                                onZoom: ({ chart }) => syncActivityCharts(chart)
-                            }
-                        },
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: (ctx) => `Power: ${Math.round(ctx.parsed.y)} W`,
-                                title: (ctx) => formatDuration(ctx[0].parsed.x)
-                            }
-                        }
-                    },
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, zoom: { pan: { enabled: true, mode: 'x', onPan: (c) => syncActivityCharts(c.chart) }, zoom: { wheel: { enabled: true }, mode: 'x', onZoom: (c) => syncActivityCharts(c.chart) } } },
                     scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: 'rgba(255,255,255,0.05)' },
-                            ticks: { color: '#94a3b8', callback: val => val + ' W' }
-                        },
-                        x: {
-                            type: 'linear',
-                            display: true,
-                            ticks: {
-                                color: '#94a3b8',
-                                maxTicksLimit: 8,
-                                callback: function (value) { return formatDuration(value); }
-                            },
-                            grid: { display: false }
-                        }
+                        y: { reverse: rev, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', callback: v => v ? v.toFixed(1) + ' ' + unit : '' } },
+                        x: { type: 'linear', ticks: { color: '#94a3b8', callback: v => formatDuration(v) }, grid: { display: false } }
                     }
                 }
             });
         }
 
-        function renderDetailChart(canvasId, timestamps, data, label, color, unit, reversed = false) {
-            const ctx = document.getElementById(canvasId).getContext('2d');
-            if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
-
-            chartInstances[canvasId] = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: timestamps,
-                    datasets: [{
-                        label: label,
-                        data: data,
-                        borderColor: color,
-                        backgroundColor: color + '22',
-                        borderWidth: 2,
-                        pointRadius: 0,
-                        tension: 0.4,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        zoom: {
-                            pan: {
-                                enabled: true,
-                                mode: 'x',
-                                onPan: ({ chart }) => syncActivityCharts(chart)
-                            },
-                            zoom: {
-                                wheel: { enabled: true },
-                                pinch: { enabled: true },
-                                mode: 'x',
-                                onZoom: ({ chart }) => syncActivityCharts(chart)
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            reverse: reversed,
-                            grid: { color: 'rgba(255,255,255,0.05)' },
-                            ticks: { color: '#94a3b8', callback: val => val ? val.toFixed(1) + ' ' + unit : '' }
-                        },
-                        x: {
-                            type: 'linear',
-                            display: true,
-                            ticks: {
-                                color: '#94a3b8',
-                                maxTicksLimit: 8,
-                                callback: function (value) { return formatDuration(value); }
-                            },
-                            grid: { display: false }
-                        }
-                    }
-                }
-            });
+        function formatDuration(s) {
+            const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = Math.floor(s % 60);
+            return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}` : `${m}:${sec.toString().padStart(2, '0')}`;
         }
+
+        // --- Heatmap & Calendar Functions ---
 
         async function fetchActivityHeatmap() {
             try {
                 const res = await fetch('/api/activity_heatmap');
-                if (res.ok) {
-                    const data = await res.json();
-                    renderActivityHeatmap(data);
-                }
-            } catch (err) {
-                console.error('Heatmap error:', err);
-            }
+                if (res.ok) renderActivityHeatmap(await res.json());
+            } catch (err) { console.error('Heatmap error:', err); }
         }
 
         function renderActivityHeatmap(data) {
             const container = document.getElementById('activity-heatmap');
+            if (!container) return;
             container.innerHTML = '';
-
-            // Generate last 365 days (approx 52 weeks)
-            // Group by week for vertical layout like GitHub (cols = weeks, rows = days)
-            // But horizontal scrolling is requested? "when and how many... monthly basis"
-            // Let's do GitHub style: 7 rows (Mon-Sun), 53 columns.
-
             const today = new Date();
-            const oneYearAgo = new Date();
-            oneYearAgo.setDate(today.getDate() - 365);
+            const start = new Date(); start.setDate(today.getDate() - 365);
+            start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); // Start on Monday
 
-            // Adjust start date to be a Monday to align the grid
-            const dayOfWeek = oneYearAgo.getDay(); // 0=Sun, 1=Mon
-            const diff = oneYearAgo.getDate() - dayOfWeek + (dayOfWeek == 0 ? -6 : 1); // Adjust to Monday
-            const startDate = new Date(oneYearAgo.setDate(diff));
-
-            const weeks = [];
             let currentWeek = [];
-            let currentDate = new Date(startDate);
-
-            // Generate dates until we cover today + rest of week
-            while (currentDate <= today || currentDate.getDay() !== 1) {
-                const dateStr = getLocalDateStr(currentDate);
-                const count = data[dateStr] || 0;
-
-                currentWeek.push({ date: dateStr, count: count, obj: new Date(currentDate) });
-
-                if (currentDate.getDay() === 0) { // Sunday
-                    weeks.push(currentWeek);
+            let current = new Date(start);
+            while (current <= today || current.getDay() !== 1) {
+                const dStr = getLocalDateStr(current);
+                currentWeek.push({ count: data[dStr] || 0 });
+                if (current.getDay() === 0) {
+                    const col = document.createElement('div'); col.style.display = 'flex'; col.style.flexDirection = 'column'; col.style.gap = '4px';
+                    currentWeek.forEach(day => {
+                        const cell = document.createElement('div'); cell.style.width = '12px'; cell.style.height = '12px'; cell.style.borderRadius = '2px';
+                        cell.style.background = day.count === 0 ? 'rgba(255,255,255,0.05)' : day.count === 1 ? 'rgba(34, 197, 94, 0.4)' : day.count === 2 ? 'rgba(34, 197, 94, 0.7)' : '#22c55e';
+                        col.appendChild(cell);
+                    });
+                    container.appendChild(col);
                     currentWeek = [];
                 }
-
-                currentDate.setDate(currentDate.getDate() + 1);
+                current.setDate(current.getDate() + 1);
             }
-            if (currentWeek.length > 0) weeks.push(currentWeek);
-
-            // Render columns (weeks)
-            weeks.forEach(week => {
-                const col = document.createElement('div');
-                col.style.display = 'flex';
-                col.style.flexDirection = 'column';
-                col.style.gap = '4px';
-
-                week.forEach(day => {
-                    const cell = document.createElement('div');
-                    cell.style.width = '12px';
-                    cell.style.height = '12px';
-                    cell.style.borderRadius = '2px';
-
-                    // Color logic
-                    let bg = 'rgba(255,255,255,0.05)';
-                    if (day.count > 0) {
-                        if (day.count === 1) bg = 'rgba(34, 197, 94, 0.4)';
-                        else if (day.count === 2) bg = 'rgba(34, 197, 94, 0.7)';
-                        else bg = '#22c55e';
-                    }
-                    cell.style.background = bg;
-
-                    // Tooltip logic
-                    cell.title = `${parseLocalDate(day.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}: ${day.count} activities`;
-                    cell.style.cursor = 'pointer';
-
-                    col.appendChild(cell);
-                });
-
-                container.appendChild(col);
-            });
-
-            // Scroll to end (right)
-            const scrollContainer = document.getElementById('heatmap-scroll-container');
-            scrollContainer.scrollLeft = scrollContainer.scrollWidth;
+            const scroll = document.getElementById('heatmap-scroll-container');
+            if (scroll) scroll.scrollLeft = scroll.scrollWidth;
         }
 
-        // --- Detailed Calendar Logic ---
-        let calendarDate = new Date(); // Tracks the current range start/center
+        let calendarDate = new Date();
         let currentCalendarView = 'month';
 
         async function fetchCalendarData() {
@@ -2338,8 +1854,7 @@
             const month = calendarDate.getMonth();
 
             if (currentCalendarView === 'year') {
-                startStr = `${year}-01-01`;
-                endStr = `${year}-12-31`;
+                startStr = `${year}-01-01`; endStr = `${year}-12-31`;
             } else if (currentCalendarView === 'month') {
                 const first = new Date(year, month, 1);
                 const last = new Date(year, month + 1, 0);
@@ -2347,15 +1862,12 @@
                 const endPad = 6 - ((last.getDay() + 6) % 7);
                 startStr = getLocalDateStr(new Date(year, month, 1 - startPad));
                 endStr = getLocalDateStr(new Date(year, month + 1, endPad));
-            } else { // week
+            } else {
                 const day = calendarDate.getDay();
-                const diff = calendarDate.getDate() - day + (day == 0 ? -6 : 1); // Monday
-                const start = new Date(calendarDate);
-                start.setDate(diff);
-                const end = new Date(start);
-                end.setDate(start.getDate() + 6);
-                startStr = getLocalDateStr(start);
-                endStr = getLocalDateStr(end);
+                const diff = calendarDate.getDate() - day + (day == 0 ? -6 : 1);
+                const start = new Date(calendarDate); start.setDate(diff);
+                const end = new Date(start); end.setDate(start.getDate() + 6);
+                startStr = getLocalDateStr(start); endStr = getLocalDateStr(end);
             }
 
             try {
@@ -2364,56 +1876,41 @@
                     const activities = await res.json();
                     renderDetailedCalendar(activities, year, month);
                 }
-            } catch (e) {
-                console.error("Calendar fetch error", e);
-            }
+            } catch (e) { console.error("Calendar fetch error", e); }
         }
 
         function setCalendarView(view) {
             currentCalendarView = view;
             document.querySelectorAll('.calendar-widget .range-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(`cal-view-${view}`).classList.add('active');
-
-            // Adjust header/grid visibility
-            const header = document.querySelector('.calendar-grid[style*="margin-bottom"]');
-            header.style.display = (view === 'year') ? 'none' : 'grid';
-
+            const btn = document.getElementById(`cal-view-${view}`);
+            if (btn) btn.classList.add('active');
             fetchCalendarData();
         }
 
-        function shiftCalendarRange(dir) {
+        function shiftCalendarMonth(dir) {
             if (currentCalendarView === 'year') calendarDate.setFullYear(calendarDate.getFullYear() + dir);
             else if (currentCalendarView === 'month') calendarDate.setMonth(calendarDate.getMonth() + dir);
-            else { // week
-                calendarDate.setDate(calendarDate.getDate() + (dir * 7));
-            }
+            else calendarDate.setDate(calendarDate.getDate() + (dir * 7));
             fetchCalendarData();
         }
 
-        function shiftCalendarMonth(dir) { shiftCalendarRange(dir); } // existing alias
-
-        function resetCalendarToToday() {
-            calendarDate = new Date();
-            fetchCalendarData();
-        }
+        function resetCalendarToToday() { calendarDate = new Date(); fetchCalendarData(); }
 
         function renderDetailedCalendar(activities, currentYear, currentMonth) {
-            const monthName = calendarDate.toLocaleString('default', { month: 'long' });
             const titleEl = document.getElementById('calendar-title');
-
-            if (currentCalendarView === 'year') titleEl.textContent = currentYear;
-            else if (currentCalendarView === 'month') titleEl.textContent = `${monthName} ${currentYear}`;
-            else {
-                // Week range title
-                const start = new Date(calendarDate);
-                const day = calendarDate.getDay();
-                start.setDate(calendarDate.getDate() - day + (day == 0 ? -6 : 1));
-                const end = new Date(start);
-                end.setDate(start.getDate() + 6);
-                titleEl.textContent = `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${end.getFullYear()}`;
+            if (titleEl) {
+                if (currentCalendarView === 'year') titleEl.textContent = currentYear;
+                else if (currentCalendarView === 'month') titleEl.textContent = `${calendarDate.toLocaleString('default', { month: 'long' })} ${currentYear}`;
+                else {
+                    const start = new Date(calendarDate); const day = calendarDate.getDay();
+                    start.setDate(calendarDate.getDate() - day + (day == 0 ? -6 : 1));
+                    const end = new Date(start); end.setDate(start.getDate() + 6);
+                    titleEl.textContent = `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${end.getFullYear()}`;
+                }
             }
 
             const grid = document.getElementById('calendar-grid');
+            if (!grid) return;
             grid.className = currentCalendarView === 'year' ? 'year-view-grid' : 'calendar-grid';
             grid.innerHTML = '';
 
@@ -2427,210 +1924,152 @@
             if (currentCalendarView === 'year') {
                 renderYearView(grid, activitiesByDate, currentYear);
             } else if (currentCalendarView === 'month') {
-                renderMonthView(grid, activitiesByDate, currentYear, currentMonth);
+                const first = new Date(currentYear, currentMonth, 1);
+                const startPad = (first.getDay() + 6) % 7;
+                const startDate = new Date(currentYear, currentMonth, 1 - startPad);
+                for (let i = 0; i < 42; i++) {
+                    const d = new Date(startDate); d.setDate(d.getDate() + i);
+                    const dateStr = getLocalDateStr(d);
+                    const cell = document.createElement('div');
+                    cell.className = `calendar-cell ${dateStr === getLocalDateStr(new Date()) ? 'today' : ''} ${d.getMonth() !== currentMonth ? 'other-month' : ''}`;
+                    cell.innerHTML = `<div class="calendar-date">${d.getDate()}</div>`;
+                    if (activitiesByDate[dateStr]) {
+                        activitiesByDate[dateStr].forEach(act => {
+                            const pill = document.createElement('div');
+                            pill.className = `activity-pill ${getActivityPillClass(act.activityType.typeKey)}`;
+                            pill.innerHTML = `<span>${getActivityIcon(act.activityType.typeKey)}</span> ${act.distance > 0 ? (act.distance * 0.000621371).toFixed(1) + 'mi' : Math.round(act.duration / 60) + 'm'}`;
+                            cell.appendChild(pill);
+                        });
+                    }
+                    grid.appendChild(cell);
+                }
             } else {
-                renderWeekView(grid, activitiesByDate);
+                // Week view
+                const start = new Date(calendarDate); const day = calendarDate.getDay();
+                start.setDate(calendarDate.getDate() - day + (day == 0 ? -6 : 1));
+                for (let i = 0; i < 7; i++) {
+                    const d = new Date(start); d.setDate(d.getDate() + i);
+                    const dateStr = getLocalDateStr(d);
+                    const cell = document.createElement('div');
+                    cell.className = 'calendar-cell view-week';
+                    cell.innerHTML = `<div class="calendar-date">${d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })}</div>`;
+                    if (activitiesByDate[dateStr]) {
+                        activitiesByDate[dateStr].forEach(act => {
+                            const pill = document.createElement('div');
+                            pill.className = `activity-pill ${getActivityPillClass(act.activityType.typeKey)}`;
+                            pill.innerHTML = `<strong>${act.activityName}</strong><br>${act.distance > 0 ? (act.distance * 0.000621371).toFixed(2) + ' mi' : ''} | ${(act.duration / 60).toFixed(0)}m`;
+                            cell.appendChild(pill);
+                        });
+                    }
+                    grid.appendChild(cell);
+                }
             }
-
             updateCalendarTotals(activities, currentYear, currentMonth);
         }
 
         function renderYearView(container, data, year) {
             for (let m = 0; m < 12; m++) {
-                const monthDiv = document.createElement('div');
-                monthDiv.className = 'small-month';
+                const monthDiv = document.createElement('div'); monthDiv.className = 'small-month';
                 const mName = new Date(year, m, 1).toLocaleString('default', { month: 'short' });
                 monthDiv.innerHTML = `<div class="small-month-title">${mName}</div>`;
-
-                const mGrid = document.createElement('div');
-                mGrid.className = 'small-month-grid';
-
-                const first = new Date(year, m, 1);
-                const pad = (first.getDay() + 6) % 7;
+                const mGrid = document.createElement('div'); mGrid.className = 'small-month-grid';
+                const first = new Date(year, m, 1); const pad = (first.getDay() + 6) % 7;
                 for (let p = 0; p < pad; p++) mGrid.appendChild(document.createElement('div'));
-
                 const last = new Date(year, m + 1, 0).getDate();
                 for (let d = 1; d <= last; d++) {
                     const dateStr = getLocalDateStr(new Date(year, m, d));
-                    const dayEl = document.createElement('div');
-                    dayEl.className = 'small-day';
-                    dayEl.textContent = d;
-
+                    const dayEl = document.createElement('div'); dayEl.className = 'small-day'; dayEl.textContent = d;
                     if (data[dateStr]) {
-                        const dot = document.createElement('div');
-                        dot.className = 'day-dot';
-                        // Use first activity color
-                        const act = data[dateStr][0];
-                        const type = act.activityType.typeKey;
-                        let color = '#64748b';
-                        if (type.includes('running')) color = '#3b82f6';
-                        else if (type.includes('virtual_ride')) color = '#f59e0b';
-                        else if (type.includes('cycling') || type.includes('cycle') || type.includes('ride')) color = '#f97316';
-                        else if (type.includes('swimming')) color = '#06b6d4';
-                        dot.style.background = color;
+                        const dot = document.createElement('div'); dot.className = 'day-dot';
+                        dot.style.background = getActivityColor(data[dateStr][0].activityType.typeKey);
                         dayEl.appendChild(dot);
                     }
                     mGrid.appendChild(dayEl);
                 }
-                monthDiv.appendChild(mGrid);
-                container.appendChild(monthDiv);
+                monthDiv.appendChild(mGrid); container.appendChild(monthDiv);
             }
         }
 
-        function renderMonthView(grid, activitiesByDate, currentYear, currentMonth) {
-            const first = new Date(currentYear, currentMonth, 1);
-            const startPad = (first.getDay() + 6) % 7;
-            const startDate = new Date(currentYear, currentMonth, 1 - startPad);
-
-            for (let i = 0; i < 42; i++) {
-                const d = new Date(startDate);
-                d.setDate(d.getDate() + i);
-                const dateStr = getLocalDateStr(d);
-                const isToday = dateStr === getLocalDateStr(new Date());
-                const isOtherMonth = d.getMonth() !== currentMonth;
-
-                const cell = document.createElement('div');
-                cell.className = `calendar-cell ${isToday ? 'today' : ''} ${isOtherMonth ? 'other-month' : ''}`;
-                cell.innerHTML = `<div class="calendar-date">${d.getDate()}</div>`;
-
-                if (activitiesByDate[dateStr]) {
-                    activitiesByDate[dateStr].forEach(act => cell.appendChild(createActivityPill(act, 'short')));
-                }
-                grid.appendChild(cell);
-            }
+        function getActivityPillClass(type) {
+            if (type.includes('running')) return 'act-running';
+            if (type.includes('virtual_ride')) return 'act-virtual-ride';
+            if (type.includes('cycling') || type.includes('ride')) return 'act-cycling';
+            if (type.includes('swimming')) return 'act-swimming';
+            if (type.includes('walking')) return 'act-walking';
+            if (type.includes('strength')) return 'act-strength';
+            return 'act-other';
         }
 
-        function renderWeekView(grid, data) {
-            const start = new Date(calendarDate);
-            const day = calendarDate.getDay();
-            start.setDate(calendarDate.getDate() - day + (day == 0 ? -6 : 1));
-
-            for (let i = 0; i < 7; i++) {
-                const d = new Date(start);
-                d.setDate(d.getDate() + i);
-                const dateStr = getLocalDateStr(d);
-
-                const cell = document.createElement('div');
-                cell.className = 'calendar-cell view-week';
-                cell.innerHTML = `<div class="calendar-date">${d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })}</div>`;
-
-                if (data[dateStr]) {
-                    data[dateStr].forEach(act => cell.appendChild(createActivityPill(act, 'long')));
-                }
-                grid.appendChild(cell);
-            }
-        }
-
-        function createActivityPill(act, mode) {
-            const pill = document.createElement('div');
-            const type = act.activityType.typeKey;
-            let colorClass = 'act-other';
-            if (type.includes('running')) colorClass = 'act-running';
-            else if (type.includes('virtual_ride')) colorClass = 'act-virtual-ride';
-            else if (type.includes('cycling') || type.includes('cycle') || type.includes('ride')) colorClass = 'act-cycling';
-            else if (type.includes('swimming')) colorClass = 'act-swimming';
-            else if (type.includes('walking')) colorClass = 'act-walking';
-            else if (type.includes('strength')) colorClass = 'act-strength';
-
-            pill.className = `activity-pill ${colorClass}`;
-            let icon = type.includes('running') ? '🏃' : type.includes('virtual') ? '⚡🚴' : type.includes('cycling') ? '🚴' : '🎯';
-
-            if (mode === 'short') {
-                let info = act.distance > 0 ? (act.distance * 0.000621371).toFixed(1) + 'mi' : Math.round(act.duration / 60) + 'm';
-                pill.innerHTML = `${icon} ${info}`;
-            } else {
-                // Long mode (Week)
-                const dist = act.distance > 0 ? (act.distance * 0.000621371).toFixed(2) + ' mi' : '';
-                const time = (act.duration / 60).toFixed(0) + 'm';
-                pill.innerHTML = `
-                    <div style="font-weight:700">${icon} ${act.activityName}</div>
-                    <div style="font-size:0.7rem; opacity:0.9">${dist} | ${time} | ${act.calories} cal</div>
-                `;
-            }
-
-            pill.title = act.activityName;
-            pill.onclick = () => alert(`${act.activityName}\n${act.distance ? (act.distance * 0.000621371).toFixed(2) + ' mi' : ''} in ${(act.duration / 60).toFixed(1)}m`);
-            return pill;
+        function getActivityColor(type) {
+            if (type.includes('running')) return '#3b82f6';
+            if (type.includes('virtual_ride')) return '#f59e0b';
+            if (type.includes('cycling') || type.includes('ride')) return '#f97316';
+            if (type.includes('swimming')) return '#06b6d4';
+            return '#64748b';
         }
 
         function updateCalendarTotals(activities, currentYear, currentMonth) {
-            const monthName = calendarDate.toLocaleString('default', { month: 'long' });
-            const totalsContainer = document.getElementById('calendar-totals');
-            totalsContainer.innerHTML = '';
-
-            let totals = { count: 0, distance: 0, duration: 0, calories: 0, distinctTypes: {} };
-            const isInRange = (dateStr) => {
-                if (currentCalendarView === 'year') return true; // everything fetched is in range
-                if (currentCalendarView === 'month') {
-                    const d = parseLocalDate(dateStr);
-                    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-                }
-                return true; // Week view is only 7 days anyway
-            };
-
+            const container = document.getElementById('calendar-totals');
+            if (!container) return;
+            container.innerHTML = '';
+            let totals = { count: 0, distance: 0, duration: 0, types: {} };
+            
             activities.forEach(act => {
-                const dateStr = act.startTimeLocal.split(' ')[0];
-                if (isInRange(dateStr)) {
+                const date = parseLocalDate(act.startTimeLocal.split(' ')[0]);
+                const inRange = (currentCalendarView === 'year') || 
+                              (currentCalendarView === 'month' && date.getMonth() === currentMonth) || 
+                              (currentCalendarView === 'week');
+                
+                if (inRange) {
                     totals.count++;
                     totals.distance += act.distance || 0;
                     totals.duration += act.duration || 0;
-                    totals.calories += act.calories || 0;
                     const type = act.activityType.typeKey;
-                    if (!totals.distinctTypes[type]) totals.distinctTypes[type] = { count: 0, distance: 0, time: 0 };
-                    totals.distinctTypes[type].count++;
-                    totals.distinctTypes[type].distance += act.distance || 0;
-                    totals.distinctTypes[type].time += act.duration || 0;
+                    if (!totals.types[type]) totals.types[type] = { count: 0, distance: 0, time: 0 };
+                    totals.types[type].count++;
+                    totals.types[type].distance += act.distance || 0;
+                    totals.types[type].time += act.duration || 0;
                 }
             });
 
-            const totalDistMi = (totals.distance * 0.000621371).toFixed(1);
-            const totalTimeH = Math.floor(totals.duration / 3600);
-            const totalTimeM = Math.round((totals.duration % 3600) / 60);
-
-            const summaryLabel = currentCalendarView === 'year' ? `${currentYear} Summary` : currentCalendarView === 'month' ? `${monthName} Summary` : 'Weekly Summary';
-
-            totalsContainer.innerHTML += `
+            container.innerHTML += `
                 <div class="total-card">
-                    <div class="total-type" style="font-size: 1.1rem; margin-bottom: 1rem;">${summaryLabel}</div>
+                    <div class="total-type" style="font-size: 1.1rem; margin-bottom: 1rem;">Summary</div>
                     <div class="total-value-row"><span>Activities</span><span>${totals.count}</span></div>
-                    <div class="total-value-row"><span>Distance</span><span>${totalDistMi} mi</span></div>
-                    <div class="total-value-row"><span>Time</span><span>${totalTimeH}h ${totalTimeM}m</span></div>
-                </div>
-            `;
-
-            Object.keys(totals.distinctTypes).forEach(type => {
-                const data = totals.distinctTypes[type];
-                let name = type.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-
-                // Better color matching
-                let color = '#64748b'; // default
-                if (type.includes('running')) color = '#3b82f6';
-                else if (type.includes('virtual_ride')) color = '#f59e0b';
-                else if (type.includes('cycling') || type.includes('cycle') || type.includes('ride') || type.includes('biking')) color = '#f97316';
-                else if (type.includes('swimming')) color = '#06b6d4';
-                else if (type.includes('walking')) color = '#22c55e';
-                else if (type.includes('strength')) color = '#a855f7';
-
-                const distMi = (data.distance * 0.000621371).toFixed(1);
-                const timeH = Math.floor(data.time / 3600);
-                const timeM = Math.round((data.time % 3600) / 60);
-
-                totalsContainer.innerHTML += `
-                    <div class="total-card" style="border-left: 4px solid ${color};">
-                        <div class="total-type">${name}</div>
-                        <div class="total-value-row"><span>Activities</span><span>${data.count}</span></div>
-                        <div class="total-value-row"><span>Distance</span><span>${distMi} mi</span></div>
-                        <div class="total-value-row"><span>Time</span><span>${timeH}h ${timeM}m</span></div>
-                    </div>
-                `;
+                    <div class="total-value-row"><span>Distance</span><span>${(totals.distance * 0.000621371).toFixed(1)} mi</span></div>
+                    <div class="total-value-row"><span>Time</span><span>${Math.floor(totals.duration / 3600)}h ${Math.round((totals.duration % 3600) / 60)}m</span></div>
+                </div>`;
+            
+            Object.keys(totals.types).forEach(type => {
+                const data = totals.types[type];
+                container.innerHTML += `
+                    <div class="total-card" style="border-left: 4px solid ${getActivityColor(type)};">
+                        <div class="total-type">${type.replace(/_/g, ' ')}</div>
+                        <div class="total-value-row"><span>Count</span><span>${data.count}</span></div>
+                        <div class="total-value-row"><span>Distance</span><span>${(data.distance * 0.000621371).toFixed(1)} mi</span></div>
+                    </div>`;
             });
         }
 
-        // Initial Load
+        function openWeightModal() { document.getElementById('weightModal').classList.add('active'); }
+        function closeWeightModal() { document.getElementById('weightModal').classList.remove('active'); }
+        async function submitWeight() {
+            const val = parseFloat(document.getElementById('weight-input').value);
+            const unit = document.querySelector('input[name="weight-unit"]:checked').value;
+            if (!val) return;
+            try {
+                const res = await fetch('/api/add_weight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ weight: unit === 'lbs' ? val / 2.20462 : val }) });
+                if (res.ok) { closeWeightModal(); fetchData(); }
+            } catch (err) { console.error('Add weight error:', err); }
+        }
+
+        // Start everything
         fetchData();
-        updateHydrationRange('1d');
-        fetchCalendarData(); // Add this
+
+        window.addEventListener('resize', () => {
+            Object.values(chartInstances).forEach(chart => { chart.update(); });
+        });
     </script>
 </body>
-
 </html>
+
