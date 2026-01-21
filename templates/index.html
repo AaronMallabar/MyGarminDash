@@ -12,6 +12,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script
         src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 
@@ -90,7 +92,11 @@
 
         <!-- YTD Cycling Comparison -->
         <section style="margin-bottom: 3rem;">
-            <h2>Year-to-Date Cycling Comparison</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2>Year-to-Date Cycling Comparison</h2>
+                <button class="range-btn" onclick="resetChartZoom('ytdCyclingChart')"
+                    style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Reset Zoom</button>
+            </div>
             <div class="chart-container">
                 <canvas id="ytdCyclingChart"></canvas>
             </div>
@@ -98,7 +104,11 @@
 
         <!-- YTD Running Comparison -->
         <section style="margin-bottom: 3rem;">
-            <h2>Year-to-Date Running Comparison</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2>Year-to-Date Running Comparison</h2>
+                <button class="range-btn" onclick="resetChartZoom('ytdRunningChart')"
+                    style="padding: 0.25rem 0.75rem; font-size: 0.8rem;">Reset Zoom</button>
+            </div>
             <div class="chart-container">
                 <canvas id="ytdRunningChart"></canvas>
             </div>
@@ -143,6 +153,8 @@
                                 <path d="M9 18l6-6-6-6" />
                             </svg>
                         </button>
+                        <button class="range-btn" onclick="resetChartZoom('stepsHistoryChart')"
+                            style="padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-left: 0.5rem;">Reset</button>
                     </div>
                 </div>
 
@@ -197,6 +209,8 @@
                                 <path d="M9 18l6-6-6-6" />
                             </svg>
                         </button>
+                        <button class="range-btn" onclick="resetChartZoom('hrHistoryChart')"
+                            style="padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-left: 0.5rem;">Reset</button>
                     </div>
                 </div>
 
@@ -236,6 +250,8 @@
                                 <path d="M9 18l6-6-6-6" />
                             </svg>
                         </button>
+                        <button class="range-btn" onclick="resetChartZoom('stressHistoryChart')"
+                            style="padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-left: 0.5rem;">Reset</button>
                     </div>
                 </div>
 
@@ -275,6 +291,8 @@
                                 <path d="M9 18l6-6-6-6" />
                             </svg>
                         </button>
+                        <button class="range-btn" onclick="resetChartZoom('sleepHistoryChart')"
+                            style="padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-left: 0.5rem;">Reset</button>
                     </div>
                 </div>
 
@@ -314,6 +332,8 @@
                                 <path d="M9 18l6-6-6-6" />
                             </svg>
                         </button>
+                        <button class="range-btn" onclick="resetChartZoom('weightHistoryChart')"
+                            style="padding: 0.25rem 0.75rem; font-size: 0.8rem; margin-left: 0.5rem;">Reset</button>
                     </div>
                 </div>
 
@@ -663,6 +683,21 @@
                     maintainAspectRatio: true,
                     aspectRatio: window.innerWidth < 768 ? 0.7 : 2.5,
                     plugins: {
+                        zoom: {
+                            pan: {
+                                enabled: true,
+                                mode: 'x'
+                            },
+                            zoom: {
+                                wheel: {
+                                    enabled: true,
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'x',
+                            }
+                        },
                         legend: {
                             position: 'top',
                             labels: {
@@ -724,6 +759,12 @@
                 chart.update();
             });
         });
+
+        function resetChartZoom(canvasId) {
+            if (chartInstances[canvasId]) {
+                chartInstances[canvasId].resetZoom();
+            }
+        }
 
 
         let currentStepsEndDate = new Date();
@@ -874,11 +915,21 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
+                        plugins: {
+                            legend: { display: false },
+                            zoom: {
+                                pan: { enabled: true, mode: 'x' },
+                                zoom: {
+                                    wheel: { enabled: true },
+                                    pinch: { enabled: true },
+                                    mode: 'x'
+                                }
+                            }
+                        },
                         scales: {
                             x: {
                                 type: 'time',
-                                time: { unit: 'hour', displayFormats: { hour: 'HH:mm' } },
+                                time: { displayFormats: { hour: 'HH:mm', minute: 'HH:mm' } },
                                 grid: { display: false },
                                 ticks: { color: '#94a3b8' }
                             },
@@ -925,6 +976,14 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
+                            zoom: {
+                                pan: { enabled: true, mode: 'x' },
+                                zoom: {
+                                    wheel: { enabled: true },
+                                    pinch: { enabled: true },
+                                    mode: 'x'
+                                }
+                            },
                             legend: {
                                 display: true,
                                 position: 'top',
@@ -1102,7 +1161,15 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
-                            legend: { display: false }
+                            legend: { display: false },
+                            zoom: {
+                                pan: { enabled: true, mode: 'x' },
+                                zoom: {
+                                    wheel: { enabled: true },
+                                    pinch: { enabled: true },
+                                    mode: 'x'
+                                }
+                            }
                         },
                         scales: {
                             x: {
@@ -1164,11 +1231,21 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
+                        plugins: {
+                            legend: { display: false },
+                            zoom: {
+                                pan: { enabled: true, mode: 'x' },
+                                zoom: {
+                                    wheel: { enabled: true },
+                                    pinch: { enabled: true },
+                                    mode: 'x'
+                                }
+                            }
+                        },
                         scales: {
                             x: {
                                 type: 'time',
-                                time: { unit: 'hour', displayFormats: { hour: 'HH:mm' } },
+                                time: { displayFormats: { hour: 'HH:mm', minute: 'HH:mm' } },
                                 grid: { display: false },
                                 ticks: { color: '#94a3b8' }
                             },
@@ -1218,6 +1295,14 @@
                             legend: {
                                 display: true,
                                 labels: { color: '#94a3b8' }
+                            },
+                            zoom: {
+                                pan: { enabled: true, mode: 'x' },
+                                zoom: {
+                                    wheel: { enabled: true },
+                                    pinch: { enabled: true },
+                                    mode: 'x'
+                                }
                             }
                         },
                         scales: {
@@ -1303,6 +1388,14 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
+                            zoom: {
+                                pan: { enabled: true, mode: 'x' },
+                                zoom: {
+                                    wheel: { enabled: true },
+                                    pinch: { enabled: true },
+                                    mode: 'x'
+                                }
+                            },
                             legend: { display: false },
                             tooltip: {
                                 callbacks: {
@@ -1377,6 +1470,14 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
+                        zoom: {
+                            pan: { enabled: true, mode: 'x' },
+                            zoom: {
+                                wheel: { enabled: true },
+                                pinch: { enabled: true },
+                                mode: 'x'
+                            }
+                        },
                         legend: { display: false },
                         tooltip: {
                             callbacks: {
@@ -1535,30 +1636,67 @@
 
         function closeModal() {
             document.getElementById('activityModal').classList.remove('active');
+            // Reset zoom on close to avoid state issues
+            activityChartIds.forEach(id => {
+                if (chartInstances[id]) chartInstances[id].resetZoom();
+            });
+        }
+
+        // Timer helper
+        function formatDuration(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        }
+
+        const activityChartIds = ['activityElevChart', 'activityHrChart', 'activityCadenceChart', 'activityPowerChart', 'activitySpeedChart'];
+
+        function syncActivityCharts(sourceChart) {
+            const min = sourceChart.scales.x.min;
+            const max = sourceChart.scales.x.max;
+
+            activityChartIds.forEach(id => {
+                const chart = chartInstances[id];
+                if (chart && chart !== sourceChart) {
+                    // Update scale limits to match source
+                    chart.options.scales.x.min = min;
+                    chart.options.scales.x.max = max;
+                    chart.update('none');
+                }
+            });
         }
 
         function renderActivityCharts(charts, isRunning, isCycling) {
+            // Calculate elapsed time in seconds
+            const startStr = charts.timestamps[0];
+            // charts.timestamps are ISO strings or timestamps.
+            // app.py sends timestamps from row[key_map['directTimestamp']] which are usually epoch millis
+            const start = new Date(charts.timestamps[0]).getTime();
+            const elapsedSeconds = charts.timestamps.map(t => (new Date(t).getTime() - start) / 1000);
+
             // Elevation
-            renderDetailChart('activityElevChart', charts.timestamps, charts.elevation.map(e => e * 3.28084), 'Elevation', '#94a3b8', 'ft');
+            renderDetailChart('activityElevChart', elapsedSeconds, charts.elevation.map(e => e * 3.28084), 'Elevation', '#94a3b8', 'ft');
 
             // HR Chart
-            renderDetailChart('activityHrChart', charts.timestamps, charts.heart_rate, 'Heart Rate', '#f87171', 'bpm');
+            renderDetailChart('activityHrChart', elapsedSeconds, charts.heart_rate, 'Heart Rate', '#f87171', 'bpm');
 
             // Cadence Chart
-            renderDetailChart('activityCadenceChart', charts.timestamps, charts.cadence, isRunning ? 'Steps/Min' : 'RPM', '#4ade80', '');
+            renderDetailChart('activityCadenceChart', elapsedSeconds, charts.cadence, isRunning ? 'Steps/Min' : 'RPM', '#4ade80', '');
 
             // Power Chart
             if (isCycling && charts.power && charts.power.length > 0) {
-                renderPowerChart(charts.timestamps, charts.power);
+                renderPowerChart(elapsedSeconds, charts.power);
             }
 
             // Speed/Pace Chart
             if (isRunning) {
                 const paces = charts.speed.map(s => s > 0.5 ? 26.8224 / s : null);
-                renderDetailChart('activitySpeedChart', charts.timestamps, paces, 'Pace', '#38bdf8', 'min/mi', true);
+                renderDetailChart('activitySpeedChart', elapsedSeconds, paces, 'Pace', '#38bdf8', 'min/mi', true);
             } else {
                 const speeds = charts.speed.map(s => s * 2.23694);
-                renderDetailChart('activitySpeedChart', charts.timestamps, speeds, 'Speed', '#38bdf8', 'mph');
+                renderDetailChart('activitySpeedChart', elapsedSeconds, speeds, 'Speed', '#38bdf8', 'mph');
             }
         }
 
@@ -1588,7 +1726,7 @@
             chartInstances['activityPowerChart'] = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: timestamps.map(t => ''),
+                    labels: timestamps,
                     datasets: [{
                         label: 'Power',
                         data: power,
@@ -1633,10 +1771,24 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
+                        zoom: {
+                            pan: {
+                                enabled: true,
+                                mode: 'x',
+                                onPan: ({ chart }) => syncActivityCharts(chart)
+                            },
+                            zoom: {
+                                wheel: { enabled: true },
+                                pinch: { enabled: true },
+                                mode: 'x',
+                                onZoom: ({ chart }) => syncActivityCharts(chart)
+                            }
+                        },
                         legend: { display: false },
                         tooltip: {
                             callbacks: {
-                                label: (ctx) => `Power: ${Math.round(ctx.parsed.y)} W`
+                                label: (ctx) => `Power: ${Math.round(ctx.parsed.y)} W`,
+                                title: (ctx) => formatDuration(ctx[0].parsed.x)
                             }
                         }
                     },
@@ -1646,7 +1798,16 @@
                             grid: { color: 'rgba(255,255,255,0.05)' },
                             ticks: { color: '#94a3b8', callback: val => val + ' W' }
                         },
-                        x: { display: false }
+                        x: {
+                            type: 'linear',
+                            display: true,
+                            ticks: {
+                                color: '#94a3b8',
+                                maxTicksLimit: 8,
+                                callback: function (value) { return formatDuration(value); }
+                            },
+                            grid: { display: false }
+                        }
                     }
                 }
             });
@@ -1659,7 +1820,7 @@
             chartInstances[canvasId] = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: timestamps.map(t => ''),
+                    labels: timestamps,
                     datasets: [{
                         label: label,
                         data: data,
@@ -1674,14 +1835,38 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    plugins: {
+                        legend: { display: false },
+                        zoom: {
+                            pan: {
+                                enabled: true,
+                                mode: 'x',
+                                onPan: ({ chart }) => syncActivityCharts(chart)
+                            },
+                            zoom: {
+                                wheel: { enabled: true },
+                                pinch: { enabled: true },
+                                mode: 'x',
+                                onZoom: ({ chart }) => syncActivityCharts(chart)
+                            }
+                        }
+                    },
                     scales: {
                         y: {
                             reverse: reversed,
                             grid: { color: 'rgba(255,255,255,0.05)' },
                             ticks: { color: '#94a3b8', callback: val => val ? val.toFixed(1) + ' ' + unit : '' }
                         },
-                        x: { display: false }
+                        x: {
+                            type: 'linear',
+                            display: true,
+                            ticks: {
+                                color: '#94a3b8',
+                                maxTicksLimit: 8,
+                                callback: function (value) { return formatDuration(value); }
+                            },
+                            grid: { display: false }
+                        }
                     }
                 }
             });
