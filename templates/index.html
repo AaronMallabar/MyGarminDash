@@ -28,6 +28,85 @@
             style="display: none; color: #f87171; background: rgba(248, 113, 113, 0.1); padding: 1rem; border-radius: 0.5rem; margin-bottom: 2rem;">
         </div>
 
+        <!-- Activity Heatmap -->
+        <section style="margin-bottom: 3rem;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1rem;">
+                <h2>Activity Calendar</h2>
+                <div
+                    style="font-size: 0.9rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
+                    <span>Less</span>
+                    <div style="display: flex; gap: 2px;">
+                        <div style="width: 10px; height: 10px; background: rgba(255,255,255,0.05); border-radius: 2px;">
+                        </div>
+                        <div style="width: 10px; height: 10px; background: rgba(34, 197, 94, 0.3); border-radius: 2px;">
+                        </div>
+                        <div style="width: 10px; height: 10px; background: rgba(34, 197, 94, 0.6); border-radius: 2px;">
+                        </div>
+                        <div style="width: 10px; height: 10px; background: rgba(34, 197, 94, 1); border-radius: 2px;">
+                        </div>
+                    </div>
+                    <span>More</span>
+                </div>
+            </div>
+
+            <div id="heatmap-scroll-container" style="overflow-x: auto; padding-bottom: 1rem;">
+                <div id="activity-heatmap" style="display: flex; gap: 4px; min-width: max-content;">
+                    <!-- Heatmap injected via JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Detailed Calendar Widget -->
+        <section class="calendar-widget">
+            <div class="calendar-header">
+                <div class="calendar-nav">
+                    <button class="nav-btn" onclick="shiftCalendarMonth(-1)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                    </button>
+                    <div class="calendar-title" id="calendar-title">January 2026</div>
+                    <button class="nav-btn" onclick="shiftCalendarMonth(1)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 18 15 12 9 6"></polyline>
+                        </svg>
+                    </button>
+                    <button class="range-btn" onclick="resetCalendarToToday()">Today</button>
+                </div>
+                <div class="range-selector">
+                    <button class="range-btn" id="cal-view-week" onclick="setCalendarView('week')">Week</button>
+                    <button class="range-btn active" id="cal-view-month"
+                        onclick="setCalendarView('month')">Month</button>
+                    <button class="range-btn" id="cal-view-year" onclick="setCalendarView('year')">Year</button>
+                </div>
+            </div>
+
+            <div class="calendar-layout">
+                <!-- Sidebar Totals -->
+                <div class="calendar-totals" id="calendar-totals">
+                    <!-- Totals injected via JS -->
+                </div>
+
+                <!-- Calendar Grid -->
+                <div>
+                    <div class="calendar-grid" style="margin-bottom: 0;">
+                        <div class="calendar-day-header">Mon</div>
+                        <div class="calendar-day-header">Tue</div>
+                        <div class="calendar-day-header">Wed</div>
+                        <div class="calendar-day-header">Thu</div>
+                        <div class="calendar-day-header">Fri</div>
+                        <div class="calendar-day-header">Sat</div>
+                        <div class="calendar-day-header">Sun</div>
+                    </div>
+                    <div class="calendar-grid" id="calendar-grid">
+                        <!-- Days injected via JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Monthly Distance -->
         <section style="margin-bottom: 3rem;">
             <h2>Monthly Distance</h2>
@@ -597,6 +676,12 @@
 
                 // Fetch Sleep History
                 updateSleepRange('1d');
+
+                // Fetch Sleep History
+                updateSleepRange('1d');
+
+                // Fetch Activity Heatmap
+                fetchActivityHeatmap();
 
                 // Update timestamp
                 document.getElementById('last-sync').textContent = 'Synced: ' + new Date().toLocaleTimeString();
@@ -2156,9 +2241,395 @@
             });
         }
 
+        async function fetchActivityHeatmap() {
+            try {
+                const res = await fetch('/api/activity_heatmap');
+                if (res.ok) {
+                    const data = await res.json();
+                    renderActivityHeatmap(data);
+                }
+            } catch (err) {
+                console.error('Heatmap error:', err);
+            }
+        }
+
+        function renderActivityHeatmap(data) {
+            const container = document.getElementById('activity-heatmap');
+            container.innerHTML = '';
+
+            // Generate last 365 days (approx 52 weeks)
+            // Group by week for vertical layout like GitHub (cols = weeks, rows = days)
+            // But horizontal scrolling is requested? "when and how many... monthly basis"
+            // Let's do GitHub style: 7 rows (Mon-Sun), 53 columns.
+
+            const today = new Date();
+            const oneYearAgo = new Date();
+            oneYearAgo.setDate(today.getDate() - 365);
+
+            // Adjust start date to be a Monday to align the grid
+            const dayOfWeek = oneYearAgo.getDay(); // 0=Sun, 1=Mon
+            const diff = oneYearAgo.getDate() - dayOfWeek + (dayOfWeek == 0 ? -6 : 1); // Adjust to Monday
+            const startDate = new Date(oneYearAgo.setDate(diff));
+
+            const weeks = [];
+            let currentWeek = [];
+            let currentDate = new Date(startDate);
+
+            // Generate dates until we cover today + rest of week
+            while (currentDate <= today || currentDate.getDay() !== 1) {
+                const dateStr = getLocalDateStr(currentDate);
+                const count = data[dateStr] || 0;
+
+                currentWeek.push({ date: dateStr, count: count, obj: new Date(currentDate) });
+
+                if (currentDate.getDay() === 0) { // Sunday
+                    weeks.push(currentWeek);
+                    currentWeek = [];
+                }
+
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            if (currentWeek.length > 0) weeks.push(currentWeek);
+
+            // Render columns (weeks)
+            weeks.forEach(week => {
+                const col = document.createElement('div');
+                col.style.display = 'flex';
+                col.style.flexDirection = 'column';
+                col.style.gap = '4px';
+
+                week.forEach(day => {
+                    const cell = document.createElement('div');
+                    cell.style.width = '12px';
+                    cell.style.height = '12px';
+                    cell.style.borderRadius = '2px';
+
+                    // Color logic
+                    let bg = 'rgba(255,255,255,0.05)';
+                    if (day.count > 0) {
+                        if (day.count === 1) bg = 'rgba(34, 197, 94, 0.4)';
+                        else if (day.count === 2) bg = 'rgba(34, 197, 94, 0.7)';
+                        else bg = '#22c55e';
+                    }
+                    cell.style.background = bg;
+
+                    // Tooltip logic
+                    cell.title = `${parseLocalDate(day.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}: ${day.count} activities`;
+                    cell.style.cursor = 'pointer';
+
+                    col.appendChild(cell);
+                });
+
+                container.appendChild(col);
+            });
+
+            // Scroll to end (right)
+            const scrollContainer = document.getElementById('heatmap-scroll-container');
+            scrollContainer.scrollLeft = scrollContainer.scrollWidth;
+        }
+
+        // --- Detailed Calendar Logic ---
+        let calendarDate = new Date(); // Tracks the current range start/center
+        let currentCalendarView = 'month';
+
+        async function fetchCalendarData() {
+            let startStr, endStr;
+            const year = calendarDate.getFullYear();
+            const month = calendarDate.getMonth();
+
+            if (currentCalendarView === 'year') {
+                startStr = `${year}-01-01`;
+                endStr = `${year}-12-31`;
+            } else if (currentCalendarView === 'month') {
+                const first = new Date(year, month, 1);
+                const last = new Date(year, month + 1, 0);
+                const startPad = (first.getDay() + 6) % 7;
+                const endPad = 6 - ((last.getDay() + 6) % 7);
+                startStr = getLocalDateStr(new Date(year, month, 1 - startPad));
+                endStr = getLocalDateStr(new Date(year, month + 1, endPad));
+            } else { // week
+                const day = calendarDate.getDay();
+                const diff = calendarDate.getDate() - day + (day == 0 ? -6 : 1); // Monday
+                const start = new Date(calendarDate);
+                start.setDate(diff);
+                const end = new Date(start);
+                end.setDate(start.getDate() + 6);
+                startStr = getLocalDateStr(start);
+                endStr = getLocalDateStr(end);
+            }
+
+            try {
+                const res = await fetch(`/api/calendar_activities?start_date=${startStr}&end_date=${endStr}`);
+                if (res.ok) {
+                    const activities = await res.json();
+                    renderDetailedCalendar(activities, year, month);
+                }
+            } catch (e) {
+                console.error("Calendar fetch error", e);
+            }
+        }
+
+        function setCalendarView(view) {
+            currentCalendarView = view;
+            document.querySelectorAll('.calendar-widget .range-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`cal-view-${view}`).classList.add('active');
+
+            // Adjust header/grid visibility
+            const header = document.querySelector('.calendar-grid[style*="margin-bottom"]');
+            header.style.display = (view === 'year') ? 'none' : 'grid';
+
+            fetchCalendarData();
+        }
+
+        function shiftCalendarRange(dir) {
+            if (currentCalendarView === 'year') calendarDate.setFullYear(calendarDate.getFullYear() + dir);
+            else if (currentCalendarView === 'month') calendarDate.setMonth(calendarDate.getMonth() + dir);
+            else { // week
+                calendarDate.setDate(calendarDate.getDate() + (dir * 7));
+            }
+            fetchCalendarData();
+        }
+
+        function shiftCalendarMonth(dir) { shiftCalendarRange(dir); } // existing alias
+
+        function resetCalendarToToday() {
+            calendarDate = new Date();
+            fetchCalendarData();
+        }
+
+        function renderDetailedCalendar(activities, currentYear, currentMonth) {
+            const monthName = calendarDate.toLocaleString('default', { month: 'long' });
+            const titleEl = document.getElementById('calendar-title');
+
+            if (currentCalendarView === 'year') titleEl.textContent = currentYear;
+            else if (currentCalendarView === 'month') titleEl.textContent = `${monthName} ${currentYear}`;
+            else {
+                // Week range title
+                const start = new Date(calendarDate);
+                const day = calendarDate.getDay();
+                start.setDate(calendarDate.getDate() - day + (day == 0 ? -6 : 1));
+                const end = new Date(start);
+                end.setDate(start.getDate() + 6);
+                titleEl.textContent = `${start.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${end.getFullYear()}`;
+            }
+
+            const grid = document.getElementById('calendar-grid');
+            grid.className = currentCalendarView === 'year' ? 'year-view-grid' : 'calendar-grid';
+            grid.innerHTML = '';
+
+            const activitiesByDate = {};
+            activities.forEach(act => {
+                const dateStr = act.startTimeLocal.split(' ')[0];
+                if (!activitiesByDate[dateStr]) activitiesByDate[dateStr] = [];
+                activitiesByDate[dateStr].push(act);
+            });
+
+            if (currentCalendarView === 'year') {
+                renderYearView(grid, activitiesByDate, currentYear);
+            } else if (currentCalendarView === 'month') {
+                renderMonthView(grid, activitiesByDate, currentYear, currentMonth);
+            } else {
+                renderWeekView(grid, activitiesByDate);
+            }
+
+            updateCalendarTotals(activities, currentYear, currentMonth);
+        }
+
+        function renderYearView(container, data, year) {
+            for (let m = 0; m < 12; m++) {
+                const monthDiv = document.createElement('div');
+                monthDiv.className = 'small-month';
+                const mName = new Date(year, m, 1).toLocaleString('default', { month: 'short' });
+                monthDiv.innerHTML = `<div class="small-month-title">${mName}</div>`;
+
+                const mGrid = document.createElement('div');
+                mGrid.className = 'small-month-grid';
+
+                const first = new Date(year, m, 1);
+                const pad = (first.getDay() + 6) % 7;
+                for (let p = 0; p < pad; p++) mGrid.appendChild(document.createElement('div'));
+
+                const last = new Date(year, m + 1, 0).getDate();
+                for (let d = 1; d <= last; d++) {
+                    const dateStr = getLocalDateStr(new Date(year, m, d));
+                    const dayEl = document.createElement('div');
+                    dayEl.className = 'small-day';
+                    dayEl.textContent = d;
+
+                    if (data[dateStr]) {
+                        const dot = document.createElement('div');
+                        dot.className = 'day-dot';
+                        // Use first activity color
+                        const act = data[dateStr][0];
+                        const type = act.activityType.typeKey;
+                        let color = '#64748b';
+                        if (type.includes('running')) color = '#3b82f6';
+                        else if (type.includes('virtual_ride')) color = '#f59e0b';
+                        else if (type.includes('cycling') || type.includes('cycle') || type.includes('ride')) color = '#f97316';
+                        else if (type.includes('swimming')) color = '#06b6d4';
+                        dot.style.background = color;
+                        dayEl.appendChild(dot);
+                    }
+                    mGrid.appendChild(dayEl);
+                }
+                monthDiv.appendChild(mGrid);
+                container.appendChild(monthDiv);
+            }
+        }
+
+        function renderMonthView(grid, activitiesByDate, currentYear, currentMonth) {
+            const first = new Date(currentYear, currentMonth, 1);
+            const startPad = (first.getDay() + 6) % 7;
+            const startDate = new Date(currentYear, currentMonth, 1 - startPad);
+
+            for (let i = 0; i < 42; i++) {
+                const d = new Date(startDate);
+                d.setDate(d.getDate() + i);
+                const dateStr = getLocalDateStr(d);
+                const isToday = dateStr === getLocalDateStr(new Date());
+                const isOtherMonth = d.getMonth() !== currentMonth;
+
+                const cell = document.createElement('div');
+                cell.className = `calendar-cell ${isToday ? 'today' : ''} ${isOtherMonth ? 'other-month' : ''}`;
+                cell.innerHTML = `<div class="calendar-date">${d.getDate()}</div>`;
+
+                if (activitiesByDate[dateStr]) {
+                    activitiesByDate[dateStr].forEach(act => cell.appendChild(createActivityPill(act, 'short')));
+                }
+                grid.appendChild(cell);
+            }
+        }
+
+        function renderWeekView(grid, data) {
+            const start = new Date(calendarDate);
+            const day = calendarDate.getDay();
+            start.setDate(calendarDate.getDate() - day + (day == 0 ? -6 : 1));
+
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(start);
+                d.setDate(d.getDate() + i);
+                const dateStr = getLocalDateStr(d);
+
+                const cell = document.createElement('div');
+                cell.className = 'calendar-cell view-week';
+                cell.innerHTML = `<div class="calendar-date">${d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })}</div>`;
+
+                if (data[dateStr]) {
+                    data[dateStr].forEach(act => cell.appendChild(createActivityPill(act, 'long')));
+                }
+                grid.appendChild(cell);
+            }
+        }
+
+        function createActivityPill(act, mode) {
+            const pill = document.createElement('div');
+            const type = act.activityType.typeKey;
+            let colorClass = 'act-other';
+            if (type.includes('running')) colorClass = 'act-running';
+            else if (type.includes('virtual_ride')) colorClass = 'act-virtual-ride';
+            else if (type.includes('cycling') || type.includes('cycle') || type.includes('ride')) colorClass = 'act-cycling';
+            else if (type.includes('swimming')) colorClass = 'act-swimming';
+            else if (type.includes('walking')) colorClass = 'act-walking';
+            else if (type.includes('strength')) colorClass = 'act-strength';
+
+            pill.className = `activity-pill ${colorClass}`;
+            let icon = type.includes('running') ? '🏃' : type.includes('virtual') ? '⚡🚴' : type.includes('cycling') ? '🚴' : '🎯';
+
+            if (mode === 'short') {
+                let info = act.distance > 0 ? (act.distance * 0.000621371).toFixed(1) + 'mi' : Math.round(act.duration / 60) + 'm';
+                pill.innerHTML = `${icon} ${info}`;
+            } else {
+                // Long mode (Week)
+                const dist = act.distance > 0 ? (act.distance * 0.000621371).toFixed(2) + ' mi' : '';
+                const time = (act.duration / 60).toFixed(0) + 'm';
+                pill.innerHTML = `
+                    <div style="font-weight:700">${icon} ${act.activityName}</div>
+                    <div style="font-size:0.7rem; opacity:0.9">${dist} | ${time} | ${act.calories} cal</div>
+                `;
+            }
+
+            pill.title = act.activityName;
+            pill.onclick = () => alert(`${act.activityName}\n${act.distance ? (act.distance * 0.000621371).toFixed(2) + ' mi' : ''} in ${(act.duration / 60).toFixed(1)}m`);
+            return pill;
+        }
+
+        function updateCalendarTotals(activities, currentYear, currentMonth) {
+            const monthName = calendarDate.toLocaleString('default', { month: 'long' });
+            const totalsContainer = document.getElementById('calendar-totals');
+            totalsContainer.innerHTML = '';
+
+            let totals = { count: 0, distance: 0, duration: 0, calories: 0, distinctTypes: {} };
+            const isInRange = (dateStr) => {
+                if (currentCalendarView === 'year') return true; // everything fetched is in range
+                if (currentCalendarView === 'month') {
+                    const d = parseLocalDate(dateStr);
+                    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+                }
+                return true; // Week view is only 7 days anyway
+            };
+
+            activities.forEach(act => {
+                const dateStr = act.startTimeLocal.split(' ')[0];
+                if (isInRange(dateStr)) {
+                    totals.count++;
+                    totals.distance += act.distance || 0;
+                    totals.duration += act.duration || 0;
+                    totals.calories += act.calories || 0;
+                    const type = act.activityType.typeKey;
+                    if (!totals.distinctTypes[type]) totals.distinctTypes[type] = { count: 0, distance: 0, time: 0 };
+                    totals.distinctTypes[type].count++;
+                    totals.distinctTypes[type].distance += act.distance || 0;
+                    totals.distinctTypes[type].time += act.duration || 0;
+                }
+            });
+
+            const totalDistMi = (totals.distance * 0.000621371).toFixed(1);
+            const totalTimeH = Math.floor(totals.duration / 3600);
+            const totalTimeM = Math.round((totals.duration % 3600) / 60);
+
+            const summaryLabel = currentCalendarView === 'year' ? `${currentYear} Summary` : currentCalendarView === 'month' ? `${monthName} Summary` : 'Weekly Summary';
+
+            totalsContainer.innerHTML += `
+                <div class="total-card">
+                    <div class="total-type" style="font-size: 1.1rem; margin-bottom: 1rem;">${summaryLabel}</div>
+                    <div class="total-value-row"><span>Activities</span><span>${totals.count}</span></div>
+                    <div class="total-value-row"><span>Distance</span><span>${totalDistMi} mi</span></div>
+                    <div class="total-value-row"><span>Time</span><span>${totalTimeH}h ${totalTimeM}m</span></div>
+                </div>
+            `;
+
+            Object.keys(totals.distinctTypes).forEach(type => {
+                const data = totals.distinctTypes[type];
+                let name = type.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+                // Better color matching
+                let color = '#64748b'; // default
+                if (type.includes('running')) color = '#3b82f6';
+                else if (type.includes('virtual_ride')) color = '#f59e0b';
+                else if (type.includes('cycling') || type.includes('cycle') || type.includes('ride') || type.includes('biking')) color = '#f97316';
+                else if (type.includes('swimming')) color = '#06b6d4';
+                else if (type.includes('walking')) color = '#22c55e';
+                else if (type.includes('strength')) color = '#a855f7';
+
+                const distMi = (data.distance * 0.000621371).toFixed(1);
+                const timeH = Math.floor(data.time / 3600);
+                const timeM = Math.round((data.time % 3600) / 60);
+
+                totalsContainer.innerHTML += `
+                    <div class="total-card" style="border-left: 4px solid ${color};">
+                        <div class="total-type">${name}</div>
+                        <div class="total-value-row"><span>Activities</span><span>${data.count}</span></div>
+                        <div class="total-value-row"><span>Distance</span><span>${distMi} mi</span></div>
+                        <div class="total-value-row"><span>Time</span><span>${timeH}h ${timeM}m</span></div>
+                    </div>
+                `;
+            });
+        }
+
         // Initial Load
         fetchData();
         updateHydrationRange('1d');
+        fetchCalendarData(); // Add this
     </script>
 </body>
 

@@ -777,5 +777,48 @@ def add_weight():
         logger.error(f"Error adding weight: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/activity_heatmap')
+def get_activity_heatmap():
+    try:
+        client = get_garmin_client()
+        today = date.today()
+        start_date = today - timedelta(days=365)
+        
+        # Fetch last 1000 activities (should cover a year for most users)
+        activities = client.get_activities(0, 1000) 
+        
+        # Aggregate counts by date
+        # Format: { 'YYYY-MM-DD': count }
+        heatmap = {}
+        
+        for activity in activities:
+            start_local = activity.get('startTimeLocal')
+            if start_local:
+                date_str = start_local.split(' ')[0]
+                heatmap[date_str] = heatmap.get(date_str, 0) + 1
+
+        return jsonify(heatmap)
+
+    except Exception as e:
+        logger.error(f"Error fetching activity heatmap: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/calendar_activities')
+def get_calendar_activities():
+    try:
+        client = get_garmin_client()
+        start = request.args.get('start_date')
+        end = request.args.get('end_date')
+        
+        if not start or not end:
+            return jsonify({'error': 'Start and End dates required'}), 400
+            
+        activities = client.get_activities_by_date(start, end)
+        return jsonify(activities)
+
+    except Exception as e:
+        logger.error(f"Error fetching calendar activities: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
