@@ -51,7 +51,7 @@
 
         <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Daily Health</h2>
 
-        <div class="dashboard-grid-2">
+        <div class="health-grid">
 
             <!-- Steps -->
 
@@ -536,7 +536,7 @@
 
         <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Performance Goals & Trends</h2>
 
-        <div class="dashboard-grid-2">
+        <div class="dashboard-grid-1">
 
             <!-- Monthly Goals -->
 
@@ -795,46 +795,29 @@
 
             </div>
 
-            <div class="calendar-layout">
-
-                <!-- Sidebar Totals -->
-
-                <div class="calendar-totals" id="calendar-totals">
-
-                    <!-- Totals injected via JS -->
-
-                </div>
-
-                <!-- Calendar Grid -->
-
-                <div>
-
-                    <div class="calendar-grid" style="margin-bottom: 0;">
-
-                        <div class="calendar-day-header">Mon</div>
-
-                        <div class="calendar-day-header">Tue</div>
-
-                        <div class="calendar-day-header">Wed</div>
-
-                        <div class="calendar-day-header">Thu</div>
-
-                        <div class="calendar-day-header">Fri</div>
-
-                        <div class="calendar-day-header">Sat</div>
-
-                        <div class="calendar-day-header">Sun</div>
-
+            <div class="calendar-grid-wrapper">
+                <div class="calendar-layout">
+                    <!-- Sidebar Totals -->
+                    <div class="calendar-totals" id="calendar-totals">
+                        <!-- Totals injected via JS -->
                     </div>
 
-                    <div class="calendar-grid" id="calendar-grid">
-
-                        <!-- Days injected via JS -->
-
+                    <!-- Calendar Grid -->
+                    <div>
+                        <div class="calendar-grid" style="margin-bottom: 0;">
+                            <div class="calendar-day-header">Mon</div>
+                            <div class="calendar-day-header">Tue</div>
+                            <div class="calendar-day-header">Wed</div>
+                            <div class="calendar-day-header">Thu</div>
+                            <div class="calendar-day-header">Fri</div>
+                            <div class="calendar-day-header">Sat</div>
+                            <div class="calendar-day-header">Sun</div>
+                        </div>
+                        <div class="calendar-grid" id="calendar-grid">
+                            <!-- Days injected via JS -->
+                        </div>
                     </div>
-
                 </div>
-
             </div>
 
         </section>
@@ -1244,6 +1227,10 @@
 
         // --- Historical & Chart Functions ---
 
+        function resetChartZoom(id) {
+            if (chartInstances[id]) chartInstances[id].resetZoom();
+        }
+
         function renderYTDChart(canvasId, labels, data) {
             const canvas = document.getElementById(canvasId);
             if (!canvas) return;
@@ -1284,6 +1271,7 @@
                 btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
             }
+            updateNavButtons('weight', currentWeightEndDate);
             try {
                 const res = await fetch(`/api/weight_history?range=${currentWeightRange}&end_date=${getLocalDateStr(currentWeightEndDate)}`);
                 if (res.ok) {
@@ -1311,7 +1299,11 @@
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Weight: ${ctx.parsed.y.toFixed(1)} lbs` } } },
+                    plugins: {
+                        zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } },
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (ctx) => `Weight: ${ctx.parsed.y.toFixed(1)} lbs` } }
+                    },
                     scales: {
                         x: { type: 'time', time: { unit: 'month' }, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
                         y: { min, max, ticks: { color: '#94a3b8', callback: v => v + ' lbs' }, grid: { color: 'rgba(255,255,255,0.1)' } }
@@ -1328,6 +1320,7 @@
                 btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
             }
+            updateNavButtons('steps', currentStepsEndDate);
             try {
                 const res = await fetch(`/api/steps_history?range=${currentStepsRange}&end_date=${getLocalDateStr(currentStepsEndDate)}`);
                 if (res.ok) {
@@ -1368,7 +1361,11 @@
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
-                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Steps: ${ctx.parsed.y.toLocaleString()}` } } },
+                        plugins: {
+                            zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } },
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: (ctx) => `Steps: ${ctx.parsed.y.toLocaleString()}` } }
+                        },
                         scales: {
                             x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 7 } },
                             y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
@@ -1386,6 +1383,7 @@
                 btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
             }
+            updateNavButtons('hr', currentHREndDate);
             try {
                 const res = await fetch(`/api/hr_history?range=${currentHRRange}&end_date=${getLocalDateStr(currentHREndDate)}`);
                 if (res.ok) {
@@ -1471,6 +1469,7 @@
                 btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
             }
+            updateNavButtons('stress', currentStressEndDate);
             try {
                 const res = await fetch(`/api/stress_history?range=${currentStressRange}&end_date=${getLocalDateStr(currentStressEndDate)}`);
                 if (res.ok) {
@@ -1552,6 +1551,7 @@
                 btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
             }
+            updateNavButtons('sleep', currentSleepEndDate);
             try {
                 const res = await fetch(`/api/sleep_history?range=${currentSleepRange}&end_date=${getLocalDateStr(currentSleepEndDate)}`);
                 if (res.ok) {
@@ -1617,6 +1617,7 @@
             const hChartCanvas = document.getElementById('hydrationHistoryChart');
             if (donut) donut.style.display = currentHydrationRange === '1d' ? 'block' : 'none';
             if (hChartCanvas) hChartCanvas.style.display = currentHydrationRange === '1d' ? 'none' : 'block';
+            updateNavButtons('hydration', currentHydrationEndDate);
             await renderHydrationVisual();
         }
 
@@ -1640,17 +1641,75 @@
                         chartInstances['hydrationHistoryChart'] = new Chart(ctx, {
                             type: 'bar',
                             data: { labels: data.history.map(d => parseLocalDate(d.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })), datasets: [{ label: 'oz', data: data.history.map(d => parseFloat(oz(d.intake))), backgroundColor: data.history.map(d => d.intake >= d.goal ? '#22c55e' : '#38bdf8'), borderRadius: 6 }] },
-                            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } }, x: { grid: { display: false } } } }
+                            options: {
+                                responsive: true, maintainAspectRatio: false,
+                                plugins: {
+                                    zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } },
+                                    legend: { display: false }
+                                },
+                                scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } }, x: { grid: { display: false } } }
+                            }
                         });
                     }
                 }
             } catch (err) { console.error('Hydration error:', err); }
         }
 
+        function updateNavButtons(metric, endDate) {
+            const nextBtn = document.getElementById(`${metric}-next`);
+            if (nextBtn) {
+                const todayStr = getLocalDateStr(new Date());
+                const endStr = getLocalDateStr(endDate);
+                nextBtn.disabled = (endStr >= todayStr);
+            }
+        }
+
+        function shiftStepsDate(dir) {
+            const shift = currentStepsRange === '1d' ? 1 : (currentStepsRange === '1w' ? 7 : (currentStepsRange === '1m' ? 30 : 365));
+            currentStepsEndDate.setDate(currentStepsEndDate.getDate() + (dir * shift));
+            if (currentStepsEndDate > new Date()) currentStepsEndDate = new Date();
+            updateNavButtons('steps', currentStepsEndDate);
+            updateStepsRange();
+        }
+
+        function shiftSleepDate(dir) {
+            const shift = currentSleepRange === '1d' ? 1 : (currentSleepRange === '1w' ? 7 : (currentSleepRange === '1m' ? 30 : 365));
+            currentSleepEndDate.setDate(currentSleepEndDate.getDate() + (dir * shift));
+            if (currentSleepEndDate > new Date()) currentSleepEndDate = new Date();
+            updateNavButtons('sleep', currentSleepEndDate);
+            updateSleepRange();
+        }
+
         function shiftHydrationDate(dir) {
-            currentHydrationEndDate.setDate(currentHydrationEndDate.getDate() + (dir * (currentHydrationRange === '1d' ? 1 : 7)));
+            const shift = currentHydrationRange === '1d' ? 1 : (currentHydrationRange === '1w' ? 7 : (currentHydrationRange === '1m' ? 30 : 365));
+            currentHydrationEndDate.setDate(currentHydrationEndDate.getDate() + (dir * shift));
             if (currentHydrationEndDate > new Date()) currentHydrationEndDate = new Date();
+            updateNavButtons('hydration', currentHydrationEndDate);
             renderHydrationVisual();
+        }
+
+        function shiftHRDate(dir) {
+            const shift = currentHRRange === '1d' ? 1 : (currentHRRange === '1w' ? 7 : (currentHRRange === '1m' ? 30 : 365));
+            currentHREndDate.setDate(currentHREndDate.getDate() + (dir * shift));
+            if (currentHREndDate > new Date()) currentHREndDate = new Date();
+            updateNavButtons('hr', currentHREndDate);
+            updateHRRange();
+        }
+
+        function shiftStressDate(dir) {
+            const shift = currentStressRange === '1d' ? 1 : (currentStressRange === '1w' ? 7 : (currentStressRange === '1m' ? 30 : 365));
+            currentStressEndDate.setDate(currentStressEndDate.getDate() + (dir * shift));
+            if (currentStressEndDate > new Date()) currentStressEndDate = new Date();
+            updateNavButtons('stress', currentStressEndDate);
+            updateStressRange();
+        }
+
+        function shiftWeightDate(dir) {
+            const shift = currentWeightRange === '1m' ? 30 : (currentWeightRange === '6m' ? 180 : 365);
+            currentWeightEndDate.setDate(currentWeightEndDate.getDate() + (dir * shift));
+            if (currentWeightEndDate > new Date()) currentWeightEndDate = new Date();
+            updateNavButtons('weight', currentWeightEndDate);
+            updateWeightRange();
         }
 
         // --- Activity Modal & Detail Charts ---
