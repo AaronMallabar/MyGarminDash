@@ -6,6 +6,30 @@
 // Global chart instances
 const chartInstances = {};
 
+// Client-side cache for chart data
+const chartDataCache = {
+    steps: {},
+    hr: {},
+    stress: {},
+    sleep: {},
+    weight: {},
+    hydration: {}
+};
+
+function getCacheKey(range, endDate) {
+    return `${range}_${getLocalDateStr(endDate)}`;
+}
+
+function getCachedData(metric, range, endDate) {
+    const key = getCacheKey(range, endDate);
+    return chartDataCache[metric][key];
+}
+
+function setCachedData(metric, range, endDate, data) {
+    const key = getCacheKey(range, endDate);
+    chartDataCache[metric][key] = data;
+}
+
 // Disable animations for performance on large datasets (1yr history)
 Chart.defaults.animation = false;
 Chart.defaults.font.family = "'Inter', sans-serif"; // Optional but keeps it consistent
@@ -51,15 +75,27 @@ async function updateWeightRange(range, btn) {
         btn.classList.add('active');
     }
     try {
-        // Check cache for 1y
+        // Check cache first
+        const cached = getCachedData('weight', currentWeightRange, currentWeightEndDate);
+        if (cached) {
+            renderWeightChart(cached, currentWeightRange);
+            return;
+        }
+
+        // Check preloaded data for 1y
         if (currentWeightRange === '1y' && isDateToday(currentWeightEndDate) && window.preloadedData['weight']) {
+            setCachedData('weight', currentWeightRange, currentWeightEndDate, window.preloadedData['weight']);
             renderWeightChart(window.preloadedData['weight'], currentWeightRange);
             return;
         }
+
         const res = await fetch(`/api/weight_history?range=${currentWeightRange}&end_date=${getLocalDateStr(currentWeightEndDate)}`);
         if (res.ok) {
             const data = await res.json();
-            if (!data.error) renderWeightChart(data, currentWeightRange);
+            if (!data.error) {
+                setCachedData('weight', currentWeightRange, currentWeightEndDate, data);
+                renderWeightChart(data, currentWeightRange);
+            }
         }
     } catch (err) { console.error('Weight history error:', err); }
 }
@@ -101,15 +137,27 @@ async function updateStepsRange(range, btn) {
         btn.classList.add('active');
     }
     try {
-        // Check cache for 1y
+        // Check cache first
+        const cached = getCachedData('steps', currentStepsRange, currentStepsEndDate);
+        if (cached) {
+            renderStepsVisual(cached);
+            return;
+        }
+
+        // Check preloaded data for 1y
         if (currentStepsRange === '1y' && isDateToday(currentStepsEndDate) && window.preloadedData['steps']) {
+            setCachedData('steps', currentStepsRange, currentStepsEndDate, window.preloadedData['steps']);
             renderStepsVisual(window.preloadedData['steps']);
             return;
         }
+
         const res = await fetch(`/api/steps_history?range=${currentStepsRange}&end_date=${getLocalDateStr(currentStepsEndDate)}`);
         if (res.ok) {
             const data = await res.json();
-            if (!data.error) renderStepsVisual(data);
+            if (!data.error) {
+                setCachedData('steps', currentStepsRange, currentStepsEndDate, data);
+                renderStepsVisual(data);
+            }
         }
     } catch (err) { console.error('Steps history error:', err); }
 }
@@ -171,16 +219,28 @@ async function updateHRRange(range, btn) {
         btn.classList.add('active');
     }
     try {
-        // Check cache for 1y
+        // Check cache first
+        const cached = getCachedData('hr', currentHRRange, currentHREndDate);
+        if (cached) {
+            renderHRVisual(cached);
+            return;
+        }
+
+        // Check preloaded data for 1y
         if (currentHRRange === '1y' && isDateToday(currentHREndDate) && window.preloadedData['hr']) {
             console.log('Cache Hit: HR 1y');
+            setCachedData('hr', currentHRRange, currentHREndDate, window.preloadedData['hr']);
             renderHRVisual(window.preloadedData['hr']);
             return;
         }
+
         const res = await fetch(`/api/hr_history?range=${currentHRRange}&end_date=${getLocalDateStr(currentHREndDate)}`);
         if (res.ok) {
             const data = await res.json();
-            if (!data.error) renderHRVisual(data);
+            if (!data.error) {
+                setCachedData('hr', currentHRRange, currentHREndDate, data);
+                renderHRVisual(data);
+            }
         }
     } catch (err) { console.error('HR history error:', err); }
 }
@@ -275,16 +335,28 @@ async function updateStressRange(range, btn) {
         btn.classList.add('active');
     }
     try {
-        // Check cache for 1y
+        // Check cache first
+        const cached = getCachedData('stress', currentStressRange, currentStressEndDate);
+        if (cached) {
+            renderStressVisual(cached);
+            return;
+        }
+
+        // Check preloaded data for 1y
         if (currentStressRange === '1y' && isDateToday(currentStressEndDate) && window.preloadedData['stress']) {
             console.log('Cache Hit: Stress 1y');
+            setCachedData('stress', currentStressRange, currentStressEndDate, window.preloadedData['stress']);
             renderStressVisual(window.preloadedData['stress']);
             return;
         }
+
         const res = await fetch(`/api/stress_history?range=${currentStressRange}&end_date=${getLocalDateStr(currentStressEndDate)}`);
         if (res.ok) {
             const data = await res.json();
-            if (!data.error) renderStressVisual(data);
+            if (!data.error) {
+                setCachedData('stress', currentStressRange, currentStressEndDate, data);
+                renderStressVisual(data);
+            }
         }
     } catch (err) { console.error('Stress history error:', err); }
 }
@@ -374,15 +446,27 @@ async function updateSleepRange(range, btn) {
         btn.classList.add('active');
     }
     try {
-        // Check cache for 1y
+        // Check cache first
+        const cached = getCachedData('sleep', currentSleepRange, currentSleepEndDate);
+        if (cached) {
+            renderSleepVisual(cached);
+            return;
+        }
+
+        // Check preloaded data for 1y
         if (currentSleepRange === '1y' && isDateToday(currentSleepEndDate) && window.preloadedData['sleep']) {
+            setCachedData('sleep', currentSleepRange, currentSleepEndDate, window.preloadedData['sleep']);
             renderSleepVisual(window.preloadedData['sleep']);
             return;
         }
+
         const res = await fetch(`/api/sleep_history?range=${currentSleepRange}&end_date=${getLocalDateStr(currentSleepEndDate)}`);
         if (res.ok) {
             const data = await res.json();
-            if (!data.error) renderSleepVisual(data);
+            if (!data.error) {
+                setCachedData('sleep', currentSleepRange, currentSleepEndDate, data);
+                renderSleepVisual(data);
+            }
         }
     } catch (err) { console.error('Sleep history error:', err); }
 }
@@ -461,8 +545,43 @@ async function updateHydrationRange(range, btn) {
 
 async function renderHydrationVisual() {
     try {
-        // Check cache for 1y
+        // Check cache first
+        const cached = getCachedData('hydration', currentHydrationRange, currentHydrationEndDate);
+        if (cached) {
+            const oz = (ml) => (ml * 0.033814).toFixed(1);
+            if (currentHydrationRange === '1d') {
+                const p = Math.min(100, Math.round((cached.summary.intake / cached.summary.goal) * 100));
+                safeSetText('hydration-val', oz(cached.summary.intake) + ' oz');
+                safeSetText('hydration-goal', 'Goal: ' + oz(cached.summary.goal) + ' oz');
+                safeSetText('hydration-percent', p + '%');
+                const hChart = document.getElementById('hydration-chart');
+                if (hChart) hChart.style.background = `conic-gradient(${p >= 100 ? '#22c55e' : '#38bdf8'} ${p}%, rgba(255,255,255,0.05) ${p}% 100%)`;
+            } else {
+                const ctx = document.getElementById('hydrationHistoryChart').getContext('2d');
+                if (chartInstances['hydrationHistoryChart']) chartInstances['hydrationHistoryChart'].destroy();
+                const fastLabels = cached.history.map(d => {
+                    const parts = d.date.split('-');
+                    return parts[1] + '/' + parts[2];
+                });
+                chartInstances['hydrationHistoryChart'] = new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: fastLabels, datasets: [{ label: 'oz', data: cached.history.map(d => parseFloat(oz(d.intake))), backgroundColor: cached.history.map(d => d.intake >= d.goal ? '#22c55e' : '#38bdf8'), borderRadius: cached.history.length > 100 ? 0 : 6, barPercentage: cached.history.length > 100 ? 1.0 : (cached.history.length > 30 ? 0.8 : 0.6) }] },
+                    options: {
+                        animation: false,
+                        responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
+                            x: { grid: { display: false }, ticks: { maxTicksLimit: 12 } }
+                        }
+                    }
+                });
+            }
+            return;
+        }
+
+        // Check preloaded data for 1y
         if (currentHydrationRange === '1y' && isDateToday(currentHydrationEndDate) && window.preloadedData['hydration']) {
+            setCachedData('hydration', currentHydrationRange, currentHydrationEndDate, window.preloadedData['hydration']);
             const data = window.preloadedData['hydration'];
             const oz = (ml) => (ml * 0.033814).toFixed(1);
             const ctx = document.getElementById('hydrationHistoryChart').getContext('2d');
@@ -478,6 +597,10 @@ async function renderHydrationVisual() {
         if (res.ok) {
             const data = await res.json();
             if (data.error) return;
+
+            // Cache the fetched data
+            setCachedData('hydration', currentHydrationRange, currentHydrationEndDate, data);
+
             const oz = (ml) => (ml * 0.033814).toFixed(1);
             if (currentHydrationRange === '1d') {
                 const p = Math.min(100, Math.round((data.summary.intake / data.summary.goal) * 100));

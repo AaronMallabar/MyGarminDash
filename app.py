@@ -394,7 +394,7 @@ def get_hr_history():
                 return None
 
             # Use more threads for 1y to blast through it
-            workers = 20 if range_val == '1y' else 10
+            workers = 40 if range_val == '1y' else 30
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 results = list(executor.map(fetch_day, dates_to_fetch))
             
