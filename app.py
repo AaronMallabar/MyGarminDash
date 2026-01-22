@@ -653,6 +653,8 @@ def get_activity_details(activity_id):
     try:
         client = get_garmin_client()
         details = client.get_activity_details(activity_id)
+        # Also get general activity info which contains summaryDTO
+        activity_info = client.get_activity(activity_id)
         
         # Extract metrics and descriptors
         descriptors = details.get('metricDescriptors', [])
@@ -711,7 +713,10 @@ def get_activity_details(activity_id):
                     charts['distance'].append(row[key_map['sumDistance']])
 
         # Summary stats from DTO
-        summary = details.get('summaryDTO', {})
+        summary = details.get('summaryDTO')
+        if not summary or not isinstance(summary, dict) or len(summary) < 5:
+            # If summary in details is missing or small, try the main activity info
+            summary = activity_info.get('summaryDTO', summary or {})
         avg_speed = summary.get('averageSpeed') # m/s
         avg_pace_str = "--"
         if avg_speed and avg_speed > 0.1:

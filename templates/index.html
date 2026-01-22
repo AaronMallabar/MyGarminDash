@@ -15,13 +15,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
-
         rel="stylesheet">
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
     <script
-
         src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
@@ -45,7 +43,6 @@
         </header>
 
         <div id="error-message"
-
             style="display: none; color: #f87171; background: rgba(248, 113, 113, 0.1); padding: 1rem; border-radius: 0.5rem; margin-bottom: 2rem;">
 
         </div>
@@ -69,7 +66,6 @@
                         <div style="display: flex; align-items: baseline; gap: 0.5rem;">
 
                             <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-
                                     id="steps">--</span></div>
 
                             <div class="metric-unit" id="steps-goal-text" style="font-size: 0.8rem;">/ 10k</div>
@@ -83,7 +79,6 @@
                         <div style="font-size: 0.7rem; color: var(--text-secondary);">Streak</div>
 
                         <div style="font-size: 1.2rem; font-weight: 700; color: var(--success-color);"><span
-
                                 id="steps-streak">--</span></div>
 
                     </div>
@@ -95,19 +90,15 @@
                     <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
 
                         <button class="range-btn" onclick="updateStepsRange('1d', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
 
                         <button class="range-btn active" onclick="updateStepsRange('1w', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
 
                         <button class="range-btn" onclick="updateStepsRange('1m', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
 
                         <button class="range-btn" onclick="updateStepsRange('1y', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
 
                     </div>
@@ -115,9 +106,7 @@
                     <div style="flex-grow:1"></div>
 
                     <button class="nav-btn" id="steps-prev" onclick="shiftStepsDate(-1)"
-
                         style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-
                             fill="none">
 
                             <polyline points="15 18 9 12 15 6"></polyline>
@@ -125,9 +114,7 @@
                         </svg></button>
 
                     <button class="nav-btn" id="steps-next" onclick="shiftStepsDate(1)" disabled
-
                         style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-
                             fill="none">
 
                             <polyline points="9 18 15 12 9 6"></polyline>
@@ -137,19 +124,16 @@
                 </div>
 
                 <div id="steps-visual-container" class="chart-container"
-
                     style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
 
                     <canvas id="stepsHistoryChart"></canvas>
 
                     <div id="steps-donut-container"
-
                         style="display: none; width: 100%; height: 100%; position: relative;">
 
                         <!-- Donut logic kept, just resized via CSS or inline -->
 
                         <div class="donut-chart" id="steps-day-chart"
-
                             style="width: 140px; height: 140px; margin: 0 auto;">
 
                             <div class="donut-inner" style="width: 110px; height: 110px;">
@@ -179,7 +163,6 @@
                         <div style="display: flex; align-items: baseline; gap: 0.5rem;">
 
                             <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-
                                     id="sleep">--</span><span class="metric-unit">h</span></div>
 
                             <div class="metric-unit">Score: <span id="sleep-score-val">--</span></div>
@@ -195,19 +178,15 @@
                     <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
 
                         <button class="range-btn active" onclick="updateSleepRange('1d', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
 
                         <button class="range-btn" onclick="updateSleepRange('1w', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
 
                         <button class="range-btn" onclick="updateSleepRange('1m', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
 
                         <button class="range-btn" onclick="updateSleepRange('1y', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
 
                     </div>
@@ -215,9 +194,7 @@
                     <div style="flex-grow:1"></div>
 
                     <button class="nav-btn" id="sleep-prev" onclick="shiftSleepDate(-1)"
-
                         style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-
                             fill="none">
 
                             <polyline points="15 18 9 12 15 6"></polyline>
@@ -225,9 +202,7 @@
                         </svg></button>
 
                     <button class="nav-btn" id="sleep-next" onclick="shiftSleepDate(1)" disabled
-
                         style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-
                             fill="none">
 
                             <polyline points="9 18 15 12 9 6"></polyline>
@@ -237,7 +212,6 @@
                 </div>
 
                 <div id="sleep-visual-container" class="chart-container"
-
                     style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
 
                     <canvas id="sleepHistoryChart"></canvas>
@@ -259,7 +233,6 @@
                         <div style="display: flex; align-items: baseline; gap: 0.5rem;">
 
                             <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-
                                     id="hydration-val">--</span></div>
 
                             <div class="metric-unit">oz</div>
@@ -283,19 +256,15 @@
                     <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
 
                         <button class="range-btn active" onclick="updateHydrationRange('1d', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
 
                         <button class="range-btn" onclick="updateHydrationRange('1w', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
 
                         <button class="range-btn" onclick="updateHydrationRange('1m', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
 
                         <button class="range-btn" onclick="updateHydrationRange('1y', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
 
                     </div>
@@ -303,9 +272,7 @@
                     <div style="flex-grow:1"></div>
 
                     <button class="nav-btn" id="hydration-prev" onclick="shiftHydrationDate(-1)"
-
                         style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-
                             fill="none">
 
                             <polyline points="15 18 9 12 15 6"></polyline>
@@ -313,9 +280,7 @@
                         </svg></button>
 
                     <button class="nav-btn" id="hydration-next" onclick="shiftHydrationDate(1)" disabled
-
                         style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-
                             fill="none">
 
                             <polyline points="9 18 15 12 9 6"></polyline>
@@ -325,17 +290,14 @@
                 </div>
 
                 <div id="hydration-visual-container" class="chart-container"
-
                     style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
 
                     <canvas id="hydrationHistoryChart"></canvas>
 
                     <div id="hydration-donut-container"
-
                         style="display: none; width: 100%; height: 100%; position: relative;">
 
                         <div class="donut-chart" id="hydration-chart"
-
                             style="width: 140px; height: 140px; margin: 0 auto;">
 
                             <div class="donut-inner" style="width: 110px; height: 110px;">
@@ -365,7 +327,6 @@
                         <div style="display: flex; align-items: baseline; gap: 0.5rem;">
 
                             <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-
                                     id="rhr">--</span></div>
 
                             <div class="metric-unit">RHR</div>
@@ -379,7 +340,6 @@
                         <div style="font-size: 0.7rem; color: var(--text-secondary);">Max</div>
 
                         <div style="font-size: 1.2rem; font-weight: 700; color: var(--danger-color);"><span
-
                                 id="hr-max-val">--</span></div>
 
                     </div>
@@ -391,19 +351,15 @@
                     <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
 
                         <button class="range-btn active" onclick="updateHRRange('1d', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
 
                         <button class="range-btn" onclick="updateHRRange('1w', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
 
                         <button class="range-btn" onclick="updateHRRange('1m', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
 
                         <button class="range-btn" onclick="updateHRRange('1y', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
 
                     </div>
@@ -411,7 +367,6 @@
                     <div style="flex-grow:1"></div>
 
                     <button class="nav-btn" id="hr-prev" onclick="shiftHRDate(-1)" style="width:24px; height:24px;"><svg
-
                             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
 
                             <polyline points="15 18 9 12 15 6"></polyline>
@@ -419,9 +374,7 @@
                         </svg></button>
 
                     <button class="nav-btn" id="hr-next" onclick="shiftHRDate(1)" disabled
-
                         style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-
                             fill="none">
 
                             <polyline points="9 18 15 12 9 6"></polyline>
@@ -431,7 +384,6 @@
                 </div>
 
                 <div id="hr-visual-container" class="chart-container"
-
                     style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
 
                     <canvas id="hrHistoryChart"></canvas>
@@ -453,7 +405,6 @@
                         <div style="display: flex; align-items: baseline; gap: 0.5rem;">
 
                             <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-
                                     id="stress">--</span></div>
 
                             <div class="metric-unit">Avg</div>
@@ -469,19 +420,15 @@
                     <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
 
                         <button class="range-btn active" onclick="updateStressRange('1d', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
 
                         <button class="range-btn" onclick="updateStressRange('1w', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
 
                         <button class="range-btn" onclick="updateStressRange('1m', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
 
                         <button class="range-btn" onclick="updateStressRange('1y', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
 
                     </div>
@@ -489,9 +436,7 @@
                     <div style="flex-grow:1"></div>
 
                     <button class="nav-btn" id="stress-prev" onclick="shiftStressDate(-1)"
-
                         style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-
                             fill="none">
 
                             <polyline points="15 18 9 12 15 6"></polyline>
@@ -499,9 +444,7 @@
                         </svg></button>
 
                     <button class="nav-btn" id="stress-next" onclick="shiftStressDate(1)" disabled
-
                         style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-
                             fill="none">
 
                             <polyline points="9 18 15 12 9 6"></polyline>
@@ -531,7 +474,6 @@
                         <div style="display: flex; align-items: baseline; gap: 0.5rem;">
 
                             <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-
                                     id="weight">--</span></div>
 
                             <div class="metric-unit">lbs</div>
@@ -541,7 +483,6 @@
                     </div>
 
                     <button class="range-btn" onclick="openWeightModal()"
-
                         style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">+ Log</button>
 
                 </div>
@@ -551,15 +492,12 @@
                     <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
 
                         <button class="range-btn active" onclick="updateWeightRange('1m', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
 
                         <button class="range-btn" onclick="updateWeightRange('6m', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">6m</button>
 
                         <button class="range-btn" onclick="updateWeightRange('1y', this)"
-
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
 
                     </div>
@@ -567,9 +505,7 @@
                     <div style="flex-grow:1"></div>
 
                     <button class="nav-btn" id="weight-prev" onclick="shiftWeightDate(-1)"
-
                         style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-
                             fill="none">
 
                             <polyline points="15 18 9 12 15 6"></polyline>
@@ -577,9 +513,7 @@
                         </svg></button>
 
                     <button class="nav-btn" id="weight-next" onclick="shiftWeightDate(1)" disabled
-
                         style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-
                             fill="none">
 
                             <polyline points="9 18 15 12 9 6"></polyline>
@@ -617,7 +551,6 @@
                         <div style="font-size: 0.9rem; margin-bottom: 0.5rem;">Run</div>
 
                         <div class="donut-chart" id="month-run-chart"
-
                             style="width: 100px; height: 100px; margin: 0 auto 0.5rem auto;">
 
                             <div class="donut-inner" style="width: 80px; height: 80px;">
@@ -631,7 +564,6 @@
                         <div id="month-run" style="font-size: 1rem; font-weight: 600; margin-bottom: 0.2rem;">--</div>
 
                         <div style="font-size: 0.8rem; color: var(--text-secondary);">Goal: <span
-
                                 id="month-run-goal">20</span></div>
 
                     </div>
@@ -641,13 +573,11 @@
                         <div style="font-size: 0.9rem; margin-bottom: 0.5rem;">Cycle</div>
 
                         <div class="donut-chart" id="month-cycle-chart"
-
                             style="width: 100px; height: 100px; margin: 0 auto 0.5rem auto;">
 
                             <div class="donut-inner" style="width: 80px; height: 80px;">
 
                                 <span class="donut-percent" id="month-cycle-percent"
-
                                     style="font-size: 1.2rem;">0%</span>
 
                             </div>
@@ -657,7 +587,6 @@
                         <div id="month-cycle" style="font-size: 1rem; font-weight: 600; margin-bottom: 0.2rem;">--</div>
 
                         <div style="font-size: 0.8rem; color: var(--text-secondary);">Goal: <span
-
                                 id="month-cycle-goal">200</span></div>
 
                     </div>
@@ -679,7 +608,6 @@
                         <div style="font-size: 0.9rem; margin-bottom: 0.5rem;">Run</div>
 
                         <div class="donut-chart" id="year-run-chart"
-
                             style="width: 100px; height: 100px; margin: 0 auto 0.5rem auto;">
 
                             <div class="donut-inner" style="width: 80px; height: 80px;">
@@ -693,7 +621,6 @@
                         <div id="year-run" style="font-size: 1rem; font-weight: 600; margin-bottom: 0.2rem;">--</div>
 
                         <div style="font-size: 0.8rem; color: var(--text-secondary);">Goal: <span
-
                                 id="year-run-goal">600</span></div>
 
                     </div>
@@ -703,7 +630,6 @@
                         <div style="font-size: 0.9rem; margin-bottom: 0.5rem;">Cycle</div>
 
                         <div class="donut-chart" id="year-cycle-chart"
-
                             style="width: 100px; height: 100px; margin: 0 auto 0.5rem auto;">
 
                             <div class="donut-inner" style="width: 80px; height: 80px;">
@@ -717,7 +643,6 @@
                         <div id="year-cycle" style="font-size: 1rem; font-weight: 600; margin-bottom: 0.2rem;">--</div>
 
                         <div style="font-size: 0.8rem; color: var(--text-secondary);">Goal: <span
-
                                 id="year-cycle-goal">2400</span></div>
 
                     </div>
@@ -735,7 +660,6 @@
                     <h2 style="font-size: 1rem; margin-bottom: 0;">YTD Cycling Trend</h2>
 
                     <button class="range-btn" onclick="resetChartZoom('ytdCyclingChart')"
-
                         style="padding: 0.2rem 0.5rem; font-size: 0.7rem;">Reset</button>
 
                 </div>
@@ -757,7 +681,6 @@
                     <h2 style="font-size: 1rem; margin-bottom: 0;">YTD Running Trend</h2>
 
                     <button class="range-btn" onclick="resetChartZoom('ytdRunningChart')"
-
                         style="padding: 0.2rem 0.5rem; font-size: 0.7rem;">Reset</button>
 
                 </div>
@@ -781,7 +704,6 @@
                 <h2>Activity Calendar</h2>
 
                 <div
-
                     style="font-size: 0.9rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
 
                     <span>Less</span>
@@ -835,7 +757,6 @@
                     <button class="nav-btn" onclick="shiftCalendarMonth(-1)">
 
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-
                             stroke-linecap="round" stroke-linejoin="round">
 
                             <polyline points="15 18 9 12 15 6"></polyline>
@@ -849,7 +770,6 @@
                     <button class="nav-btn" onclick="shiftCalendarMonth(1)">
 
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-
                             stroke-linecap="round" stroke-linejoin="round">
 
                             <polyline points="9 18 15 12 9 6"></polyline>
@@ -867,7 +787,6 @@
                     <button class="range-btn" id="cal-view-week" onclick="setCalendarView('week')">Week</button>
 
                     <button class="range-btn active" id="cal-view-month"
-
                         onclick="setCalendarView('month')">Month</button>
 
                     <button class="range-btn" id="cal-view-year" onclick="setCalendarView('year')">Year</button>
@@ -946,7 +865,7 @@
 
         <div class="modal-content">
 
-            <button class="modal-close" onclick="closeModal()">Ã—</button>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
 
             <h2 id="modal-title">Activity Details</h2>
 
@@ -1090,14 +1009,13 @@
 
         <div class="modal-content" style="max-width: 400px; text-align: center;">
 
-            <button class="modal-close" onclick="closeWeightModal()">Ã—</button>
+            <button class="modal-close" onclick="closeWeightModal()">&times;</button>
 
             <h2 style="margin-bottom: 2rem;">Log Weight</h2>
 
             <div style="margin-bottom: 2rem;">
 
                 <input type="number" id="weight-input" step="0.1" placeholder="Enter weight"
-
                     style="width: 100%; padding: 1rem; border-radius: 0.5rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: white; font-size: 1.5rem; text-align: center; margin-bottom: 1rem;">
 
                 <div style="display: flex; justify-content: center; gap: 2rem;">
@@ -1123,7 +1041,6 @@
             </div>
 
             <button class="range-btn active" style="padding: 0.8rem 2rem; width: 100%; font-size: 1.1rem;"
-
                 onclick="submitWeight()">Save Weight</button>
 
         </div>
@@ -1187,7 +1104,7 @@
                         const cycleGoalEl = document.getElementById('month-cycle-goal');
                         const yearRunGoalEl = document.getElementById('year-run-goal');
                         const yearCycleGoalEl = document.getElementById('year-cycle-goal');
-                        
+
                         if (runGoalEl) runGoalEl.innerHTML = formatDualDistance(goalsConfig.monthly.running);
                         if (cycleGoalEl) cycleGoalEl.innerHTML = formatDualDistance(goalsConfig.monthly.cycling);
                         if (yearRunGoalEl) yearRunGoalEl.innerHTML = formatDualDistance(goalsConfig.yearly.running);
@@ -1290,7 +1207,7 @@
 
         function getActivityIcon(type) {
             if (type.includes('running')) return '🏃';
-            if (type.includes('cycling')) return '🚴';
+            if (type.includes('cycling') || type.includes('ride')) return '🚴';
             if (type.includes('swimming')) return '🏊';
             if (type.includes('walking')) return '🚶';
             if (type.includes('strength')) return '💪';
@@ -1309,11 +1226,11 @@
                 const goal = getSafeGoal(goalId);
                 const value = data[timeframe][type];
                 const percent = Math.min(100, Math.round((value / goal) * 100));
-                
+
                 const valEl = document.getElementById(valId);
                 const percentEl = document.getElementById(percentId);
                 const chartEl = document.getElementById(chartId);
-                
+
                 if (valEl) valEl.innerHTML = formatDualDistance(value);
                 if (percentEl) percentEl.textContent = percent + '%';
                 if (chartEl) chartEl.style.background = `conic-gradient(var(--accent-color) 0% ${percent}%, rgba(255,255,255,0.1) ${percent}% 100%)`;
@@ -1346,7 +1263,7 @@
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    plugins: { 
+                    plugins: {
                         zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } },
                         legend: { position: 'top', labels: { color: '#f1f5f9', boxWidth: 12, boxHeight: 2, padding: 10, font: { size: 11 } } },
                         tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} mi / ${(ctx.parsed.y * 1.60934).toFixed(1)} km` } }
@@ -1533,7 +1450,7 @@
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
-                        plugins: { 
+                        plugins: {
                             zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } },
                             legend: { display: true, position: 'top', labels: { color: '#94a3b8', boxWidth: 12 } }
                         },
@@ -1614,7 +1531,7 @@
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
-                        plugins: { 
+                        plugins: {
                             zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } },
                             legend: { display: true, labels: { color: '#94a3b8' } }
                         },
@@ -1665,10 +1582,12 @@
                 chartInstances[canvasId] = new Chart(ctx, {
                     type: 'doughnut',
                     data: { labels: stageData.map(d => d.label), datasets: [{ data: stageData.map(d => d.value), backgroundColor: stageData.map(d => d.color), borderWidth: 0 }] },
-                    options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { 
-                        legend: { display: true, position: 'right', labels: { color: '#94a3b8', boxWidth: 12, padding: 20 } },
-                        tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${Math.floor(ctx.raw / 3600)}h ${Math.round((ctx.raw % 3600) / 60)}m` } }
-                    } }
+                    options: {
+                        responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: {
+                            legend: { display: true, position: 'right', labels: { color: '#94a3b8', boxWidth: 12, padding: 20 } },
+                            tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${Math.floor(ctx.raw / 3600)}h ${Math.round((ctx.raw % 3600) / 60)}m` } }
+                        }
+                    }
                 });
             } else {
                 chartInstances[canvasId] = new Chart(ctx, {
@@ -1741,8 +1660,8 @@
             if (!modal) return;
             modal.classList.add('active');
 
-            const isRun = basic.activityType.typeKey.includes('running');
-            const isCycle = basic.activityType.typeKey.includes('cycling');
+            const isRun = basic.activityType.typeKey.toLowerCase().includes('run');
+            const isCycle = basic.activityType.typeKey.toLowerCase().includes('cycling') || basic.activityType.typeKey.toLowerCase().includes('ride');
 
             safeSetText('modal-title', basic.activityName);
             safeSetText('modal-date', new Date(basic.startTimeLocal).toLocaleString());
@@ -1751,11 +1670,70 @@
             safeSetText('modal-hr', basic.averageHR ? Math.round(basic.averageHR) + ' bpm' : '--');
             safeSetText('modal-calories', Math.round(basic.calories) + ' kcal');
 
+            // Immediate population from basic summary data
+            if (basic.elevationGain !== undefined) {
+                const gainFeet = Math.round(basic.elevationGain * 3.28084);
+                const gainMeters = Math.round(basic.elevationGain);
+                safeSetText('modal-elevation', `${gainFeet} ft / ${gainMeters} m`);
+            } else {
+                safeSetText('modal-elevation', '--');
+            }
+
+            const basicCadence = basic.averageBikingCadenceInRevPerMinute || basic.averageRunningCadenceInStepsPerMinute || basic.averageCadence;
+            if (basicCadence) {
+                safeSetText('modal-cadence', Math.round(basicCadence) + (isRun ? ' spm' : ' rpm'));
+            } else {
+                safeSetText('modal-cadence', '--');
+            }
+
+            // Initial pace/speed from basic data
+            if (isCycle) {
+                safeSetText('modal-pace-label', 'Avg Speed');
+                const mph = (basic.averageSpeed * 2.23694).toFixed(1);
+                safeSetText('modal-pace', mph + ' mph');
+            } else {
+                safeSetText('modal-pace-label', 'Overall Pace');
+                safeSetText('modal-pace', '--');
+            }
+
             try {
                 const res = await fetch(`/api/activity/${id}`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (!data.error) renderActivityCharts(data.charts, isRun, isCycle);
+                    if (!data.error) {
+                        const hasPower = data.charts.power && data.charts.power.length > 0 && data.charts.power.some(p => p > 0);
+                        const powerCard = document.getElementById('power-summary-card');
+                        const powerChartBox = document.getElementById('power-chart-container');
+                        const powerTitle = document.getElementById('power-title');
+
+                        if (powerCard) powerCard.style.display = hasPower ? 'block' : 'none';
+                        if (powerChartBox) powerChartBox.style.display = hasPower ? 'block' : 'none';
+                        if (powerTitle) powerTitle.style.display = hasPower ? 'block' : 'none';
+
+                        if (hasPower && data.summary.averagePower) {
+                            safeSetText('modal-power', Math.round(data.summary.averagePower) + ' W');
+                        }
+
+                        // Update with refined data if available
+                        if (data.summary.elevationGain !== undefined) {
+                            const gainFeet = Math.round(data.summary.elevationGain * 3.28084);
+                            const gainMeters = Math.round(data.summary.elevationGain);
+                            safeSetText('modal-elevation', `${gainFeet} ft / ${gainMeters} m`);
+                        }
+
+                        const avgCadence = data.summary.averageBikeCadence || data.summary.averageRunCadence || data.summary.averageCadence ||
+                            data.summary.averageBikingCadenceInRevPerMinute || data.summary.averageRunningCadenceInStepsPerMinute;
+                        if (avgCadence) {
+                            safeSetText('modal-cadence', Math.round(avgCadence) + (isRun ? ' spm' : ' rpm'));
+                        }
+
+                        // Refined pace/speed if detailed data is available
+                        if (!isCycle) {
+                            safeSetText('modal-pace', data.avg_pace_str || '--');
+                        }
+
+                        renderActivityCharts(data.charts, isRun, isCycle);
+                    }
                 }
             } catch (err) { console.error('Activity detail error:', err); }
         }
@@ -1779,18 +1757,41 @@
             renderDetailChart('activityElevChart', elapsed, charts.elevation.map(e => e * 3.28084), 'Elevation', '#94a3b8', 'ft');
             renderDetailChart('activityHrChart', elapsed, charts.heart_rate, 'Heart Rate', '#f87171', 'bpm');
             renderDetailChart('activityCadenceChart', elapsed, charts.cadence, isRun ? 'spm' : 'rpm', '#4ade80', '');
+
+            if (charts.power && charts.power.length > 0) {
+                renderDetailChart('activityPowerChart', elapsed, charts.power, 'Power', '#a855f7', 'W', false, getPowerZoneColor);
+            }
+
             if (isRun) renderDetailChart('activitySpeedChart', elapsed, charts.speed.map(s => s > 0.5 ? 26.8224 / s : null), 'Pace', '#38bdf8', '/mi', true);
             else renderDetailChart('activitySpeedChart', elapsed, charts.speed.map(s => s * 2.23694), 'Speed', '#38bdf8', 'mph');
         }
 
-        function renderDetailChart(id, x, y, label, color, unit, rev = false) {
+        function renderDetailChart(id, x, y, label, color, unit, rev = false, colorFunc = null) {
             const canvas = document.getElementById(id);
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
             if (chartInstances[id]) chartInstances[id].destroy();
+
+            const dataset = {
+                label,
+                data: y,
+                borderColor: color,
+                backgroundColor: color + '22',
+                fill: true,
+                pointRadius: 0,
+                tension: 0.4
+            };
+
+            if (colorFunc) {
+                dataset.segment = {
+                    borderColor: ctx => colorFunc(ctx.p1.parsed.y),
+                    backgroundColor: ctx => colorFunc(ctx.p1.parsed.y) + '44' // ~25% opacity
+                };
+            }
+
             chartInstances[id] = new Chart(ctx, {
                 type: 'line',
-                data: { labels: x, datasets: [{ label, data: y, borderColor: color, backgroundColor: color + '22', fill: true, pointRadius: 0, tension: 0.4 }] },
+                data: { labels: x, datasets: [dataset] },
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { display: false }, zoom: { pan: { enabled: true, mode: 'x', onPan: (c) => syncActivityCharts(c.chart) }, zoom: { wheel: { enabled: true }, mode: 'x', onZoom: (c) => syncActivityCharts(c.chart) } } },
@@ -1800,6 +1801,16 @@
                     }
                 }
             });
+        }
+
+        function getPowerZoneColor(p) {
+            if (p >= 450) return '#a855f7'; // Purple
+            if (p >= 350) return '#ef4444'; // Red
+            if (p >= 300) return '#f97316'; // Orange
+            if (p >= 250) return '#eab308'; // Yellow
+            if (p >= 200) return '#22c55e'; // Green
+            if (p >= 150) return '#3b82f6'; // Blue
+            return '#94a3b8'; // Grey
         }
 
         function formatDuration(s) {
@@ -2013,13 +2024,13 @@
             if (!container) return;
             container.innerHTML = '';
             let totals = { count: 0, distance: 0, duration: 0, types: {} };
-            
+
             activities.forEach(act => {
                 const date = parseLocalDate(act.startTimeLocal.split(' ')[0]);
-                const inRange = (currentCalendarView === 'year') || 
-                              (currentCalendarView === 'month' && date.getMonth() === currentMonth) || 
-                              (currentCalendarView === 'week');
-                
+                const inRange = (currentCalendarView === 'year') ||
+                    (currentCalendarView === 'month' && date.getMonth() === currentMonth) ||
+                    (currentCalendarView === 'week');
+
                 if (inRange) {
                     totals.count++;
                     totals.distance += act.distance || 0;
@@ -2039,7 +2050,7 @@
                     <div class="total-value-row"><span>Distance</span><span>${(totals.distance * 0.000621371).toFixed(1)} mi</span></div>
                     <div class="total-value-row"><span>Time</span><span>${Math.floor(totals.duration / 3600)}h ${Math.round((totals.duration % 3600) / 60)}m</span></div>
                 </div>`;
-            
+
             Object.keys(totals.types).forEach(type => {
                 const data = totals.types[type];
                 container.innerHTML += `
@@ -2071,5 +2082,5 @@
         });
     </script>
 </body>
-</html>
 
+</html>
