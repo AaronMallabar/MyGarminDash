@@ -30,6 +30,19 @@ function parseLocalDate(dateStr) {
 }
 
 /**
+ * Check if a date object is today
+ * @param {Date} date - Date object to check
+ * @returns {boolean} True if it is today
+ */
+function isDateToday(date) {
+    const d = new Date(date);
+    const today = new Date();
+    return d.getDate() === today.getDate() &&
+        d.getMonth() === today.getMonth() &&
+        d.getFullYear() === today.getFullYear();
+}
+
+/**
  * Format duration in seconds to HH:MM:SS or MM:SS
  * @param {number} s - Duration in seconds
  * @returns {string} Formatted duration string

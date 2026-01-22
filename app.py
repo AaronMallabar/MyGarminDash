@@ -355,56 +355,55 @@ def get_hr_history():
             end_date = date.today()
 
         max_hr = get_user_max_hr(client)
-        zones = [
-            round(max_hr * 0.5), # Z1 start
-            round(max_hr * 0.6), # Z2 start
-            round(max_hr * 0.7), # Z3 start
-            round(max_hr * 0.8), # Z4 start
-            round(max_hr * 0.9)  # Z5 start
-        ]
+        zones = [round(max_hr * (0.5 + i*0.1)) for i in range(5)]
 
         if range_val == '1d':
-            # Detailed daily view
             hr_data = client.get_heart_rates(end_date.isoformat())
             return jsonify({
                 'range': '1d',
                 'summary': {
                     'rhr': hr_data.get('restingHeartRate'),
                     'max': hr_data.get('maxHeartRate'),
-                    'min': hr_data.get('minHeartRate'),
-                    'avg_rhr_7d': hr_data.get('lastSevenDaysAvgRestingHeartRate')
+                    'min': hr_data.get('minHeartRate')
                 },
                 'samples': hr_data.get('heartRateValues', []),
                 'zones': zones,
                 'max_hr': max_hr
             })
         else:
-            # ... rest of function ...
-            # I'll include zones here too
             days = 7
             if range_val == '1w': days = 7
-            elif range_val == '1m': days = 30
+            elif range_val == '1m': days = 31
             elif range_val == '1y': days = 365
             
             history = []
-            fetch_limit = min(days, 180) if range_val == '1y' else days
+            dates_to_fetch = [end_date - timedelta(days=i) for i in range(days)]
             
-            for i in range(fetch_limit):
-                d = end_date - timedelta(days=i)
+            from concurrent.futures import ThreadPoolExecutor
+            def fetch_day(d):
                 try:
                     day_data = client.get_heart_rates(d.isoformat())
                     if day_data.get('restingHeartRate'):
-                        history.append({
+                        return {
                             'date': d.isoformat(),
                             'rhr': day_data.get('restingHeartRate'),
                             'max': day_data.get('maxHeartRate')
-                        })
+                        }
                 except:
-                    continue
+                    pass
+                return None
+
+            # Use more threads for 1y to blast through it
+            workers = 20 if range_val == '1y' else 10
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                results = list(executor.map(fetch_day, dates_to_fetch))
+            
+            history = [r for r in results if r]
+            history.sort(key=lambda x: x['date']) # Ensure sorted by date
             
             return jsonify({
                 'range': range_val,
-                'history': list(reversed(history)),
+                'history': history,
                 'zones': zones,
                 'max_hr': max_hr
             })
@@ -438,29 +437,35 @@ def get_stress_history():
         else:
             days = 7
             if range_val == '1w': days = 7
-            elif range_val == '1m': days = 30
+            elif range_val == '1m': days = 31
             elif range_val == '1y': days = 365
             
-            history = []
-            # Safety limit to avoid timeout
-            fetch_limit = min(days, 180) if range_val == '1y' else days
+            dates_to_fetch = [end_date - timedelta(days=i) for i in range(days)]
             
-            for i in range(fetch_limit):
-                d = end_date - timedelta(days=i)
+            from concurrent.futures import ThreadPoolExecutor
+            def fetch_day(d):
                 try:
                     day_data = client.get_stress_data(d.isoformat())
                     if day_data.get('avgStressLevel'):
-                        history.append({
+                        return {
                             'date': d.isoformat(),
                             'avg': day_data.get('avgStressLevel'),
                             'max': day_data.get('maxStressLevel')
-                        })
+                        }
                 except:
-                    continue
+                    pass
+                return None
+
+            workers = 20 if range_val == '1y' else 10
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                results = list(executor.map(fetch_day, dates_to_fetch))
+            
+            history = [r for r in results if r]
+            history.sort(key=lambda x: x['date'])
             
             return jsonify({
                 'range': range_val,
-                'history': list(reversed(history))
+                'history': history
             })
 
     except Exception as e:
@@ -499,14 +504,13 @@ def get_sleep_history():
         else:
             days = 7
             if range_val == '1w': days = 7
-            elif range_val == '1m': days = 30
+            elif range_val == '1m': days = 31
             elif range_val == '1y': days = 365
             
-            history = []
-            fetch_limit = min(days, 180) if range_val == '1y' else days
+            dates_to_fetch = [end_date - timedelta(days=i) for i in range(days)]
             
-            for i in range(fetch_limit):
-                d = end_date - timedelta(days=i)
+            from concurrent.futures import ThreadPoolExecutor
+            def fetch_day(d):
                 try:
                     day_data = client.get_sleep_data(d.isoformat())
                     dto = day_data.get('dailySleepDTO', {})
@@ -514,17 +518,25 @@ def get_sleep_history():
                     score = scores.get('overall', {}).get('value')
                     
                     if dto.get('sleepTimeSeconds'):
-                        history.append({
+                        return {
                             'date': d.isoformat(),
                             'score': score,
                             'total': dto.get('sleepTimeSeconds')
-                        })
+                        }
                 except:
-                    continue
+                    pass
+                return None
+
+            workers = 20 if range_val == '1y' else 10
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                results = list(executor.map(fetch_day, dates_to_fetch))
+            
+            history = [r for r in results if r]
+            history.sort(key=lambda x: x['date'])
             
             return jsonify({
                 'range': range_val,
-                'history': list(reversed(history))
+                'history': history
             })
 
     except Exception as e:
@@ -619,29 +631,37 @@ def get_hydration_history():
                 }
             })
         else:
+            days = 7
             if range_val == '1w': days = 7
-            elif range_val == '1m': days = 30
+            elif range_val == '1m': days = 31
             elif range_val == '1y': days = 365
             
-            history = []
-            fetch_limit = min(days, 180) if range_val == '1y' else days
+            dates_to_fetch = [end_date - timedelta(days=i) for i in range(days)]
             
-            for i in range(fetch_limit):
-                d = end_date - timedelta(days=i)
+            from concurrent.futures import ThreadPoolExecutor
+            def fetch_day(d):
                 try:
                     day_data = client.get_hydration_data(d.isoformat())
                     if day_data.get('goalInML') or day_data.get('valueInML'):
-                        history.append({
+                        return {
                             'date': d.isoformat(),
                             'intake': day_data.get('valueInML', 0),
                             'goal': day_data.get('goalInML', 2000)
-                        })
+                        }
                 except:
-                    continue
+                    pass
+                return None
+
+            workers = 20 if range_val == '1y' else 10
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                results = list(executor.map(fetch_day, dates_to_fetch))
+            
+            history = [r for r in results if r]
+            history.sort(key=lambda x: x['date'])
             
             return jsonify({
                 'range': range_val,
-                'history': list(reversed(history))
+                'history': history
             })
 
     except Exception as e:

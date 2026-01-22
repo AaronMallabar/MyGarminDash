@@ -7,11 +7,17 @@
 // MAIN DATA FETCHING
 // ============================================================================
 
+// Cache for preloaded long-term data
+window.preloadedData = {};
+
 /**
  * Fetch all dashboard data
  */
 async function fetchDashboardData() {
     try {
+        // Start background preload of 1-year data immediately
+        preloadYearlyData();
+
         // Fetch basic stats
         const statsRes = await fetch('/api/stats');
         if (statsRes.ok) {
@@ -96,6 +102,13 @@ async function fetchWeightHistory() {
     try {
         const endDate = window.currentWeightEndDate || new Date();
         const range = window.currentWeightRange || '1m';
+
+        // Check cache for 1y
+        if (range === '1y' && isDateToday(endDate) && preloadedData['weight']) {
+            renderWeightChart(preloadedData['weight'], range);
+            return;
+        }
+
         const res = await fetch(`/api/weight_history?end_date=${getLocalDateStr(endDate)}&range=${range}`);
         if (res.ok) {
             const data = await res.json();
@@ -142,6 +155,13 @@ async function fetchStepsHistory() {
     try {
         const endDate = window.currentStepsEndDate || new Date();
         const range = window.currentStepsRange || '1w';
+
+        // Check cache for 1y
+        if (range === '1y' && isDateToday(endDate) && preloadedData['steps']) {
+            renderStepsVisual(preloadedData['steps']);
+            return;
+        }
+
         const res = await fetch(`/api/steps_history?end_date=${getLocalDateStr(endDate)}&range=${range}`);
         if (res.ok) {
             const data = await res.json();
@@ -165,6 +185,13 @@ async function fetchHRHistory() {
     try {
         const endDate = window.currentHREndDate || new Date();
         const range = window.currentHRRange || '1d';
+
+        // Check cache for 1y
+        if (range === '1y' && isDateToday(endDate) && preloadedData['hr']) {
+            renderHRVisual(preloadedData['hr']);
+            return;
+        }
+
         const res = await fetch(`/api/hr_history?end_date=${getLocalDateStr(endDate)}&range=${range}`);
         if (res.ok) {
             const data = await res.json();
@@ -188,6 +215,13 @@ async function fetchStressHistory() {
     try {
         const endDate = window.currentStressEndDate || new Date();
         const range = window.currentStressRange || '1d';
+
+        // Check cache for 1y
+        if (range === '1y' && isDateToday(endDate) && preloadedData['stress']) {
+            renderStressVisual(preloadedData['stress']);
+            return;
+        }
+
         const res = await fetch(`/api/stress_history?end_date=${getLocalDateStr(endDate)}&range=${range}`);
         if (res.ok) {
             const data = await res.json();
@@ -211,6 +245,13 @@ async function fetchSleepHistory() {
     try {
         const endDate = window.currentSleepEndDate || new Date();
         const range = window.currentSleepRange || '1d';
+
+        // Check cache for 1y
+        if (range === '1y' && isDateToday(endDate) && preloadedData['sleep']) {
+            renderSleepVisual(preloadedData['sleep']);
+            return;
+        }
+
         const res = await fetch(`/api/sleep_history?end_date=${getLocalDateStr(endDate)}&range=${range}`);
         if (res.ok) {
             const data = await res.json();
@@ -244,4 +285,44 @@ async function fetchHydrationHistory() {
     } catch (err) {
         console.error('Hydration error:', err);
     }
+}
+
+/**
+ * Preload 1-year data for all metrics
+ */
+async function preloadYearlyData() {
+    const todayStr = getLocalDateStr(new Date());
+    const endpoints = [
+        { key: 'steps', url: `/api/steps_history?end_date=${todayStr}&range=1y` },
+        { key: 'weight', url: `/api/weight_history?end_date=${todayStr}&range=1y` },
+        { key: 'hr', url: `/api/hr_history?end_date=${todayStr}&range=1y` },
+        { key: 'stress', url: `/api/stress_history?end_date=${todayStr}&range=1y` },
+        { key: 'sleep', url: `/api/sleep_history?end_date=${todayStr}&range=1y` },
+        { key: 'hydration', url: `/api/hydration_history?end_date=${todayStr}&range=1y` }
+    ];
+
+    console.log('Starting background preload of 1y data...');
+
+    // Fetch all in parallel
+    // We don't await this function itself, but we handle promises here
+    Promise.all(endpoints.map(ep =>
+        fetch(ep.url)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                if (data && !data.error) {
+                    preloadedData[ep.key] = data;
+                    // console.log(`Preloaded ${ep.key} 1y data`);
+                }
+            })
+            .catch(err => console.error(`Failed to preload ${ep.key}:`, err))
+    ));
+}
+
+// Helper to check if date is today
+function isDateToday(date) {
+    const d = new Date(date);
+    const today = new Date();
+    return d.getDate() === today.getDate() &&
+        d.getMonth() === today.getMonth() &&
+        d.getFullYear() === today.getFullYear();
 }
