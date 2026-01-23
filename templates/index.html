@@ -14,7 +14,8 @@
 
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Lexend:wght@300;400;500;600&display=swap"
         rel="stylesheet">
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -74,9 +75,6 @@
                         <div class="insight-content" id="ai-suggestions">
                             Analyzing your metrics for improvements...
                         </div>
-                    </div>
-                    <div class="activity-insight-list" id="ai-activity-insights">
-                        <!-- Activity specific blurbs go here -->
                     </div>
                 </div>
             </div>
@@ -1133,13 +1131,18 @@
                 </div>
 
                 <div class="activity-detail-card">
-
                     <div class="activity-detail-label">Calories</div>
-
                     <div class="activity-detail-value" id="modal-calories">--</div>
-
                 </div>
+            </div>
 
+            <div id="modal-ai-insight" class="ai-insight-box"
+                style="display: none; margin-bottom: 2rem; background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.1); padding: 1.5rem; border-radius: 1rem;">
+                <h3
+                    style="color: var(--accent-color); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <span>✨</span> Coach's Recap
+                </h3>
+                <div id="modal-ai-content" style="line-height: 1.6;"></div>
             </div>
 
             <div id="splits-section" style="display: none; margin-bottom: 2rem;">
@@ -1253,6 +1256,7 @@
     <script>
         // Global chart instances
         const chartInstances = {};
+        let cachedActivityInsights = {};
 
         // Helper to get local date string YYYY-MM-DD
         function getLocalDateStr(date = new Date()) {
@@ -1691,34 +1695,13 @@
                         safeSetText('ai-yesterday-summary', data.yesterday_summary);
                         safeSetText('ai-suggestions', data.suggestions);
 
-                        const activityList = document.getElementById('ai-activity-insights');
-                        if (activityList) {
-                            activityList.innerHTML = '';
-                            if (data.activity_insights && data.activity_insights.length > 0) {
-                                activityList.style.display = 'grid';
-                                data.activity_insights.forEach(insight => {
-                                    const card = document.createElement('div');
-                                    card.className = 'ai-activity-card';
-                                    card.innerHTML = `
-                                        <h4>${insight.name}</h4>
-                                        <div class="ai-sub-blurb">
-                                            <span class="label">Performance Recap</span>
-                                            ${insight.was}
-                                        </div>
-                                        <div class="ai-sub-blurb">
-                                            <span class="label">Adaptation Goal</span>
-                                            ${insight.worked_on}
-                                        </div>
-                                        <div class="ai-sub-blurb">
-                                            <span class="label">Coaching Insight</span>
-                                            ${insight.better_next}
-                                        </div>
-                                    `;
-                                    activityList.appendChild(card);
-                                });
-                            } else {
-                                activityList.style.display = 'none';
-                            }
+                        // Cache insights for modal use, but don't render to main page list
+                        if (data.activity_insights && data.activity_insights.length > 0) {
+                            data.activity_insights.forEach(insight => {
+                                if (insight.activity_id) {
+                                    cachedActivityInsights[insight.activity_id] = insight;
+                                }
+                            });
                         }
                     }
                 }
@@ -2417,6 +2400,26 @@
             } else {
                 safeSetText('modal-pace-label', 'Overall Pace');
                 safeSetText('modal-pace', '--');
+            }
+
+            // Check for AI Insight for this activity
+            const aiSection = document.getElementById('modal-ai-insight');
+            const aiContent = document.getElementById('modal-ai-content');
+            if (aiSection && aiContent) {
+                const insight = cachedActivityInsights[id];
+                if (insight) {
+                    aiSection.style.display = 'block';
+                    aiContent.innerHTML = `
+                        <div style="background: rgba(56, 189, 248, 0.1); border-left: 3px solid var(--accent-color); padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 0 0.5rem 0.5rem 0; font-style: italic; font-weight: 500; font-family: 'Lexend', sans-serif;">
+                            🌟 Highlight: ${insight.highlight || 'Standout performance recorded.'}
+                        </div>
+                        <p style="margin-bottom: 0.8rem;"><strong>Recap:</strong> ${insight.was}</p>
+                        <p style="margin-bottom: 0.8rem;"><strong>Focus:</strong> ${insight.worked_on}</p>
+                        <p><strong>Coach's Tip:</strong> ${insight.better_next}</p>
+                    `;
+                } else {
+                    aiSection.style.display = 'none';
+                }
             }
 
             try {

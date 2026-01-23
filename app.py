@@ -1,11 +1,16 @@
 import os
 import logging
+import google.generativeai as genai
+import json
 from flask import Flask, render_template, jsonify, request
 from garminconnect import Garmin
 from datetime import date, timedelta, datetime
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Configure Gemini
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -194,44 +199,128 @@ def get_ai_insights():
         if not suggestions:
             suggestions.append("Everything looks solid. This is your green light to stay the course or push a little harder.")
 
-        # 6. Activity Insights
-        activity_insights = []
-        max_hr = get_user_max_hr(client)
+        # Fetch Recent Activities for context
         try:
-            acts = client.get_activities(0, 5)
-            if not isinstance(acts, list): acts = []
+            acts_all = client.get_activities(0, 5)
+            acts = [a for a in acts_all if a.get('startTimeLocal', '').split(' ')[0] == today.isoformat()]
         except:
             acts = []
 
-        for act in acts:
-            s_time = act.get('startTimeLocal')
-            if s_time and str(s_time).split(' ')[0] == today.isoformat():
+        # Try to fetch current weight for context
+        current_weight_lbs = "Unknown"
+        try:
+            body = client.get_body_composition(today.isoformat())
+            if isinstance(body, dict) and 'totalBodyComposition' in body:
+                w_grams = body['totalBodyComposition'].get('weight')
+                if w_grams:
+                    current_weight_lbs = round((w_grams / 1000) * 2.20462, 1)
+        except:
+            pass
+
+        # Prepare context for Gemini
+        context = {
+            "persona": "Balanced fitness mentor with a focus on consistency and healthy body composition",
+            "user_meta_goal": "Healthy weight management & workout frequency",
+            "today_stats": {
+                "steps": steps_today,
+                "stress": stress_today,
+                "sleep_score": sleep_score_today,
+                "hydration_oz": round(today_hyd * 0.033814, 1),
+                "current_weight_lbs": current_weight_lbs,
+                "hrv_status": hrv.get('status', 'Unknown')
+            },
+            "seven_day_history": history_list,
+            "training_history": [{
+                "activity_id": a.get('activityId'),
+                "name": a.get('activityName'),
+                "type": a.get('activityType', {}).get('typeKey'),
+                "distance_mi": round(n(a.get('distance', 0)) * 0.000621371, 2),
+                "duration_min": round(n(a.get('duration', 0)) / 60),
+                "date": a.get('startTimeLocal', '').split(' ')[0]
+            } for a in acts_all] if 'acts_all' in locals() else []
+        }
+
+        # 6. Generate Generative AI Response (with Fallback)
+        try:
+            model = genai.GenerativeModel('gemini-flash-latest')
+            
+            prompt = f"""
+            You are a balanced, knowledgeable fitness mentor. 
+            Your goal is to provide a concise, professional check-in based on the user's Garmin health data.
+
+            CRITICAL CONTEXT: The user is working towards healthy weight management. 
+            Tone Guidelines:
+            - Find a "happy medium": Professional and encouraging, but not overly focused on weight loss or calories.
+            - Focus on overall consistency, metabolic health, and performance.
+            - AVOID over-emphasizing "caloric burn" or "weight loss" in every sentence; treat them as secondary benefits of a solid training routine.
+            - Stay data-driven but keep the language comfortable and modern.
+
+            DATA CONTEXT:
+            {json.dumps(context, indent=2)}
+
+            REQUIRED OUTPUT FORMAT:
+            You must return a valid JSON object with:
+            - "daily_summary": 2-3 sentences. Focus on today's health outlook and consistency.
+            - "yesterday_summary": 1-2 sentences recap.
+            - "suggestions": An array of EXACTLY 2 strings. Helpful, high-value coaching tips for general wellness/performance.
+            - "activity_insights": An array of objects for EVERY activity listed in the "training_history".
+              Each activity insight object MUST include:
+              - "activity_id": The exact numeric ID.
+              - "name": Exact activity name.
+              - "highlight": 1 standout performance "win" from the workout.
+              - "was": 1 sentence recap of the metabolic or fitness achievement (e.g. Aerobic base building).
+              - "worked_on": 1-3 words on the focus (e.g. "Metabolic Efficiency").
+              - "better_next": A practical tip for next time.
+
+            Return ONLY the JSON.
+            """
+
+            response = model.generate_content(prompt)
+            # Robust JSON cleaning
+            clean_text = response.text.replace('```json', '').replace('```', '').strip()
+            ai_data = json.loads(clean_text)
+            
+            # Robust suggestions parsing
+            suggestions_raw = ai_data.get('suggestions', [])
+            if isinstance(suggestions_raw, list):
+                # Ensure all items are strings before joining
+                suggestions_text = " ".join([str(s) for s in suggestions_raw])
+            else:
+                suggestions_text = str(suggestions_raw)
+
+            return jsonify({
+                'daily_summary': ai_data.get('daily_summary'),
+                'yesterday_summary': ai_data.get('yesterday_summary'),
+                'suggestions': suggestions_text,
+                'activity_insights': ai_data.get('activity_insights', [])
+            })
+
+        except Exception as ai_err:
+            logger.warning(f"Gemini API or Parsing Error: {ai_err}. Falling back to hardcoded logic.")
+            
+            # FALLBACK TO HARDCODED LOGIC
+            activity_insights = []
+            max_hr = get_user_max_hr(client)
+            for act in (acts if 'acts' in locals() else []):
                 avg_hr = n(act.get('averageHR', 0))
                 hr_pct = (avg_hr / max_hr) if max_hr > 0 and avg_hr > 0 else 0
-                
                 was, worked, better = "Activity logged.", "General fitness.", "Keep it up."
                 if hr_pct > 0.85:
-                    was = "This was a high-intensity 'peak' session."
-                    worked = "VO2 Max and Anaerobic capacity."
-                    better = "Prioritize recovery tomorrow; glycogen stores are likely low."
+                    was, worked, better = "Peak intensity session.", "Anaerobic capacity.", "Prioritize recovery tomorrow."
                 elif hr_pct > 0.70:
-                    was = "This was steady aerobic conditioning."
-                    worked = "Mitochondrial density and fat adaptation."
-                    better = "Maintain this consistency for long-term health."
+                    was, worked, better = "Aerobic conditioning.", "Endurance.", "Maintain this pace."
                 
                 activity_insights.append({
                     'name': act.get('activityName', 'Activity'),
-                    'was': was,
-                    'worked_on': worked,
-                    'better_next': better
+                    'was': was, 'worked_on': worked, 'better_next': better
                 })
 
-        return jsonify({
-            'daily_summary': " ".join(today_blurb),
-            'yesterday_summary': yesterday_blurb,
-            'suggestions': " ".join(suggestions),
-            'activity_insights': activity_insights
-        })
+            return jsonify({
+                'daily_summary': " ".join(today_blurb),
+                'yesterday_summary': yesterday_blurb,
+                'suggestions': " ".join(suggestions),
+                'activity_insights': activity_insights
+            })
         
     except Exception as e:
         logger.error(f"Error generating AI insights: {e}", exc_info=True)
