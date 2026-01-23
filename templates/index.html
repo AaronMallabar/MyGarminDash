@@ -47,7 +47,40 @@
 
         </div>
 
-        <!-- Health Metrics Grid (Small, Side-by-Side) -->
+        <!-- AI Training Insights -->
+        <div class="ai-insights-container" id="ai-insights-section" style="display: none;">
+            <div class="ai-card">
+                <div class="ai-header">
+                    <div class="ai-badge">
+                        <div class="pulse-dot"></div>
+                        AI Training Insight
+                    </div>
+                </div>
+                <div class="ai-grid">
+                    <div class="insight-section">
+                        <h3>Daily Summary</h3>
+                        <div class="insight-content" id="ai-daily-summary">
+                            Generating your daily summary...
+                        </div>
+                    </div>
+                    <div class="insight-section">
+                        <h3>Yesterday's Recap</h3>
+                        <div class="insight-content" id="ai-yesterday-summary">
+                            Summarizing yesterday...
+                        </div>
+                    </div>
+                    <div class="insight-section">
+                        <h3>Optimization Suggestions</h3>
+                        <div class="insight-content" id="ai-suggestions">
+                            Analyzing your metrics for improvements...
+                        </div>
+                    </div>
+                    <div class="activity-insight-list" id="ai-activity-insights">
+                        <!-- Activity specific blurbs go here -->
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Daily Health</h2>
 
@@ -1646,6 +1679,54 @@
             }
         }
 
+        async function fetchAIInsights() {
+            try {
+                const res = await fetch('/api/ai_insights');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.error) {
+                        const section = document.getElementById('ai-insights-section');
+                        if (section) section.style.display = 'block';
+                        safeSetText('ai-daily-summary', data.daily_summary);
+                        safeSetText('ai-yesterday-summary', data.yesterday_summary);
+                        safeSetText('ai-suggestions', data.suggestions);
+
+                        const activityList = document.getElementById('ai-activity-insights');
+                        if (activityList) {
+                            activityList.innerHTML = '';
+                            if (data.activity_insights && data.activity_insights.length > 0) {
+                                activityList.style.display = 'grid';
+                                data.activity_insights.forEach(insight => {
+                                    const card = document.createElement('div');
+                                    card.className = 'ai-activity-card';
+                                    card.innerHTML = `
+                                        <h4>${insight.name}</h4>
+                                        <div class="ai-sub-blurb">
+                                            <span class="label">Performance Recap</span>
+                                            ${insight.was}
+                                        </div>
+                                        <div class="ai-sub-blurb">
+                                            <span class="label">Adaptation Goal</span>
+                                            ${insight.worked_on}
+                                        </div>
+                                        <div class="ai-sub-blurb">
+                                            <span class="label">Coaching Insight</span>
+                                            ${insight.better_next}
+                                        </div>
+                                    `;
+                                    activityList.appendChild(card);
+                                });
+                            } else {
+                                activityList.style.display = 'none';
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('AI insights error:', err);
+            }
+        }
+
         async function fetchData() {
             try {
                 // Fetch basic stats
@@ -1701,6 +1782,9 @@
                 updateIMRange('1w');
                 fetchActivityHeatmap();
                 fetchCalendarData();
+
+                // Fetch AI Insights
+                fetchAIInsights();
 
                 // Update timestamp
                 const syncEl = document.getElementById('last-sync');

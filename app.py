@@ -53,6 +53,149 @@ def get_user_max_hr(client):
 def index():
     return render_template('index.html')
 
+@app.route('/api/ai_insights')
+def get_ai_insights():
+    try:
+        client = get_garmin_client()
+        today = date.today()
+        
+        # 1. Fetch Today's Deep Health Data
+        stats = client.get_stats(today.isoformat())
+        sleep = client.get_sleep_data(today.isoformat())
+        hrv = client.get_hrv_data(today.isoformat()).get('hrvSummary', {})
+        im_data = client.get_intensity_minutes_data(today.isoformat())
+        
+        # 2. Fetch Deep Historical Data (Last 7 Days)
+        from concurrent.futures import ThreadPoolExecutor
+        def fetch_historical(d):
+            try:
+                s = client.get_stats(d.isoformat())
+                h = client.get_hydration_data(d.isoformat())
+                sl = client.get_sleep_data(d.isoformat())
+                # Fix Sleep Score Retrieval: try multiple locations
+                dto = sl.get('dailySleepDTO', {})
+                s_score = dto.get('sleepScore') or dto.get('score') or sl.get('sleepScore', 0)
+                
+                return {
+                    'date': d.isoformat(),
+                    'steps': s.get('totalSteps', 0),
+                    'goal': s.get('totalStepsGoal', 10000),
+                    'hydration': h.get('hydrationValueProcessed', 0),
+                    'stress': s.get('averageStressLevel', 0),
+                    'sleep_score': s_score,
+                    'sleep_feedback': dto.get('sleepScoreFeedback', 'unknown')
+                }
+            except:
+                return None
+
+        past_dates = [today - timedelta(days=i) for i in range(1, 8)]
+        with ThreadPoolExecutor(max_workers=7) as executor:
+            history_list = list(executor.map(fetch_historical, past_dates))
+        history_list = [h for h in history_list if h]
+        
+        # 3. Calculate Narratives and Trends
+        avg_steps = sum(h['steps'] for h in history_list) / len(history_list) if history_list else 10000
+        avg_sleep = sum(h['sleep_score'] for h in history_list if h['sleep_score'] > 0) / max(1, len([h for h in history_list if h['sleep_score'] > 0]))
+        avg_stress = sum(h['stress'] for h in history_list if h['stress'] > 0) / max(1, len([h for h in history_list if h['stress'] > 0]))
+        
+        # 4. Compare Today to Trends
+        steps_today = stats.get('totalSteps', 0)
+        stress_today = stats.get('averageStressLevel', 0)
+        dto_today = sleep.get('dailySleepDTO', {})
+        sleep_score_today = dto_today.get('sleepScore') or dto_today.get('score') or sleep.get('sleepScore', 0)
+        
+        # Today's Narrative
+        today_blurb = []
+        if steps_today > avg_steps * 1.2:
+            today_blurb.append(f"You're significantly more active today than your usual trend. This extra volume is building great aerobic capacity.")
+        elif steps_today < avg_steps * 0.8:
+            today_blurb.append(f"Today is a lower volume day for you. While this might feel like a 'dip', it's actually providing your joints and nervous system a much-needed break from the usual impact.")
+        else:
+            today_blurb.append(f"You're maintaining a very consistent movement rhythm today, which is the backbone of long-term fitness.")
+
+        if stress_today > avg_stress + 5:
+            today_blurb.append(f"Your internal load (stress: {stress_today}) is higher than your weekly average. This suggests your body is working harder to maintain equilibrium, possibly due to lingering fatigue from yesterday.")
+        elif stress_today < avg_stress - 5:
+            today_blurb.append(f"Your body is in a prime 'growth' state today with unusually low stress. This is the optimal time for high-quality work or deep physiological adaptation.")
+
+        # Yesterday's Detailed Narrative
+        yesterday_blurb = "No data for yesterday."
+        if history_list:
+            y = history_list[0]
+            y_steps = y['steps']
+            y_stress = y['stress']
+            y_sleep = y['sleep_score']
+            y_feedback = y['sleep_feedback']
+            
+            y_narrative = []
+            if y_steps > 12000:
+                y_narrative.append(f"Yesterday was a high-output day ({y_steps:,} steps).")
+            elif y_steps < 5000:
+                y_narrative.append(f"Yesterday was a quiet, restorative day movement-wise.")
+            else:
+                y_narrative.append(f"Yesterday was a typical, balanced movement day.")
+
+            if y_stress > 35:
+                y_narrative.append(f"You carried quite a bit of physiological stress ({y_stress}), which likely explains why your recovery feels slower today.")
+            
+            if y_sleep > 80:
+                y_narrative.append(f"The highlight was your exceptional recovery—a sleep score of {y_sleep} means you likely entered today with 'full batteries' even if the day was busy.")
+            elif y_sleep > 0:
+                y_narrative.append(f"Your sleep ({y_sleep}) was {y_feedback.lower()}. If you feel sluggish, this deficit is likely the culprit.")
+            
+            yesterday_blurb = " ".join(y_narrative)
+
+        # 5. Optimization Suggestions (Coaching Style)
+        suggestions = []
+        if hrv.get('status') in ['UNBALANCED', 'LOW']:
+             suggestions.append("Your HRV trend is signaling a 'red light'. High-intensity work now will likely delay your next 3 days of progress. Opt for Zone 1 movement or mobility work.")
+        elif stress_today > 40:
+             suggestions.append("With your stress spiking today, prioritize magnesium and deep breathing before bed to prevent this stress from 'bleeding' into your sleep quality tonight.")
+        
+        today_hyd = client.get_hydration_data(today.isoformat()).get('hydrationValueProcessed', 0)
+        if today_hyd < 1500:
+            suggestions.append(f"You're historically most consistent when you log at least 2L of water. You're behind pace today—grab a glass now to help your muscles flush waste.")
+
+        if not suggestions:
+            suggestions.append("Every metric is in the 'green zone'. This is your green light to push a little harder in your next session or try a new movement challenge.")
+
+        # 6. Activity Insights
+        activity_insights = []
+        max_hr = get_user_max_hr(client)
+        all_activities = client.get_activities(0, 5)
+        for act in all_activities:
+            if act.get('startTimeLocal', '').split(' ')[0] == today.isoformat():
+                avg_hr = act.get('averageHR', 0)
+                hr_pct = (avg_hr / max_hr) if max_hr > 0 and avg_hr > 0 else 0
+                
+                was, worked, better = "Activity logged.", "General fitness.", "Keep it up."
+                if hr_pct > 0.85:
+                    was = "This was a high-intensity 'peak' session that pushed your cardiovascular limits."
+                    worked = "VO2 Max and Anaerobic capacity."
+                    better = "Don't try to repeat this tomorrow; your muscle glycogen is likely depleted."
+                elif hr_pct > 0.70:
+                    was = "This was your 'bread and butter' aerobic conditioning."
+                    worked = "Mitochondrial density and fat adaptation."
+                    better = "Try to focus on steady breathing to stay in control of the effort."
+                
+                activity_insights.append({
+                    'name': act.get('activityName', 'Activity'),
+                    'was': was,
+                    'worked_on': worked,
+                    'better_next': better
+                })
+
+        return jsonify({
+            'daily_summary': " ".join(today_blurb),
+            'yesterday_summary': yesterday_blurb,
+            'suggestions': " ".join(suggestions),
+            'activity_insights': activity_insights
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating AI insights: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/stats')
 def get_stats():
     try:
