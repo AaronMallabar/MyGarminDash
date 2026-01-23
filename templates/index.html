@@ -350,16 +350,16 @@
 
                     <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
 
-                        <button class="range-btn active" onclick="updateHRRange('1d', this)"
+                        <button class="range-btn active" onclick="updateHRVRange('1d', this)"
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
 
-                        <button class="range-btn" onclick="updateHRRange('1w', this)"
+                        <button class="range-btn" onclick="updateHRVRange('1w', this)"
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
 
-                        <button class="range-btn" onclick="updateHRRange('1m', this)"
+                        <button class="range-btn" onclick="updateHRVRange('1m', this)"
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
 
-                        <button class="range-btn" onclick="updateHRRange('1y', this)"
+                        <button class="range-btn" onclick="updateHRVRange('1y', this)"
                             style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
 
                     </div>
@@ -456,6 +456,190 @@
                 <div style="height: 200px;">
 
                     <canvas id="stressHistoryChart"></canvas>
+
+                </div>
+
+            </div>
+
+            <!-- HRV Status -->
+
+            <div class="card">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+
+                    <div>
+
+                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">HRV Status</h2>
+
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+
+                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
+                                    id="hrv-val">--</span></div>
+
+                            <div class="metric-unit">ms (Avg)</div>
+
+                        </div>
+
+                    </div>
+
+                    <div style="text-align: right;">
+
+                        <div id="hrv-status-badge" class="badge" style="margin-bottom: 0.25rem;">--</div>
+
+                        <div id="hrv-weekly-avg" style="font-size: 0.75rem; color: var(--text-secondary);">7d Avg: -- ms
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
+
+                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
+
+                        <button class="range-btn active" onclick="updateHRVRange('1d', this)"
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
+
+                        <button class="range-btn" onclick="updateHRVRange('1w', this)"
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
+
+                        <button class="range-btn" onclick="updateHRVRange('1m', this)"
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
+
+                        <button class="range-btn" onclick="updateHRVRange('1y', this)"
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
+
+                    </div>
+
+                    <div style="flex-grow:1"></div>
+
+                    <button class="nav-btn" id="hrv-prev" onclick="shiftHRVDate(-1)"
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                            fill="none">
+
+                            <polyline points="15 18 9 12 15 6"></polyline>
+
+                        </svg></button>
+
+                    <button class="nav-btn" id="hrv-next" onclick="shiftHRVDate(1)" disabled
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                            fill="none">
+
+                            <polyline points="9 18 15 12 9 6"></polyline>
+
+                        </svg></button>
+
+                </div>
+
+                <div id="hrv-visual-container" class="chart-container"
+                    style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
+
+                    <canvas id="hrvHistoryChart" style="display: none;"></canvas>
+
+                    <div id="hrv-status-container" style="margin-top: 1.5rem;">
+
+                        <div
+                            style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+                            <span>Baseline: <span id="hrv-baseline-low">--</span> - <span
+                                    id="hrv-baseline-high">--</span>
+                                ms</span>
+                        </div>
+
+                        <div class="hrv-gauge-container"
+                            style="height: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; position: relative; overflow: hidden; margin-bottom: 2rem;">
+                            <div id="hrv-baseline-zone"
+                                style="position: absolute; height: 100%; background: rgba(74, 222, 128, 0.2); left: 30%; width: 40%;">
+                            </div>
+                            <div id="hrv-marker"
+                                style="position: absolute; height: 100%; width: 4px; background: var(--text-primary); border-radius: 2px; left: 0; transition: left 0.5s ease; box-shadow: 0 0 10px rgba(255,255,255,0.5); z-index: 2;">
+                            </div>
+                        </div>
+
+                        <div id="hrv-feedback"
+                            style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4; min-height: 3em;">
+                            --
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+            <!-- Intensity Minutes -->
+
+            <div class="card">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+
+                    <div>
+
+                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Intensity Minutes</h2>
+
+                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+
+                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
+                                    id="im-val">--</span></div>
+
+                            <div class="metric-unit">min</div>
+
+                        </div>
+
+                    </div>
+
+                    <div style="text-align: right;">
+
+                        <div style="font-size: 0.7rem; color: var(--text-secondary);">Goal</div>
+
+                        <div style="font-size: 1.2rem; font-weight: 700; color: var(--accent-color);"><span
+                                id="im-goal">--</span></div>
+
+                    </div>
+
+                </div>
+
+                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
+
+                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
+
+                        <button class="range-btn" onclick="updateIMRange('1d', this)"
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
+
+                        <button class="range-btn active" onclick="updateIMRange('1w', this)"
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
+
+                        <button class="range-btn" onclick="updateIMRange('1m', this)"
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
+
+                        <button class="range-btn" onclick="updateIMRange('6m', this)"
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">6m</button>
+
+                        <button class="range-btn" onclick="updateIMRange('1y', this)"
+                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
+
+                    </div>
+
+                    <div style="flex-grow:1"></div>
+
+                    <button class="nav-btn" id="im-prev" onclick="shiftIMDate(-1)" style="width:24px; height:24px;"><svg
+                            viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+
+                            <polyline points="15 18 9 12 15 6"></polyline>
+
+                        </svg></button>
+
+                    <button class="nav-btn" id="im-next" onclick="shiftIMDate(1)" disabled
+                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                            fill="none">
+
+                            <polyline points="9 18 15 12 9 6"></polyline>
+
+                        </svg></button>
+
+                </div>
+
+                <div style="height: 200px;">
+
+                    <canvas id="imHistoryChart"></canvas>
 
                 </div>
 
@@ -1071,6 +1255,397 @@
             safeSetText('last-sync', 'Error');
         }
 
+        // HRV Support
+        let currentHRVEndDate = new Date();
+        let currentHRVRange = '1d';
+
+        async function updateHRVRange(range, btn) {
+            if (range) currentHRVRange = range;
+            if (btn) {
+                btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            }
+            try {
+                const res = await fetch(`/api/hrv?end_date=${currentHRVEndDate.toISOString().split('T')[0]}&range=${currentHRVRange}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.error) renderHRVVisual(data);
+                }
+            } catch (err) {
+                console.error('HRV error:', err);
+            }
+        }
+
+        function shiftHRVDate(dir) {
+            currentHRVEndDate.setDate(currentHRVEndDate.getDate() + (dir * (currentHRVRange === '1d' ? 1 : 7)));
+            if (currentHRVEndDate > new Date()) currentHRVEndDate = new Date();
+            updateHRVRange();
+        }
+
+        function renderHRVVisual(data) {
+            const canvasId = 'hrvHistoryChart';
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const statusContainer = document.getElementById('hrv-status-container');
+            if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+            const range = data.range || currentHRVRange;
+
+            if (range === '1d') {
+                if (canvas) canvas.style.display = 'none';
+                if (statusContainer) statusContainer.style.display = 'block';
+
+                if (!data.hrvSummary) return;
+                const summary = data.hrvSummary;
+
+                // Use 7-day average (weeklyAvg) as the primary metric
+                safeSetText('hrv-val', summary.weeklyAvg || '--');
+                safeSetText('hrv-weekly-avg', `7d Avg: ${summary.weeklyAvg || '--'} ms`);
+
+                const statusEl = document.getElementById('hrv-status-badge');
+                if (statusEl) {
+                    const status = summary.status || 'NO_STATUS';
+                    statusEl.textContent = status.replace(/_/g, ' ');
+                    statusEl.className = 'badge';
+
+                    if (status === 'BALANCED') statusEl.classList.add('badge-balanced');
+                    else if (status === 'UNBALANCED') statusEl.classList.add('badge-unbalanced');
+                    else if (status === 'LOW') statusEl.classList.add('badge-low');
+                    else statusEl.classList.add('badge-gray');
+                }
+
+                const baseline = summary.baseline;
+                if (baseline) {
+                    safeSetText('hrv-baseline-low', baseline.balancedLow || '--');
+                    safeSetText('hrv-baseline-high', baseline.balancedUpper || '--');
+
+                    const low = (baseline.balancedLow || 40) - 15;
+                    const high = (baseline.balancedUpper || 80) + 15;
+                    const rangeVal = high - low;
+                    const val = summary.weeklyAvg || low;
+                    const pct = Math.max(0, Math.min(100, ((val - low) / rangeVal) * 100));
+
+                    const marker = document.getElementById('hrv-marker');
+                    if (marker) marker.style.left = `${pct}%`;
+
+                    const zone = document.getElementById('hrv-baseline-zone');
+                    if (zone) {
+                        const zoneStart = Math.max(0, ((baseline.balancedLow - low) / rangeVal) * 100);
+                        const zoneWidth = ((baseline.balancedUpper - baseline.balancedLow) / rangeVal) * 100;
+                        zone.style.left = `${zoneStart}%`;
+                        zone.style.width = `${zoneWidth}%`;
+                    }
+                }
+
+                const feedback = summary.feedbackPhrase || '';
+                const friendlyFeedback = feedback
+                    .replace(/HRV_STATUS_FEEDBACK_/g, '')
+                    .replace(/HRV_UNBALANCED_/g, 'Unbalanced: ')
+                    .replace(/_/g, ' ')
+                    .toLowerCase()
+                    .replace(/^\w/, c => c.toUpperCase());
+                safeSetText('hrv-feedback', friendlyFeedback || 'No feedback available');
+
+            } else {
+                if (canvas) canvas.style.display = 'block';
+                if (statusContainer) statusContainer.style.display = 'none';
+
+                if (!data.history || data.history.length === 0) return;
+
+                const labels = data.history.map(d => {
+                    const p = d.calendarDate.split('-');
+                    return p[1] + '/' + p[2];
+                });
+
+                const lastSummary = data.history[data.history.length - 1];
+                if (lastSummary) {
+                    safeSetText('hrv-val', lastSummary.weeklyAvg || '--');
+                    safeSetText('hrv-weekly-avg', `7d Avg: ${lastSummary.weeklyAvg || '--'} ms`);
+
+                    const statusEl = document.getElementById('hrv-status-badge');
+                    if (statusEl) {
+                        const status = lastSummary.status || 'NO_STATUS';
+                        statusEl.textContent = status.replace(/_/g, ' ');
+                        statusEl.className = 'badge';
+                        if (status === 'BALANCED') statusEl.classList.add('badge-balanced');
+                        else if (status === 'UNBALANCED') statusEl.classList.add('badge-unbalanced');
+                        else if (status === 'LOW') statusEl.classList.add('badge-low');
+                        else statusEl.classList.add('badge-gray');
+                    }
+                }
+
+                // Prepare datasets for dot plot with shaded baseline
+                const hrvData = data.history.map(d => d.weeklyAvg);
+                const baselineHighs = data.history.map(d => d.baseline ? d.baseline.balancedUpper : null);
+                const baselineLows = data.history.map(d => d.baseline ? d.baseline.balancedLow : null);
+
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'HRV (7d Avg)',
+                                data: hrvData,
+                                borderColor: 'rgba(56, 189, 248, 0.5)',
+                                backgroundColor: data.history.map(d => {
+                                    if (d.status === 'BALANCED') return '#4ade80';
+                                    if (d.status === 'UNBALANCED') return '#fb923c';
+                                    if (d.status === 'LOW') return '#f87171';
+                                    return '#38bdf8';
+                                }),
+                                pointRadius: 5,
+                                pointHoverRadius: 7,
+                                showLine: false, // Dot plot
+                                order: 1
+                            },
+                            {
+                                label: 'Baseline Upper',
+                                data: baselineHighs,
+                                borderColor: 'transparent',
+                                backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                                fill: {
+                                    target: 2,
+                                    above: 'rgba(74, 222, 128, 0.1)'
+                                },
+                                pointRadius: 0,
+                                tension: 0.2,
+                                order: 2
+                            },
+                            {
+                                label: 'Baseline Lower',
+                                data: baselineLows,
+                                borderColor: 'transparent',
+                                pointRadius: 0,
+                                fill: false,
+                                tension: 0.2,
+                                order: 2
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                labels: {
+                                    color: '#94a3b8',
+                                    filter: item => item.text !== 'Baseline Lower' && item.text !== 'Baseline Upper'
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 7 } },
+                            y: {
+                                beginAtZero: false,
+                                grid: { color: 'rgba(255,255,255,0.05)' },
+                                ticks: { color: '#94a3b8' }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Intensity Minutes Support
+        let currentIMEndDate = new Date();
+        let currentIMRange = '1w';
+
+        async function updateIMRange(range, btn) {
+            if (range) currentIMRange = range;
+            if (btn) {
+                btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            }
+            updateNavButtons('im', currentIMEndDate);
+            try {
+                const res = await fetch(`/api/intensity_minutes_history?range=${currentIMRange}&end_date=${getLocalDateStr(currentIMEndDate)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (!data.error) renderIntensityMinutesVisualV2(data);
+                }
+            } catch (err) {
+                console.error('Intensity minutes error:', err);
+            }
+        }
+
+        function shiftIMDate(dir) {
+            const shift = currentIMRange === '1d' ? 1 : 7;
+            currentIMEndDate.setDate(currentIMEndDate.getDate() + (dir * shift));
+            if (currentIMEndDate > new Date()) currentIMEndDate = new Date();
+            updateIMRange();
+        }
+
+        function renderIntensityMinutesVisual(data) {
+            const canvasId = 'imHistoryChart';
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+            const range = data.range || currentIMRange;
+            const history = data.history || [];
+            const goal = data.goal || 150;
+
+            // Updated im-val should be the cumulative total for THIS WEEK (Mon-Sun)
+            if (history.length > 0) {
+                let thisWeekTotal = 0;
+                // Walk backwards to find the current week's total starting Monday
+                for (let i = history.length - 1; i >= 0; i--) {
+                    const d = history[i];
+                    const dt = parseLocalDate(d.date);
+                    thisWeekTotal += d.total;
+                    if (dt.getDay() === 1) break; // Monday found
+                }
+                safeSetText('im-val', thisWeekTotal);
+                safeSetText('im-goal', goal);
+            }
+
+            if (range === '1d') {
+                safeSetText('im-val', data.summary.total || '0');
+                safeSetText('im-goal', data.summary.goal || '150');
+
+                // Cumulative for the day, starting from startDayMinutes (total at beginning of day)
+                let cumulative = data.summary.startDayMinutes || 0;
+                const points = data.samples.map(s => {
+                    cumulative += s[1];
+                    return { x: s[0], y: cumulative };
+                });
+
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: 'Intensity Minutes',
+                            data: points,
+                            borderColor: '#38bdf8',
+                            backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            fill: true,
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { type: 'time', time: { displayFormats: { hour: 'HH:mm' } }, grid: { display: false }, ticks: { color: '#94a3b8' } },
+                            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                        }
+                    }
+                });
+            } else if (range === '1w') {
+                const lastDay = data.history[data.history.length - 1];
+                safeSetText('im-val', lastDay ? lastDay.total : '--');
+                safeSetText('im-goal', data.goal || '150');
+
+                // Calculate cumulative, resetting on Monday
+                let cumulative = 0;
+                const cumulativeData = data.history.map(d => {
+                    const date = parseLocalDate(d.date);
+                    if (date.getDay() === 1) cumulative = 0; // Monday reset
+                    cumulative += d.total;
+                    return cumulative;
+                });
+
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.history.map(d => parseLocalDate(d.date).toLocaleDateString([], { weekday: 'short' })),
+                        datasets: [{
+                            label: 'Cumulative Intensity Minutes',
+                            data: cumulativeData,
+                            borderColor: '#38bdf8',
+                            borderWidth: 3,
+                            pointRadius: 4,
+                            fill: true,
+                            backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+                            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                        }
+                    }
+                });
+            } else if (range === '1m') {
+                // Separate lines for each week (last 4 weeks)
+                const lastDay = data.history[data.history.length - 1];
+                safeSetText('im-val', lastDay ? lastDay.total : '--');
+
+                const weeks = [];
+                for (let i = 0; i < data.history.length; i += 7) {
+                    weeks.push(data.history.slice(i, i + 7));
+                }
+
+                const datasets = weeks.map((week, idx) => {
+                    let cumulative = 0;
+                    const cData = week.map(d => {
+                        cumulative += d.total;
+                        return cumulative;
+                    });
+
+                    return {
+                        label: `Week ${weeks.length - idx}`,
+                        data: cData,
+                        borderColor: `hsla(${200 + idx * 40}, 70%, 60%, ${1 - idx * 0.2})`,
+                        borderWidth: idx === 0 ? 3 : 2,
+                        pointRadius: idx === 0 ? 3 : 0,
+                        tension: 0.1,
+                        fill: idx === 0 ? 'origin' : false,
+                        backgroundColor: idx === 0 ? 'rgba(56, 189, 248, 0.05)' : 'transparent'
+                    };
+                }).reverse();
+
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: true, position: 'top', labels: { color: '#94a3b8', boxWidth: 10 } } },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+                            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                        }
+                    }
+                });
+            } else { // 6m or 1y
+                const lastWeek = history[history.length - 1];
+                safeSetText('im-val', lastWeek ? lastWeek.total : '--');
+                safeSetText('im-goal', lastWeek ? lastWeek.goal : '150');
+
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: history.map((d, i) => (i % 4 === 0) ? parseLocalDate(d.date).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''),
+                        datasets: [{
+                            label: 'Weekly Total',
+                            data: history.map(d => d.total),
+                            backgroundColor: history.map(d => d.total >= d.goal ? '#4ade80' : '#38bdf8'),
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#94a3b8', autoSkip: false } },
+                            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                        }
+                    }
+                });
+            }
+        }
+
         async function fetchData() {
             try {
                 // Fetch basic stats
@@ -1122,6 +1697,8 @@
                 updateStressRange('1d');
                 updateSleepRange('1d');
                 updateHydrationRange('1d');
+                updateHRVRange('1d');
+                updateIMRange('1w');
                 fetchActivityHeatmap();
                 fetchCalendarData();
 
@@ -1135,7 +1712,7 @@
             }
         }
 
-        function updateDashboard(data) {
+        window.updateDashboard = function (data) {
             safeSetText('steps', data.steps ? data.steps.toLocaleString() : '0');
             safeSetText('rhr', data.resting_hr || '--');
             safeSetText('stress', data.stress_avg || '--');
@@ -2134,6 +2711,148 @@
                 const res = await fetch('/api/add_weight', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ weight: unit === 'lbs' ? val / 2.20462 : val }) });
                 if (res.ok) { closeWeightModal(); fetchData(); }
             } catch (err) { console.error('Add weight error:', err); }
+        }
+
+        function renderIntensityMinutesVisualV2(data) {
+            const canvasId = 'imHistoryChart';
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+            const range = data.range || currentIMRange;
+            const history = data.history || [];
+            const goal = data.goal || 150;
+
+            if (history.length > 0) {
+                let thisWeekTotal = 0;
+                for (let i = history.length - 1; i >= 0; i--) {
+                    const d = history[i];
+                    const dt = parseLocalDate(d.date);
+                    thisWeekTotal += d.total;
+                    if (dt.getDay() === 1) break;
+                }
+                safeSetText('im-val', thisWeekTotal);
+                safeSetText('im-goal', goal);
+            }
+
+            if (range === '1d') {
+                const points = data.samples.map(s => ({ x: s[0], y: s[1] }));
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: 'Intensity Minutes',
+                            data: points,
+                            borderColor: '#38bdf8',
+                            backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            fill: true,
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { type: 'time', time: { displayFormats: { hour: 'HH:mm' } }, grid: { display: false }, ticks: { color: '#94a3b8' } },
+                            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                        }
+                    }
+                });
+            } else if (range === '1w' || range === '1m') {
+                const weeks_seg = [];
+                let curWeek = [];
+                history.forEach(d => {
+                    const dt = parseLocalDate(d.date);
+                    if (dt.getDay() === 1 && curWeek.length > 0) {
+                        weeks_seg.push(curWeek);
+                        curWeek = [];
+                    }
+                    curWeek.push(d);
+                });
+                if (curWeek.length > 0) weeks_seg.push(curWeek);
+
+                const dsLabels = history.map(d => {
+                    const dt = parseLocalDate(d.date);
+                    if (dt.getDay() === 1) return dt.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                    if (range === '1w') return dt.toLocaleDateString([], { weekday: 'short' });
+                    return '';
+                });
+
+                const dsDatasets = weeks_seg.map((week, idx) => {
+                    let cumulative = 0;
+                    const weekData = history.map(h => {
+                        const dayInWeek = week.find(w => w.date === h.date);
+                        if (dayInWeek) {
+                            cumulative += dayInWeek.total;
+                            return cumulative;
+                        }
+                        return null;
+                    });
+                    const isGoalMet = cumulative >= goal;
+                    const color = isGoalMet ? '#4ade80' : '#38bdf8';
+                    return {
+                        label: `Week ${idx + 1}`,
+                        data: weekData,
+                        borderColor: color,
+                        borderWidth: 3,
+                        pointRadius: 0,
+                        stepped: 'before',
+                        fill: false,
+                        spanGaps: false
+                    };
+                });
+
+                dsDatasets.push({
+                    label: 'Weekly Goal',
+                    data: history.map(() => goal),
+                    borderColor: 'rgba(255, 255, 255, 0.3)',
+                    borderDash: [5, 5],
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    fill: false,
+                    order: 0
+                });
+
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: dsLabels, datasets: dsDatasets },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', autoSkip: false } },
+                            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                        }
+                    }
+                });
+            } else {
+                const lw = history[history.length - 1];
+                safeSetText('im-val', lw ? lw.total : '--');
+                safeSetText('im-goal', lw ? lw.goal : '150');
+                chartInstances[canvasId] = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: history.map((d, i) => (i % 4 === 0) ? parseLocalDate(d.date).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''),
+                        datasets: [{
+                            label: 'Weekly Total',
+                            data: history.map(d => d.total),
+                            backgroundColor: history.map(d => d.total >= d.goal ? '#4ade80' : '#38bdf8'),
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#94a3b8', autoSkip: false } },
+                            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                        }
+                    }
+                });
+            }
         }
 
         // Start everything

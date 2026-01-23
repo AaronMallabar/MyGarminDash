@@ -88,6 +88,7 @@ def get_stats():
             'stress_avg': stats.get('averageStressLevel'),
             'sleep_seconds': sleep.get('dailySleepDTO', {}).get('sleepTimeSeconds'),
             'sleep_score': sleep.get('dailySleepDTO', {}).get('sleepScoreFeedback'),
+            'hrv': client.get_hrv_data(today.isoformat()).get('hrvSummary'),
             'activities': activities,
             'weight_grams': weight_grams
         }
@@ -394,7 +395,7 @@ def get_hr_history():
                 return None
 
             # Use more threads for 1y to blast through it
-            workers = 40 if range_val == '1y' else 30
+            workers = 40 if range_val == '1y' else 0
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 results = list(executor.map(fetch_day, dates_to_fetch))
             
@@ -609,6 +610,60 @@ def get_hydration():
         logger.error(f"Error fetching hydration: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/hrv')
+def get_hrv():
+    try:
+        client = get_garmin_client()
+        range_val = request.args.get('range', '1d')
+        end_date_str = request.args.get('end_date')
+        
+        if end_date_str:
+            end_date = date.fromisoformat(end_date_str)
+        else:
+            end_date = date.today()
+
+        if range_val == '1d':
+            hrv_data = client.get_hrv_data(end_date.isoformat())
+            return jsonify(hrv_data)
+        else:
+            days = 7
+            if range_val == '1w': days = 7
+            elif range_val == '1m': days = 31
+            elif range_val == '1y': days = 365
+            
+            dates_to_fetch = [end_date - timedelta(days=i) for i in range(days)]
+            
+            from concurrent.futures import ThreadPoolExecutor
+            def fetch_day(d):
+                try:
+                    day_data = client.get_hrv_data(d.isoformat())
+                    summary = day_data.get('hrvSummary')
+                    if summary:
+                        return summary
+                except:
+                    pass
+                return None
+
+            workers = 20 if range_val == '1y' else 10
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                results = list(executor.map(fetch_day, dates_to_fetch))
+            
+            history = [r for r in results if r]
+            history.sort(key=lambda x: x['calendarDate'])
+            
+            # For status cards, we often want the "current" day's full data too
+            current_full = client.get_hrv_data(end_date.isoformat())
+            
+            return jsonify({
+                'range': range_val,
+                'history': history,
+                'hrvSummary': current_full.get('hrvSummary'),
+                'hrvReadings': current_full.get('hrvReadings')
+            })
+    except Exception as e:
+        logger.error(f"Error fetching HRV: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/hydration_history')
 def get_hydration_history():
     try:
@@ -666,6 +721,112 @@ def get_hydration_history():
 
     except Exception as e:
         logger.error(f"Error fetching hydration history: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/intensity_minutes_history')
+def get_intensity_minutes_history():
+    try:
+        client = get_garmin_client()
+        range_val = request.args.get('range', '1w')
+        end_date_str = request.args.get('end_date')
+        
+        if end_date_str:
+            end_date = date.fromisoformat(end_date_str)
+        else:
+            end_date = date.today()
+
+        if range_val == '1d':
+            # Detail for a single day
+            im_data = client.get_intensity_minutes_data(end_date.isoformat())
+            return jsonify({
+                'range': '1d',
+                'summary': {
+                    'total': im_data.get('moderateMinutes', 0) + 2 * im_data.get('vigorousMinutes', 0),
+                    'moderate': im_data.get('moderateMinutes', 0),
+                    'vigorous': im_data.get('vigorousMinutes', 0),
+                    'goal': im_data.get('weekGoal', 150),
+                    'startDayMinutes': im_data.get('startDayMinutes', 0)
+                },
+                'samples': im_data.get('imValuesArray', [])
+            })
+        
+        elif range_val in ['1w', '1m']:
+            # Align to Monday-Sunday weeks
+            # Garmin weekday() is 0 (Mon) to 6 (Sun)
+            days_to_monday = end_date.weekday()
+            current_monday = end_date - timedelta(days=days_to_monday)
+            
+            if range_val == '1w':
+                start_date = current_monday
+                days = 7
+            else: # 1m
+                # Show 4 full weeks (the current week + 3 previous)
+                start_date = current_monday - timedelta(weeks=3)
+                days = 28
+            
+            dates_to_fetch = [start_date + timedelta(days=i) for i in range(days)]
+            
+            from concurrent.futures import ThreadPoolExecutor
+            def fetch_day(d):
+                try:
+                    # Don't fetch future dates
+                    if d > date.today():
+                        return { 'date': d.isoformat(), 'moderate': 0, 'vigorous': 0, 'total': 0 }
+                    data = client.get_intensity_minutes_data(d.isoformat())
+                    return {
+                        'date': d.isoformat(),
+                        'moderate': data.get('moderateMinutes', 0),
+                        'vigorous': data.get('vigorousMinutes', 0),
+                        'total': data.get('moderateMinutes', 0) + 2 * data.get('vigorousMinutes', 0)
+                    }
+                except:
+                    return { 'date': d.isoformat(), 'moderate': 0, 'vigorous': 0, 'total': 0 }
+
+            with ThreadPoolExecutor(max_workers=20) as executor:
+                results = list(executor.map(fetch_day, dates_to_fetch))
+            
+            history = results
+            history.sort(key=lambda x: x['date'])
+            
+            # Fetch current weekly goal
+            goal = 150
+            try:
+                today_stats = client.get_intensity_minutes_data(date.today().isoformat())
+                goal = today_stats.get('weekGoal', 150)
+            except:
+                pass
+
+            return jsonify({
+                'range': range_val,
+                'history': history,
+                'goal': goal
+            })
+
+        else: # 6m or 1y
+            # Weekly summaries
+            weeks = 26 if range_val == '6m' else 52
+            start_date = end_date - timedelta(weeks=weeks)
+            
+            wim_data = client.get_weekly_intensity_minutes(start_date.isoformat(), end_date.isoformat())
+            # Format: {'calendarDate': '...', 'weeklyGoal': ..., 'moderateValue': ..., 'vigorousValue': ...}
+            
+            history = []
+            for w in wim_data:
+                history.append({
+                    'date': w.get('calendarDate'),
+                    'goal': w.get('weeklyGoal', 150),
+                    'moderate': w.get('moderateValue', 0),
+                    'vigorous': w.get('vigorousValue', 0),
+                    'total': w.get('moderateValue', 0) + 2 * w.get('vigorousValue', 0)
+                })
+            
+            return jsonify({
+                'range': range_val,
+                'history': history
+            })
+
+    except Exception as e:
+        logger.error(f"Error fetching intensity minutes history: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/activity/<int:activity_id>')

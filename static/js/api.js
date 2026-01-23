@@ -52,6 +52,7 @@ async function fetchDashboardData() {
         fetchStressHistory();
         fetchSleepHistory();
         fetchHydrationHistory();
+        fetchHRV();
 
         safeSetText('last-sync', `Last synced: ${new Date().toLocaleTimeString()}`);
     } catch (error) {
@@ -287,6 +288,36 @@ async function fetchHydrationHistory() {
     }
 }
 
+// ============================================================================
+// HRV DATA
+// ============================================================================
+
+/**
+ * Fetch HRV data
+ */
+async function fetchHRV() {
+    try {
+        const endDate = window.currentHRVEndDate || new Date();
+        const range = window.currentHRVRange || '1d';
+
+        // Check cache for 1y
+        if (range === '1y' && isDateToday(endDate) && preloadedData['hrv']) {
+            renderHRVVisual(preloadedData['hrv']);
+            return;
+        }
+
+        const res = await fetch(`/api/hrv?end_date=${getLocalDateStr(endDate)}&range=${range}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (!data.error) {
+                renderHRVVisual(data);
+            }
+        }
+    } catch (err) {
+        console.error('HRV error:', err);
+    }
+}
+
 /**
  * Preload 1-year data for all metrics
  */
@@ -298,7 +329,8 @@ async function preloadYearlyData() {
         { key: 'hr', url: `/api/hr_history?end_date=${todayStr}&range=1y` },
         { key: 'stress', url: `/api/stress_history?end_date=${todayStr}&range=1y` },
         { key: 'sleep', url: `/api/sleep_history?end_date=${todayStr}&range=1y` },
-        { key: 'hydration', url: `/api/hydration_history?end_date=${todayStr}&range=1y` }
+        { key: 'hydration', url: `/api/hydration_history?end_date=${todayStr}&range=1y` },
+        { key: 'hrv', url: `/api/hrv?end_date=${todayStr}&range=1y` }
     ];
 
     console.log('Starting background preload of 1y data...');

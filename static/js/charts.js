@@ -13,7 +13,8 @@ const chartDataCache = {
     stress: {},
     sleep: {},
     weight: {},
-    hydration: {}
+    hydration: {},
+    hrv: {}
 };
 
 function getCacheKey(range, endDate) {
@@ -508,6 +509,11 @@ function renderSleepVisual(data) {
                 }
             }
         });
+    } else {
+        const labels = data.history.map(d => {
+            const p = d.date.split('-');
+            return p[1] + '/' + p[2];
+        });
         const isMobile = window.innerWidth < 600;
         const barPct = data.history.length > 100 ? 0.7 : (data.history.length > 30 ? 0.4 : 0.5);
         const catPct = data.history.length > 100 ? 0.9 : 0.8;
@@ -638,6 +644,159 @@ function shiftHydrationDate(dir) {
     currentHydrationEndDate.setDate(currentHydrationEndDate.getDate() + (dir * (currentHydrationRange === '1d' ? 1 : 7)));
     if (currentHydrationEndDate > new Date()) currentHydrationEndDate = new Date();
     renderHydrationVisual();
+}
+
+let currentHRVEndDate = new Date();
+let currentHRVRange = '1d';
+
+async function updateHRVRange(range, btn) {
+    if (range) currentHRVRange = range;
+    if (btn) {
+        btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    await fetchHRV();
+}
+
+function shiftHRVDate(dir) {
+    currentHRVEndDate.setDate(currentHRVEndDate.getDate() + (dir * (currentHRVRange === '1d' ? 1 : 7)));
+    if (currentHRVEndDate > new Date()) currentHRVEndDate = new Date();
+    fetchHRV();
+}
+
+/**
+ * Render HRV Visual Card
+ */
+function renderHRVVisual(data) {
+    const canvasId = 'hrvHistoryChart';
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const statusContainer = document.getElementById('hrv-status-container');
+    if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+    const range = data.range || currentHRVRange;
+
+    // Daily View
+    if (range === '1d') {
+        if (canvas) canvas.style.display = 'none';
+        if (statusContainer) statusContainer.style.display = 'block';
+
+        if (!data.hrvSummary) return;
+        const summary = data.hrvSummary;
+
+        // Set values
+        safeSetText('hrv-val', summary.lastNightAvg || '--');
+        safeSetText('hrv-weekly-avg', `7d Avg: ${summary.weeklyAvg || '--'} ms`);
+
+        // Status Badge
+        const statusEl = document.getElementById('hrv-status-badge');
+        if (statusEl) {
+            const status = summary.status || 'NO_STATUS';
+            statusEl.textContent = status.replace(/_/g, ' ');
+            statusEl.className = 'badge';
+
+            if (status === 'BALANCED') statusEl.classList.add('badge-balanced');
+            else if (status === 'UNBALANCED') statusEl.classList.add('badge-unbalanced');
+            else if (status === 'LOW') statusEl.classList.add('badge-low');
+            else statusEl.classList.add('badge-gray');
+        }
+
+        // Baseline Gauge logic
+        const baseline = summary.baseline;
+        if (baseline) {
+            safeSetText('hrv-baseline-low', baseline.balancedLow || '--');
+            safeSetText('hrv-baseline-high', baseline.balancedUpper || '--');
+
+            const low = (baseline.balancedLow || 40) - 15;
+            const high = (baseline.balancedUpper || 80) + 15;
+            const rangeVal = high - low;
+            const val = summary.lastNightAvg || low;
+            const pct = Math.max(0, Math.min(100, ((val - low) / rangeVal) * 100));
+
+            const marker = document.getElementById('hrv-marker');
+            if (marker) marker.style.left = `${pct}%`;
+
+            const zone = document.getElementById('hrv-baseline-zone');
+            if (zone) {
+                const zoneStart = Math.max(0, ((baseline.balancedLow - low) / rangeVal) * 100);
+                const zoneWidth = ((baseline.balancedUpper - baseline.balancedLow) / rangeVal) * 100;
+                zone.style.left = `${zoneStart}%`;
+                zone.style.width = `${zoneWidth}%`;
+            }
+        }
+
+        // Feedback
+        const feedback = summary.feedbackPhrase || '';
+        const friendlyFeedback = feedback
+            .replace(/HRV_STATUS_FEEDBACK_/g, '')
+            .replace(/HRV_UNBALANCED_/g, 'Unbalanced: ')
+            .replace(/_/g, ' ')
+            .toLowerCase()
+            .replace(/^\w/, c => c.toUpperCase());
+        safeSetText('hrv-feedback', friendlyFeedback || 'No feedback available');
+
+    } else {
+        // History View (Chart)
+        if (canvas) canvas.style.display = 'block';
+        if (statusContainer) statusContainer.style.display = 'none';
+
+        if (!data.history || data.history.length === 0) return;
+
+        const labels = data.history.map(d => {
+            const p = d.calendarDate.split('-');
+            return p[1] + '/' + p[2];
+        });
+
+        // Current summary for badge/value if available
+        const lastSummary = data.history[data.history.length - 1];
+        if (lastSummary) {
+            safeSetText('hrv-val', lastSummary.lastNightAvg || '--');
+            safeSetText('hrv-weekly-avg', `7d Avg: ${lastSummary.weeklyAvg || '--'} ms`);
+
+            const statusEl = document.getElementById('hrv-status-badge');
+            if (statusEl) {
+                const status = lastSummary.status || 'NO_STATUS';
+                statusEl.textContent = status.replace(/_/g, ' ');
+                statusEl.className = 'badge';
+                if (status === 'BALANCED') statusEl.classList.add('badge-balanced');
+                else if (status === 'UNBALANCED') statusEl.classList.add('badge-unbalanced');
+                else if (status === 'LOW') statusEl.classList.add('badge-low');
+                else statusEl.classList.add('badge-gray');
+            }
+        }
+
+        const barPct = data.history.length > 100 ? 0.7 : (data.history.length > 30 ? 0.4 : 0.5);
+        const radius = data.history.length > 100 ? 0 : 4;
+
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'HRV (ms)',
+                    data: data.history.map(d => d.lastNightAvg),
+                    backgroundColor: data.history.map(d => {
+                        if (d.status === 'BALANCED') return '#4ade80';
+                        if (d.status === 'UNBALANCED') return '#fb923c';
+                        if (d.status === 'LOW') return '#f87171';
+                        return '#38bdf8';
+                    }),
+                    borderRadius: radius,
+                    barPercentage: barPct,
+                    categoryPercentage: 0.8
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 7 } },
+                    y: { beginAtZero: false, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                }
+            }
+        });
+    }
 }
 
 // --- Activity Modal & Detail Charts ---
@@ -804,4 +963,3 @@ function formatDuration(s) {
     const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = Math.floor(s % 60);
     return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}` : `${m}:${sec.toString().padStart(2, '0')}`;
 }
-
