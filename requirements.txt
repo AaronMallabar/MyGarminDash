@@ -2,3 +2,4 @@ flask
 garminconnect
 python-dotenv
 gunicorn
+google-generativeai
