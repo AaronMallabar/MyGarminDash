@@ -59,11 +59,31 @@ def get_ai_insights():
         client = get_garmin_client()
         today = date.today()
         
-        # 1. Fetch Today's Deep Health Data
-        stats = client.get_stats(today.isoformat())
-        sleep = client.get_sleep_data(today.isoformat())
-        hrv = client.get_hrv_data(today.isoformat()).get('hrvSummary', {})
-        im_data = client.get_intensity_minutes_data(today.isoformat())
+        # 1. Fetch Today's Deep Health Data (with safe fallbacks)
+        def safe_fetch(func, *args, **kwargs):
+            try:
+                res = func(*args, **kwargs)
+                return res if res is not None else {}
+            except Exception as e:
+                logger.warning(f"AI Insights: Failed to fetch {func.__name__ if hasattr(func, '__name__') else 'unknown'}: {e}")
+                return {}
+
+        def n(val):
+            """Ensure value is a number, default to 0 if None."""
+            return val if val is not None else 0
+
+        stats = safe_fetch(client.get_stats, today.isoformat())
+        sleep = safe_fetch(client.get_sleep_data, today.isoformat())
+        hrv_res = safe_fetch(client.get_hrv_data, today.isoformat())
+        hrv = hrv_res.get('hrvSummary', {}) if isinstance(hrv_res, dict) else {}
+        
+        # Ensure we have common fields with defaults
+        steps_today = n(stats.get('totalSteps', 0)) if isinstance(stats, dict) else 0
+        stress_today = n(stats.get('averageStressLevel', 0)) if isinstance(stats, dict) else 0
+        
+        dto_today = sleep.get('dailySleepDTO', {}) if isinstance(sleep, dict) else {}
+        if not isinstance(dto_today, dict): dto_today = {}
+        sleep_score_today = n(dto_today.get('sleepScore') or dto_today.get('score') or (sleep.get('sleepScore', 0) if isinstance(sleep, dict) else 0))
         
         # 2. Fetch Deep Historical Data (Last 7 Days)
         from concurrent.futures import ThreadPoolExecutor
@@ -72,16 +92,22 @@ def get_ai_insights():
                 s = client.get_stats(d.isoformat())
                 h = client.get_hydration_data(d.isoformat())
                 sl = client.get_sleep_data(d.isoformat())
-                # Fix Sleep Score Retrieval: try multiple locations
-                dto = sl.get('dailySleepDTO', {})
-                s_score = dto.get('sleepScore') or dto.get('score') or sl.get('sleepScore', 0)
+                
+                # Safe key retrieval
+                s_dict = s if isinstance(s, dict) else {}
+                h_dict = h if isinstance(h, dict) else {}
+                sl_dict = sl if isinstance(sl, dict) else {}
+                
+                dto = sl_dict.get('dailySleepDTO', {}) if isinstance(sl_dict, dict) else {}
+                if not isinstance(dto, dict): dto = {}
+                s_score = n(dto.get('sleepScore') or dto.get('score') or sl_dict.get('sleepScore', 0))
                 
                 return {
                     'date': d.isoformat(),
-                    'steps': s.get('totalSteps', 0),
-                    'goal': s.get('totalStepsGoal', 10000),
-                    'hydration': h.get('hydrationValueProcessed', 0),
-                    'stress': s.get('averageStressLevel', 0),
+                    'steps': n(s_dict.get('totalSteps', 0)),
+                    'goal': n(s_dict.get('totalStepsGoal', 10000)),
+                    'hydration': n(h_dict.get('valueInML', 0) if h_dict else 0),
+                    'stress': n(s_dict.get('averageStressLevel', 0)),
                     'sleep_score': s_score,
                     'sleep_feedback': dto.get('sleepScoreFeedback', 'unknown')
                 }
@@ -94,38 +120,35 @@ def get_ai_insights():
         history_list = [h for h in history_list if h]
         
         # 3. Calculate Narratives and Trends
-        avg_steps = sum(h['steps'] for h in history_list) / len(history_list) if history_list else 10000
-        avg_sleep = sum(h['sleep_score'] for h in history_list if h['sleep_score'] > 0) / max(1, len([h for h in history_list if h['sleep_score'] > 0]))
-        avg_stress = sum(h['stress'] for h in history_list if h['stress'] > 0) / max(1, len([h for h in history_list if h['stress'] > 0]))
+        avg_steps = sum(n(h.get('steps', 0)) for h in history_list) / len(history_list) if history_list else 10000
+        valid_sleeps = [n(h.get('sleep_score', 0)) for h in history_list if n(h.get('sleep_score', 0)) > 0]
+        avg_sleep = sum(valid_sleeps) / max(1, len(valid_sleeps)) if valid_sleeps else 70
         
-        # 4. Compare Today to Trends
-        steps_today = stats.get('totalSteps', 0)
-        stress_today = stats.get('averageStressLevel', 0)
-        dto_today = sleep.get('dailySleepDTO', {})
-        sleep_score_today = dto_today.get('sleepScore') or dto_today.get('score') or sleep.get('sleepScore', 0)
+        valid_stress = [n(h.get('stress', 0)) for h in history_list if n(h.get('stress', 0)) > 0]
+        avg_stress = sum(valid_stress) / max(1, len(valid_stress)) if valid_stress else 25
         
-        # Today's Narrative
+        # 4. Today's Narrative
         today_blurb = []
         if steps_today > avg_steps * 1.2:
             today_blurb.append(f"You're significantly more active today than your usual trend. This extra volume is building great aerobic capacity.")
         elif steps_today < avg_steps * 0.8:
-            today_blurb.append(f"Today is a lower volume day for you. While this might feel like a 'dip', it's actually providing your joints and nervous system a much-needed break from the usual impact.")
+            today_blurb.append(f"Today is a lower volume day for you. Your body might be calling for some lighter movement.")
         else:
             today_blurb.append(f"You're maintaining a very consistent movement rhythm today, which is the backbone of long-term fitness.")
 
         if stress_today > avg_stress + 5:
-            today_blurb.append(f"Your internal load (stress: {stress_today}) is higher than your weekly average. This suggests your body is working harder to maintain equilibrium, possibly due to lingering fatigue from yesterday.")
+            today_blurb.append(f"Your internal load (stress: {stress_today}) is higher than your weekly average. This suggests your body is working harder to maintain equilibrium.")
         elif stress_today < avg_stress - 5:
-            today_blurb.append(f"Your body is in a prime 'growth' state today with unusually low stress. This is the optimal time for high-quality work or deep physiological adaptation.")
+            today_blurb.append(f"Your body is in a prime 'growth' state today with unusually low stress.")
 
         # Yesterday's Detailed Narrative
         yesterday_blurb = "No data for yesterday."
         if history_list:
             y = history_list[0]
-            y_steps = y['steps']
-            y_stress = y['stress']
-            y_sleep = y['sleep_score']
-            y_feedback = y['sleep_feedback']
+            y_steps = n(y.get('steps', 0))
+            y_stress = n(y.get('stress', 0))
+            y_sleep = n(y.get('sleep_score', 0))
+            y_feedback = y.get('sleep_feedback', 'unknown')
             
             y_narrative = []
             if y_steps > 12000:
@@ -136,47 +159,65 @@ def get_ai_insights():
                 y_narrative.append(f"Yesterday was a typical, balanced movement day.")
 
             if y_stress > 35:
-                y_narrative.append(f"You carried quite a bit of physiological stress ({y_stress}), which likely explains why your recovery feels slower today.")
+                y_narrative.append(f"You carried quite a bit of physiological stress ({y_stress}).")
             
             if y_sleep > 80:
-                y_narrative.append(f"The highlight was your exceptional recovery—a sleep score of {y_sleep} means you likely entered today with 'full batteries' even if the day was busy.")
+                y_narrative.append(f"The highlight was your exceptional recovery—a sleep score of {y_sleep}.")
             elif y_sleep > 0:
-                y_narrative.append(f"Your sleep ({y_sleep}) was {y_feedback.lower()}. If you feel sluggish, this deficit is likely the culprit.")
+                y_narrative.append(f"Your sleep ({y_sleep}) was {str(y_feedback).lower()}.")
             
             yesterday_blurb = " ".join(y_narrative)
 
-        # 5. Optimization Suggestions (Coaching Style)
+        # 5. Optimization Suggestions
         suggestions = []
-        if hrv.get('status') in ['UNBALANCED', 'LOW']:
-             suggestions.append("Your HRV trend is signaling a 'red light'. High-intensity work now will likely delay your next 3 days of progress. Opt for Zone 1 movement or mobility work.")
+        hrv_status = hrv.get('status') if isinstance(hrv, dict) else None
+        if hrv_status in ['UNBALANCED', 'LOW']:
+             suggestions.append("Your HRV trend is signaling a 'red light'. Opt for Zone 1 movement or mobility work.")
         elif stress_today > 40:
-             suggestions.append("With your stress spiking today, prioritize magnesium and deep breathing before bed to prevent this stress from 'bleeding' into your sleep quality tonight.")
+             suggestions.append("With your stress spiking today, prioritize deep breathing before bed.")
         
-        today_hyd = client.get_hydration_data(today.isoformat()).get('hydrationValueProcessed', 0)
-        if today_hyd < 1500:
-            suggestions.append(f"You're historically most consistent when you log at least 2L of water. You're behind pace today—grab a glass now to help your muscles flush waste.")
+        # Robust hydration fetch
+        today_hyd = 0
+        try:
+            h_data = client.get_hydration_data(today.isoformat())
+            if isinstance(h_data, dict):
+                today_hyd = n(h_data.get('valueInML', 0))
+            elif isinstance(h_data, list) and len(h_data) > 0:
+                today_hyd = sum(n(item.get('valueInML', 0)) for item in h_data if isinstance(item, dict))
+        except:
+            today_hyd = 0
+
+        if n(today_hyd) < 2000:
+            oz = round(n(today_hyd) * 0.033814, 1)
+            suggestions.append(f"You're behind your 2L hydration target ({oz} oz logged)—grab a glass now.")
 
         if not suggestions:
-            suggestions.append("Every metric is in the 'green zone'. This is your green light to push a little harder in your next session or try a new movement challenge.")
+            suggestions.append("Everything looks solid. This is your green light to stay the course or push a little harder.")
 
         # 6. Activity Insights
         activity_insights = []
         max_hr = get_user_max_hr(client)
-        all_activities = client.get_activities(0, 5)
-        for act in all_activities:
-            if act.get('startTimeLocal', '').split(' ')[0] == today.isoformat():
-                avg_hr = act.get('averageHR', 0)
+        try:
+            acts = client.get_activities(0, 5)
+            if not isinstance(acts, list): acts = []
+        except:
+            acts = []
+
+        for act in acts:
+            s_time = act.get('startTimeLocal')
+            if s_time and str(s_time).split(' ')[0] == today.isoformat():
+                avg_hr = n(act.get('averageHR', 0))
                 hr_pct = (avg_hr / max_hr) if max_hr > 0 and avg_hr > 0 else 0
                 
                 was, worked, better = "Activity logged.", "General fitness.", "Keep it up."
                 if hr_pct > 0.85:
-                    was = "This was a high-intensity 'peak' session that pushed your cardiovascular limits."
+                    was = "This was a high-intensity 'peak' session."
                     worked = "VO2 Max and Anaerobic capacity."
-                    better = "Don't try to repeat this tomorrow; your muscle glycogen is likely depleted."
+                    better = "Prioritize recovery tomorrow; glycogen stores are likely low."
                 elif hr_pct > 0.70:
-                    was = "This was your 'bread and butter' aerobic conditioning."
+                    was = "This was steady aerobic conditioning."
                     worked = "Mitochondrial density and fat adaptation."
-                    better = "Try to focus on steady breathing to stay in control of the effort."
+                    better = "Maintain this consistency for long-term health."
                 
                 activity_insights.append({
                     'name': act.get('activityName', 'Activity'),
@@ -193,7 +234,7 @@ def get_ai_insights():
         })
         
     except Exception as e:
-        logger.error(f"Error generating AI insights: {e}")
+        logger.error(f"Error generating AI insights: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/stats')
