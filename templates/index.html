@@ -29,6 +29,35 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
+    <!-- Leaflet for Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+
+    <!-- MarkerCluster -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+
+    <style>
+        /* Custom Cluster Styles for Dark Mode */
+        .marker-cluster-small,
+        .marker-cluster-medium,
+        .marker-cluster-large {
+            background-color: rgba(56, 189, 248, 0.6) !important;
+            /* Sky blue */
+        }
+
+        .marker-cluster div {
+            background-color: rgba(15, 23, 42, 0.9) !important;
+            /* Slate 900 */
+            color: white !important;
+            font-family: 'Inter', sans-serif;
+            font-weight: bold;
+        }
+    </style>
 </head>
 
 <body>
@@ -913,6 +942,66 @@
 
         </div>
 
+        <!-- Global Activity Heatmap -->
+        <section style="margin-bottom: 3rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2>Global Activity Heatmap</h2>
+
+                <div style="display: flex; gap: 1rem; align-items: center;">
+                    <!-- Activity Filters -->
+                    <div
+                        style="display: flex; gap: 0.5rem; background: rgba(255,255,255,0.05); padding: 0.2rem 0.5rem; border-radius: 0.5rem;">
+                        <label
+                            style="font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.2rem; color: #94a3b8;">
+                            <input type="checkbox" id="heatmap-run" checked onchange="updateGlobalHeatmap()"> Run
+                        </label>
+                        <label
+                            style="font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.2rem; color: #94a3b8;">
+                            <input type="checkbox" id="heatmap-cycle" checked onchange="updateGlobalHeatmap()"> Cycle
+                        </label>
+                        <label
+                            style="font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.2rem; color: #94a3b8;">
+                            <input type="checkbox" id="heatmap-walk" checked onchange="updateGlobalHeatmap()"> Walk
+                        </label>
+                        <label
+                            style="font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.2rem; color: #94a3b8;">
+                            <input type="checkbox" id="heatmap-virtual" checked onchange="updateGlobalHeatmap()">
+                            Virtual
+                        </label>
+                    </div>
+
+                    <!-- Range Selector -->
+                    <select id="heatmap-range" onchange="updateGlobalHeatmap()"
+                        style="background: #1e293b; color: #e2e8f0; border: 1px solid rgba(255,255,255,0.1); padding: 0.3rem 0.8rem; border-radius: 0.5rem; font-size: 0.85rem; cursor: pointer;">
+                        <option value="this_year" style="background: #1e293b; color: #e2e8f0;">This Year</option>
+                        <option value="last_year" style="background: #1e293b; color: #e2e8f0;">Last Year</option>
+                        <option value="all" style="background: #1e293b; color: #e2e8f0;">All Time</option>
+                        <option value="90d" style="background: #1e293b; color: #e2e8f0;">Last 90 Days</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="global-map-container"
+                style="height: 500px; width: 100%; border-radius: 1rem; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); position: relative;">
+                <div id="globalHeatmap" style="width: 100%; height: 100%;"></div>
+
+                <!-- Map Controls Overlay -->
+                <div
+                    style="position: absolute; top: 1rem; left: 1rem; z-index: 500; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <button onclick="resetGlobalHeatmapView()"
+                        style="background: rgba(30, 41, 59, 0.9); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 0.4rem 0.8rem; border-radius: 0.4rem; font-size: 0.8rem; cursor: pointer; backdrop-filter: blur(4px);">
+                        Reset View
+                    </button>
+                </div>
+
+                <div id="heatmap-loading"
+                    style="position: absolute; bottom: 1rem; right: 1rem; background: rgba(0,0,0,0.8); padding: 0.5rem 1rem; border-radius: 2rem; font-size: 0.8rem; display: none; align-items: center; gap: 0.5rem; z-index: 1000; border: 1px solid rgba(255,255,255,0.1);">
+                    <div class="pulse-dot" id="heatmap-dot"></div>
+                    <span id="heatmap-status">Loading activities...</span>
+                </div>
+            </div>
+        </section>
+
         <!-- Activity Heatmap -->
 
         <section style="margin-bottom: 3rem;">
@@ -1134,6 +1223,11 @@
                     <div class="activity-detail-label">Calories</div>
                     <div class="activity-detail-value" id="modal-calories">--</div>
                 </div>
+            </div>
+
+            <div id="activity-map-container"
+                style="height: 350px; margin-bottom: 2rem; border-radius: 0.75rem; overflow: hidden; display: none; border: 1px solid rgba(255,255,255,0.1);">
+                <div id="activityMap" style="width: 100%; height: 100%; z-index: 1;"></div>
             </div>
 
             <div id="modal-ai-insight" class="ai-insight-box"
@@ -2366,13 +2460,296 @@
 
         // --- Activity Modal & Detail Charts ---
 
+        let activityMap = null;
+
+        function renderActivityMap(polyline) {
+            const container = document.getElementById('activity-map-container');
+            if (!container) return;
+
+            if (!polyline || polyline.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+
+            container.style.display = 'block';
+
+            // Convert Garmin polyline objects {lat, lon} to Leaflet array [lat, lon]
+            const latlngs = polyline.map(p => [p.lat, p.lon]);
+
+            if (activityMap) {
+                activityMap.remove();
+                activityMap = null;
+            }
+
+            // Dark mode map tiles (CartoDB Dark Matter)
+            activityMap = L.map('activityMap', {
+                zoomControl: false,
+                attributionControl: false
+            });
+
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 20
+            }).addTo(activityMap);
+
+            const path = L.polyline(latlngs, {
+                color: '#38bdf8',
+                weight: 4,
+                opacity: 0.8,
+                lineJoin: 'round'
+            }).addTo(activityMap);
+
+            // Fit bounds
+            activityMap.fitBounds(path.getBounds(), { padding: [20, 20] });
+
+            // Fix for map rendering in modal
+            setTimeout(() => {
+                activityMap.invalidateSize();
+                activityMap.fitBounds(path.getBounds(), { padding: [20, 20] });
+            }, 200);
+        }
+
+        // --- Global Heatmap Functions ---
+
+        let globalHeatmap = null;
+        let heatmapLayer = null;
+        let heatmapData = []; // Raw data from API
+        let heatmapPollInterval = null;
+
+        async function updateGlobalHeatmap() {
+            const range = document.getElementById('heatmap-range').value;
+            const loadingEl = document.getElementById('heatmap-loading');
+            const statusEl = document.getElementById('heatmap-status');
+            const dot = document.getElementById('heatmap-dot');
+
+            if (loadingEl) {
+                loadingEl.style.display = 'flex';
+                statusEl.textContent = 'Fetching routes...';
+                if (dot) dot.style.display = 'block';
+            }
+
+            try {
+                const res = await fetch(`/api/heatmap_data?range=${range}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    heatmapData = data.data || [];
+
+                    renderGlobalHeatmap();
+
+                    if (data.missing_count > 0) {
+                        statusEl.textContent = `Syncing ${data.missing_count} routes...`;
+                        dot.style.display = 'block';
+                        // Start polling if missing data exists
+                        if (!heatmapPollInterval) {
+                            heatmapPollInterval = setInterval(updateGlobalHeatmapSilent, 5000);
+                        }
+                    } else {
+                        statusEl.textContent = 'All activities loaded';
+                        if (dot) dot.style.display = 'none';
+                        setTimeout(() => {
+                            if (loadingEl) loadingEl.style.display = 'none';
+                        }, 3000);
+
+                        if (heatmapPollInterval) {
+                            clearInterval(heatmapPollInterval);
+                            heatmapPollInterval = null;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Heatmap error:', err);
+                if (loadingEl) statusEl.textContent = 'Error loading data';
+            }
+        }
+
+        async function updateGlobalHeatmapSilent() {
+            const range = document.getElementById('heatmap-range').value;
+            try {
+                const res = await fetch(`/api/heatmap_data?range=${range}`);
+                if (res.ok) {
+                    const data = await res.json();
+
+                    const statusEl = document.getElementById('heatmap-status');
+                    const loadingEl = document.getElementById('heatmap-loading');
+                    const dot = document.getElementById('heatmap-dot');
+
+                    // Determine if we have new data
+                    if (data.data.length > heatmapData.length) {
+                        const oldCount = heatmapData.length;
+                        heatmapData = data.data;
+                        renderGlobalHeatmap(false); // false = don't reset view
+
+                        if (statusEl) statusEl.textContent = `Added ${data.data.length - oldCount} new routes...`;
+                    }
+
+                    if (data.missing_count > 0) {
+                        if (loadingEl) loadingEl.style.display = 'flex';
+                        if (statusEl) statusEl.textContent = `Syncing ${data.missing_count} routes...`;
+                        if (dot) dot.style.display = 'block';
+                    } else {
+                        if (statusEl) statusEl.textContent = 'All activities loaded';
+                        if (dot) dot.style.display = 'none';
+                        setTimeout(() => {
+                            if (loadingEl) loadingEl.style.display = 'none';
+                        }, 3000);
+
+                    }
+                }
+            } catch (e) { console.error('Silent poll error', e); }
+        }
+
+        // Global container for polyline layers
+        let globalLayerGroup = null;
+        let clusterLayerGroup = null;
+
+        function handleZoomEnd() {
+            if (!globalLayerGroup) return;
+            const z = globalHeatmap.getZoom();
+
+            // Dynamic Line Styling: Bold when zoomed out, thin when in
+            const newWeight = z < 11 ? 4 : 2;
+            const newOpacity = z < 11 ? 0.5 : 0.6;
+
+            // Debounce update to prevent stutter
+            if (globalLayerGroup._updateTimeout) clearTimeout(globalLayerGroup._updateTimeout);
+            globalLayerGroup._updateTimeout = setTimeout(() => {
+                globalLayerGroup.eachLayer(l => {
+                    if (l.options.weight !== newWeight) {
+                        l.setStyle({ weight: newWeight, opacity: newOpacity });
+                    }
+                });
+            }, 50);
+        }
+
+        function renderGlobalHeatmap(resetView = true) {
+            if (!document.getElementById('globalHeatmap')) return;
+
+            // Initialize Map
+            if (!globalHeatmap) {
+                globalHeatmap = L.map('globalHeatmap', {
+                    zoomControl: true,
+                    attributionControl: false,
+                    preferCanvas: true // Important for performance
+                }).setView([0, 0], 2);
+
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                    attribution: '&copy; OpenStreetMap &copy; CARTO',
+                    subdomains: 'abcd',
+                    maxZoom: 20
+                }).addTo(globalHeatmap);
+
+                // create layer groups
+                globalLayerGroup = L.layerGroup(); // Lines
+
+                // Cluster Group
+                clusterLayerGroup = L.markerClusterGroup({
+                    showCoverageOnHover: false,
+                    zoomToBoundsOnClick: true,
+                    spiderfyOnMaxZoom: true,
+                    removeOutsideVisibleBounds: true,
+                    animate: true,
+                    maxClusterRadius: 60,
+                    iconCreateFunction: function (cluster) {
+                        return L.divIcon({
+                            html: '<div><span>' + cluster.getChildCount() + '</span></div>',
+                            className: 'marker-cluster marker-cluster-medium',
+                            iconSize: new L.Point(40, 40)
+                        });
+                    }
+                });
+
+                // Set initial state: BOTH active
+                globalHeatmap.addLayer(globalLayerGroup);
+                globalHeatmap.addLayer(clusterLayerGroup);
+
+                // Add smart zoom listener
+                globalHeatmap.on('zoomend', handleZoomEnd);
+            }
+
+            // Clear previous layers
+            if (globalLayerGroup) globalLayerGroup.clearLayers();
+            if (clusterLayerGroup) clusterLayerGroup.clearLayers();
+
+            // Filter Data
+            const showRun = document.getElementById('heatmap-run').checked;
+            const showCycle = document.getElementById('heatmap-cycle').checked;
+            const showWalk = document.getElementById('heatmap-walk').checked;
+            const showVirtual = document.getElementById('heatmap-virtual').checked;
+
+            const boundsArr = [];
+
+            // Shared canvas renderer for performance
+            const myRenderer = L.canvas({ padding: 0.5 });
+
+            heatmapData.forEach(item => {
+                const type = item.type.toLowerCase();
+                let include = false;
+                let color = '#38bdf8'; // default blue
+
+                if (type.includes('run')) {
+                    if (showRun) include = true;
+                    color = '#f97316'; // Orange
+                } else if ((type.includes('virtual') || type.includes('indoor_cycling'))) {
+                    if (showVirtual) include = true;
+                    color = '#a855f7'; // Purple for virtual
+                } else if (type.includes('cycle') || type.includes('ride') || type.includes('biking')) {
+                    if (showCycle) include = true;
+                    color = '#3b82f6'; // Blue
+                } else if (type.includes('walk') || type.includes('hike')) {
+                    if (showWalk) include = true;
+                    color = '#22c55e'; // Green
+                }
+
+                if (include && item.poly && item.poly.length > 1) {
+                    const latlngs = item.poly.map(p => [p.lat, p.lon]);
+                    const startPoint = latlngs[0];
+
+                    // Add to Cluster Group (Invisible marker)
+                    const marker = L.marker(startPoint, {
+                        icon: L.divIcon({ className: 'hidden-marker', html: '', iconSize: [0, 0] })
+                    });
+                    if (clusterLayerGroup) clusterLayerGroup.addLayer(marker);
+
+                    // Add polyline to group (Fixed weight since we switch to clusters zoomed out)
+                    L.polyline(latlngs, {
+                        color: color,
+                        weight: 3,
+                        opacity: 0.6,
+                        renderer: myRenderer,
+                        interactive: false
+                    }).addTo(globalLayerGroup);
+
+                    // Collect points for bounds (sample start/mid/end to save time)
+                    if (resetView) {
+                        boundsArr.push(latlngs[0]);
+                        boundsArr.push(latlngs[Math.floor(latlngs.length / 2)]);
+                        boundsArr.push(latlngs[latlngs.length - 1]);
+                    }
+                }
+            });
+
+            // Fit bounds & force zoom check
+            if (resetView && boundsArr.length > 0) {
+                const bounds = L.latLngBounds(boundsArr);
+                globalHeatmap.fitBounds(bounds, { padding: [20, 20] });
+                setTimeout(handleZoomEnd, 200); // Ensure correct layer shows
+            }
+        }
+
+        function resetGlobalHeatmapView() {
+            renderGlobalHeatmap(true);
+        }
+
         async function openActivityDetail(id, basic) {
             const modal = document.getElementById('activityModal');
             if (!modal) return;
-            modal.classList.add('active');
-
             const isRun = basic.activityType.typeKey.toLowerCase().includes('run');
             const isCycle = basic.activityType.typeKey.toLowerCase().includes('cycling') || basic.activityType.typeKey.toLowerCase().includes('ride');
+
+            // Reset Map
+            const mapCont = document.getElementById('activity-map-container');
+            if (mapCont) mapCont.style.display = 'none';
 
             safeSetText('modal-title', basic.activityName);
             safeSetText('modal-date', new Date(basic.startTimeLocal).toLocaleString());
@@ -2464,6 +2841,9 @@
                         }
 
                         renderActivityCharts(data.charts, isRun, isCycle);
+
+                        // Render Map
+                        renderActivityMap(data.polyline);
                     }
                 }
             } catch (err) { console.error('Activity detail error:', err); }
@@ -2949,6 +3329,7 @@
 
         // Start everything
         fetchData();
+        updateGlobalHeatmap();
 
         window.addEventListener('resize', () => {
             Object.values(chartInstances).forEach(chart => { chart.update(); });

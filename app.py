@@ -6,7 +6,13 @@ from flask import Flask, render_template, jsonify, request
 from garminconnect import Garmin
 from datetime import date, timedelta, datetime
 from zoneinfo import ZoneInfo
+from datetime import date, timedelta, datetime
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import pickle
 
 load_dotenv()
 
@@ -61,6 +67,109 @@ def get_user_max_hr(client):
     except:
         pass
     return 190 # Default fallback
+
+# ==============================================================================
+# CACHE SYSTEM
+# ==============================================================================
+
+CACHE_FILE = 'polyline_cache.pkl'
+polyline_lock = threading.Lock()
+
+class PolylineCache:
+    def __init__(self):
+        self.cache = {}
+        self.load()
+
+    def load(self):
+        if os.path.exists(CACHE_FILE):
+            try:
+                with open(CACHE_FILE, 'rb') as f:
+                    self.cache = pickle.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load cache: {e}")
+                self.cache = {}
+
+    def save(self):
+        try:
+            with open(CACHE_FILE, 'wb') as f:
+                pickle.dump(self.cache, f)
+        except Exception as e:
+            logger.error(f"Failed to save cache: {e}")
+
+    def get(self, activity_id):
+        return self.cache.get(activity_id)
+
+    def set(self, activity_id, polyline):
+        with polyline_lock:
+            self.cache[activity_id] = polyline
+            # Auto-save every 50 updates or so could be added, but for now explicitly called
+    
+    def has(self, activity_id):
+        return activity_id in self.cache
+
+# Initialize Cache
+poly_cache = PolylineCache()
+
+# Global state for background fetch management
+fetch_generation = 0
+active_fetch_range = None
+is_fetching = False
+fetch_lock = threading.Lock()
+
+# Background Worker
+def background_polyline_fetcher(client, activity_ids, generation_id):
+    """Fetch polylines for given IDs in background using parallel threads."""
+    global is_fetching
+    
+    logger.info(f"Background fetch gen:{generation_id} started for {len(activity_ids)} items using parallel threads.")
+    count = 0
+    
+    # Helper to fetch a single item
+    def fetch_item(aid):
+        # Quick check inside thread (though outer loop handles most)
+        if generation_id != fetch_generation: return None
+        
+        try:
+            details = client.get_activity_details(aid)
+            poly = details.get('geoPolylineDTO', {}).get('polyline', [])
+            return (aid, poly)
+        except Exception as e:
+            # Rate limit or net error?
+            logger.warning(f"Error fetching {aid}: {e}")
+            return None
+
+    try:
+        # Use 8 workers for significant speedup without getting banned instantly
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            # Filter IDs that need fetching
+            to_fetch = [aid for aid in activity_ids if not poly_cache.has(aid)]
+            
+            # Submit all
+            future_to_aid = {executor.submit(fetch_item, aid): aid for aid in to_fetch}
+            
+            for future in as_completed(future_to_aid):
+                # Check cancellation
+                if generation_id != fetch_generation:
+                    logger.info("Fetch aborted by newer generation.")
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    return
+
+                res = future.result()
+                if res:
+                    aid, poly = res
+                    poly_cache.set(aid, poly)
+                    count += 1
+                    
+                    if count % 20 == 0:
+                        poly_cache.save()
+                        logger.info(f"Background fetch gen:{generation_id} progress: {count}")
+
+    finally:
+        if generation_id == fetch_generation:
+            is_fetching = False
+            poly_cache.save()
+            logger.info(f"Background fetch gen:{generation_id} completed. Updated {count} activities.")
+
 
 @app.route('/')
 def index():
@@ -1234,7 +1343,9 @@ def get_activity_details(activity_id):
             'charts': charts,
             'summary': summary,
             'splits': splits,
-            'avg_pace_str': avg_pace_str
+            'avg_pace_str': avg_pace_str,
+            'avg_speed': avg_speed,
+            'polyline': details.get('geoPolylineDTO', {}).get('polyline', [])
         })
     except Exception as e:
         logger.error(f"Error fetching activity details: {e}")
@@ -1304,6 +1415,121 @@ def get_calendar_activities():
     except Exception as e:
         logger.error(f"Error fetching calendar activities: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/heatmap_data')
+def get_heatmap_data():
+    try:
+        client = get_garmin_client()
+        range_val = request.args.get('range', 'this_year')
+        
+        today = get_today()
+        if range_val == 'this_year':
+            start_date = date(today.year, 1, 1)
+        elif range_val == 'last_year':
+            start_date = date(today.year - 1, 1, 1)
+            end_date = date(today.year - 1, 12, 31) # Correctly set end date
+        elif range_val == 'all':
+            start_date = date(2020, 1, 1) # Arbitrary reasonable start
+        else:
+            start_date = today - timedelta(days=90)
+            
+        # Standard flow covers until today unless overridden
+        if range_val != 'last_year':
+            end_date = today
+
+        # 1. Fetch Activity List (Summary)
+        # Note: get_activities matches by count, get_activities_by_date matches by date
+        # We use by_date which is more robust for "This Year"
+        logger.info(f"Fetching activities for heatmap: {start_date} to {end_date}")
+        activities = client.get_activities_by_date(start_date.isoformat(), end_date.isoformat())
+        
+        # 2. Identify missing Cached Polylines
+        missing_ids = []
+        result_points = []
+        
+        for act in activities:
+            aid = act.get('activityId')
+            # Check basic filters here if we want server side filtering
+            # For now send all data, let frontend filter types
+            
+            if poly_cache.has(aid):
+                # Retrieve from cache
+                poly = poly_cache.get(aid)
+                # Optimize: We interpret the polyline here to flatten it? 
+                # Or send struct. Sending raw struct {lat, lon} array is fine.
+                if poly:
+                    result_points.append({
+                        'id': aid,
+                        'type': act.get('activityType', {}).get('typeKey'),
+                        'poly': poly # List of {lat, lon, ...}
+                    })
+            else:
+                # Identification logic:
+                # 1. Activities with real GPS usually have startLatitude != 0 and not None
+                # 2. Virtual rides (Zwift) often have startLatitude = 0.0 but CONTAIN valid Polyline data
+                # 3. We want to fetch if we haven't checked yet
+                
+                lat = act.get('startLatitude')
+                type_key = act.get('activityType', {}).get('typeKey', 'unknown')
+                is_virtual = 'virtual' in type_key.lower() or 'indoor_cycling' in type_key.lower()
+                
+                # Check for cached emptiness?
+                # If we visited it before and saved [], it will start in poly_cache.has(aid) -> True
+                # So here we only care about candidates we have NEVER checked.
+                
+                # Condition: Has latitude (even 0.0 for virtual) OR is explicitly virtual
+                if lat is not None or is_virtual:
+                    missing_ids.append(aid)
+
+        # 3. Trigger Background Fill if needed
+        if missing_ids:
+            global fetch_generation, active_fetch_range, is_fetching
+            
+            with fetch_lock:
+                # Scenario A: New Filter/Range selection
+                # We should cancel old work and start fresh
+                if range_val != active_fetch_range:
+                    fetch_generation += 1
+                    active_fetch_range = range_val
+                    is_fetching = True
+                    current_gen = fetch_generation
+                    
+                    logger.info(f"New range '{range_val}': cancelling old, starting gen:{current_gen} for {len(missing_ids)} items.")
+                    thread = threading.Thread(target=background_polyline_fetcher, args=(client, missing_ids, current_gen))
+                    thread.daemon = True
+                    thread.start()
+                    
+                # Scenario B: Same Range (Polling)
+                # We should only spawn if the previous worker died/finished but we still have work
+                elif not is_fetching:
+                    # Resume/Restart
+                    # We might be in a state where a worker finished but new items appeared (unlikely given logic)
+                    # OR the prev worker crashed.
+                    # OR simply we are starting up initial load.
+                    # We reuse the current generation since it's the same logical request
+                    is_fetching = True
+                    current_gen = fetch_generation
+                    
+                    logger.info(f"Range '{range_val}' active but no worker. Spawning gen:{current_gen} for {len(missing_ids)} items.")
+                    thread = threading.Thread(target=background_polyline_fetcher, args=(client, missing_ids, current_gen))
+                    thread.daemon = True
+                    thread.start()
+                else:
+                    # Scenario C: Worker is already running for this range
+                    # Do nothing! seamless.
+                    logger.info(f"Worker active for '{range_val}' gen:{fetch_generation}. Skipping spawn.")
+            
+        return jsonify({
+            'count': len(result_points),
+            'total_activities': len(activities),
+            'missing_count': len(missing_ids),
+            'data': result_points
+        })
+
+    except Exception as e:
+        logger.error(f"Error serving heatmap data: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
