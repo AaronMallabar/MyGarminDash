@@ -54,7 +54,7 @@
                 <div class="ai-header">
                     <div class="ai-badge">
                         <div class="pulse-dot"></div>
-                        AI Training Insight
+                        <span id="ai-insight-title">AI Training Insight</span>
                     </div>
                 </div>
                 <div class="ai-grid">
@@ -1694,6 +1694,11 @@
                         safeSetText('ai-daily-summary', data.daily_summary);
                         safeSetText('ai-yesterday-summary', data.yesterday_summary);
                         safeSetText('ai-suggestions', data.suggestions);
+
+                        const titleEl = document.getElementById('ai-insight-title');
+                        if (titleEl) {
+                            titleEl.textContent = data.is_ai ? "AI Training Insight" : "Training Insight";
+                        }
 
                         // Cache insights for modal use, but don't render to main page list
                         if (data.activity_insights && data.activity_insights.length > 0) {

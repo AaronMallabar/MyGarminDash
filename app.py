@@ -5,9 +5,17 @@ import json
 from flask import Flask, render_template, jsonify, request
 from garminconnect import Garmin
 from datetime import date, timedelta, datetime
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Timezone Configuration
+EST = ZoneInfo("America/New_York")
+
+def get_today():
+    """Get today's date in Eastern Standard Time."""
+    return datetime.now(EST).date()
 
 # Configure Gemini
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -47,7 +55,7 @@ def get_user_max_hr(client):
         birth_str = profile.get('userData', {}).get('birthDate')
         if birth_str:
             birth_date = date.fromisoformat(birth_str)
-            today = date.today()
+            today = get_today()
             age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
             return 220 - age
     except:
@@ -62,7 +70,7 @@ def index():
 def get_ai_insights():
     try:
         client = get_garmin_client()
-        today = date.today()
+        today = get_today()
         
         # 1. Fetch Today's Deep Health Data (with safe fallbacks)
         def safe_fetch(func, *args, **kwargs):
@@ -292,7 +300,8 @@ def get_ai_insights():
                 'daily_summary': ai_data.get('daily_summary'),
                 'yesterday_summary': ai_data.get('yesterday_summary'),
                 'suggestions': suggestions_text,
-                'activity_insights': ai_data.get('activity_insights', [])
+                'activity_insights': ai_data.get('activity_insights', []),
+                'is_ai': True
             })
 
         except Exception as ai_err:
@@ -319,7 +328,8 @@ def get_ai_insights():
                 'daily_summary': " ".join(today_blurb),
                 'yesterday_summary': yesterday_blurb,
                 'suggestions': " ".join(suggestions),
-                'activity_insights': activity_insights
+                'activity_insights': activity_insights,
+                'is_ai': False
             })
         
     except Exception as e:
@@ -330,7 +340,7 @@ def get_ai_insights():
 def get_stats():
     try:
         client = get_garmin_client()
-        today = date.today()
+        today = get_today()
         
         # specific date for stats (today)
         stats = client.get_stats(today.isoformat())
@@ -408,7 +418,7 @@ def get_goals_config():
 def get_longterm_stats():
     try:
         client = get_garmin_client()
-        today = date.today()
+        today = get_today()
         
         # Calculate start dates
         start_of_month = today.replace(day=1)
@@ -459,7 +469,7 @@ def get_longterm_stats():
 def get_ytd_mileage_comparison():
     try:
         client = get_garmin_client()
-        today = date.today()
+        today = get_today()
         current_day_of_year = today.timetuple().tm_yday
         
         # Build daily cumulative data for each year
@@ -565,7 +575,7 @@ def get_steps_history():
         range_val = request.args.get('range', '1w')
         end_date_str = request.args.get('end_date')
         
-        actual_today = date.today()
+        actual_today = get_today()
         # ... rest of the code is already updated in previous turn but I need to make sure 'client' is there
         # Since I'm replacing the whole function again to be safe:
 
@@ -626,7 +636,7 @@ def get_hr_history():
         if end_date_str:
             end_date = date.fromisoformat(end_date_str)
         else:
-            end_date = date.today()
+            end_date = get_today()
 
         max_hr = get_user_max_hr(client)
         zones = [round(max_hr * (0.5 + i*0.1)) for i in range(5)]
@@ -696,7 +706,7 @@ def get_stress_history():
         if end_date_str:
             end_date = date.fromisoformat(end_date_str)
         else:
-            end_date = date.today()
+            end_date = get_today()
 
         if range_val == '1d':
             stress_data = client.get_stress_data(end_date.isoformat())
@@ -756,7 +766,7 @@ def get_sleep_history():
         if end_date_str:
             end_date = date.fromisoformat(end_date_str)
         else:
-            end_date = date.today()
+            end_date = get_today()
 
         if range_val == '1d':
             sleep_data = client.get_sleep_data(end_date.isoformat())
@@ -827,7 +837,7 @@ def get_weight_history():
         if end_date_str:
             end_date = date.fromisoformat(end_date_str)
         else:
-            end_date = date.today()
+            end_date = get_today()
         
         if range_val == '1m':
             start_date = end_date - timedelta(days=30)
@@ -872,7 +882,7 @@ def get_weight_history():
 def get_hydration():
     try:
         client = get_garmin_client()
-        today = date.today().isoformat()
+        today = get_today().isoformat()
         data = client.get_hydration_data(today)
         return jsonify({
             'date': today,
@@ -893,7 +903,7 @@ def get_hrv():
         if end_date_str:
             end_date = date.fromisoformat(end_date_str)
         else:
-            end_date = date.today()
+            end_date = get_today()
 
         if range_val == '1d':
             hrv_data = client.get_hrv_data(end_date.isoformat())
@@ -947,7 +957,7 @@ def get_hydration_history():
         if end_date_str:
             end_date = date.fromisoformat(end_date_str)
         else:
-            end_date = date.today()
+            end_date = get_today()
 
         if range_val == '1d':
             data = client.get_hydration_data(end_date.isoformat())
@@ -1006,7 +1016,7 @@ def get_intensity_minutes_history():
         if end_date_str:
             end_date = date.fromisoformat(end_date_str)
         else:
-            end_date = date.today()
+            end_date = get_today()
 
         if range_val == '1d':
             # Detail for a single day
@@ -1043,7 +1053,7 @@ def get_intensity_minutes_history():
             def fetch_day(d):
                 try:
                     # Don't fetch future dates
-                    if d > date.today():
+                    if d > get_today():
                         return { 'date': d.isoformat(), 'moderate': 0, 'vigorous': 0, 'total': 0 }
                     data = client.get_intensity_minutes_data(d.isoformat())
                     return {
@@ -1064,7 +1074,7 @@ def get_intensity_minutes_history():
             # Fetch current weekly goal
             goal = 150
             try:
-                today_stats = client.get_intensity_minutes_data(date.today().isoformat())
+                today_stats = client.get_intensity_minutes_data(get_today().isoformat())
                 goal = today_stats.get('weekGoal', 150)
             except:
                 pass
@@ -1242,7 +1252,7 @@ def add_weight():
         client = get_garmin_client()
         
         # GarminConnect library requires timestamp as the first argument
-        timestamp = datetime.now().isoformat()
+        timestamp = datetime.now(EST).isoformat()
         
         client.add_body_composition(timestamp, float(weight))
         
@@ -1256,7 +1266,7 @@ def add_weight():
 def get_activity_heatmap():
     try:
         client = get_garmin_client()
-        today = date.today()
+        today = get_today()
         start_date = today - timedelta(days=365)
         
         # Fetch last 1000 activities (should cover a year for most users)
