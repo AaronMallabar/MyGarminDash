@@ -399,7 +399,7 @@ def get_ai_insights():
             """
 
             response = ai_client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-3-flash-preview',
                 contents=prompt
             )
             # Robust JSON cleaning
@@ -424,7 +424,7 @@ def get_ai_insights():
 
         except Exception as ai_err:
             if "RESOURCES_EXHAUSTED" in str(ai_err) or "429" in str(ai_err):
-                logger.warning(f"Gemini API Quota Exceeded (429). You've hit the daily limit for the Gemini 2.5 Flash model. Falling back to local logic.")
+                logger.warning(f"Gemini API Quota Exceeded (429). You've hit the daily limit for the Gemini 3 Flash model. Falling back to local logic.")
             else:
                 logger.warning(f"Gemini API Error: {ai_err}. Falling back to local logic.")
             
