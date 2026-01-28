@@ -1,8 +1,29 @@
+# Environment
 .env
+.venv/
+env/
+venv/
+ENV/
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite
+.pytest_cache/
+
+# Cache Files
+*.pkl
+*.cache
+
+# IDEs
 .vscode/
 .idea/
-instance/
-.pytest_cache/
+.project
+.settings/
+
+# OS
 .DS_Store
+Thumbs.db

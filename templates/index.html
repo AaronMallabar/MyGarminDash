@@ -2466,6 +2466,12 @@
             const container = document.getElementById('activity-map-container');
             if (!container) return;
 
+            // Always cleanup old map instance first
+            if (activityMap) {
+                activityMap.remove();
+                activityMap = null;
+            }
+
             if (!polyline || polyline.length === 0) {
                 container.style.display = 'none';
                 return;
@@ -2475,11 +2481,6 @@
 
             // Convert Garmin polyline objects {lat, lon} to Leaflet array [lat, lon]
             const latlngs = polyline.map(p => [p.lat, p.lon]);
-
-            if (activityMap) {
-                activityMap.remove();
-                activityMap = null;
-            }
 
             // Dark mode map tiles (CartoDB Dark Matter)
             activityMap = L.map('activityMap', {
@@ -2744,12 +2745,27 @@
         async function openActivityDetail(id, basic) {
             const modal = document.getElementById('activityModal');
             if (!modal) return;
+            modal.classList.add('active');
             const isRun = basic.activityType.typeKey.toLowerCase().includes('run');
             const isCycle = basic.activityType.typeKey.toLowerCase().includes('cycling') || basic.activityType.typeKey.toLowerCase().includes('ride');
 
             // Reset Map
             const mapCont = document.getElementById('activity-map-container');
             if (mapCont) mapCont.style.display = 'none';
+
+            // Reset Charts
+            clearActivityCharts();
+
+            // Clear Splits and Insights to prevent data leakage
+            const splitsSection = document.getElementById('splits-section');
+            const splitsTable = document.getElementById('splits-table');
+            if (splitsSection) splitsSection.style.display = 'none';
+            if (splitsTable) splitsTable.innerHTML = '';
+
+            const aiSection = document.getElementById('modal-ai-insight');
+            const aiContent = document.getElementById('modal-ai-content');
+            if (aiSection) aiSection.style.display = 'none';
+            if (aiContent) aiContent.innerHTML = '<div class="loading"></div>';
 
             safeSetText('modal-title', basic.activityName);
             safeSetText('modal-date', new Date(basic.startTimeLocal).toLocaleString());
@@ -2785,8 +2801,6 @@
             }
 
             // Check for AI Insight for this activity
-            const aiSection = document.getElementById('modal-ai-insight');
-            const aiContent = document.getElementById('modal-ai-content');
             if (aiSection && aiContent) {
                 const insight = cachedActivityInsights[id];
                 if (insight) {
@@ -2809,38 +2823,70 @@
                 if (res.ok) {
                     const data = await res.json();
                     if (!data.error) {
-                        const hasPower = data.charts.power && data.charts.power.length > 0 && data.charts.power.some(p => p > 0);
+                        console.log("Activity detail response:", data);
+
+                        // Update basic stats with better data if available
+                        const summary = data.summary || {};
+                        const hasPower = data.charts.power && data.charts.power.length > 0 && data.charts.power.some(p => p !== null && p > 0);
                         const powerCard = document.getElementById('power-summary-card');
-                        const powerChartBox = document.getElementById('power-chart-container');
-                        const powerTitle = document.getElementById('power-title');
-
                         if (powerCard) powerCard.style.display = hasPower ? 'block' : 'none';
-                        if (powerChartBox) powerChartBox.style.display = hasPower ? 'block' : 'none';
-                        if (powerTitle) powerTitle.style.display = hasPower ? 'block' : 'none';
 
-                        if (hasPower && data.summary.averagePower) {
-                            safeSetText('modal-power', Math.round(data.summary.averagePower) + ' W');
+                        if (hasPower && summary.averagePower) {
+                            safeSetText('modal-power', Math.round(summary.averagePower) + ' W');
+                        } else {
+                            safeSetText('modal-power', '--');
                         }
 
-                        // Update with refined data if available
-                        if (data.summary.elevationGain !== undefined) {
-                            const gainFeet = Math.round(data.summary.elevationGain * 3.28084);
-                            const gainMeters = Math.round(data.summary.elevationGain);
-                            safeSetText('modal-elevation', `${gainFeet} ft / ${gainMeters} m`);
-                        }
-
-                        const avgCadence = data.summary.averageBikeCadence || data.summary.averageRunCadence || data.summary.averageCadence ||
-                            data.summary.averageBikingCadenceInRevPerMinute || data.summary.averageRunningCadenceInStepsPerMinute;
-                        if (avgCadence) {
-                            safeSetText('modal-cadence', Math.round(avgCadence) + (isRun ? ' spm' : ' rpm'));
-                        }
-
-                        // Refined pace/speed if detailed data is available
+                        // Use the pace/speed from backend calculation
                         if (!isCycle) {
                             safeSetText('modal-pace', data.avg_pace_str || '--');
+                        } else if (data.avg_speed) {
+                            const mph = (data.avg_speed * 2.23694).toFixed(1);
+                            safeSetText('modal-pace', mph + ' mph');
+                        } else {
+                            safeSetText('modal-pace', '--');
+                        }
+
+                        if (summary.elevationGain !== undefined && summary.elevationGain !== null) {
+                            const gainFeet = Math.round(summary.elevationGain * 3.28084);
+                            const gainMeters = Math.round(summary.elevationGain);
+                            safeSetText('modal-elevation', `${gainFeet} ft / ${gainMeters} m`);
+                        } else {
+                            safeSetText('modal-elevation', '--');
+                        }
+
+                        const avgCadence = summary.averageBikeCadence || summary.averageRunCadence || summary.averageCadence ||
+                            summary.averageBikingCadenceInRevPerMinute || summary.averageRunningCadenceInStepsPerMinute;
+                        if (avgCadence) {
+                            safeSetText('modal-cadence', Math.round(avgCadence) + (isRun ? ' spm' : ' rpm'));
+                        } else {
+                            safeSetText('modal-cadence', '--');
+                        }
+
+                        if (summary.calories) {
+                            safeSetText('modal-calories', Math.round(summary.calories) + ' kcal');
+                        } else {
+                            safeSetText('modal-calories', '--');
                         }
 
                         renderActivityCharts(data.charts, isRun, isCycle);
+
+                        // Render Splits
+                        const splitsSection = document.getElementById('splits-section');
+                        const splitsTable = document.getElementById('splits-table');
+                        if (splitsSection && splitsTable) {
+                            if (data.splits && data.splits.length > 0) {
+                                splitsSection.style.display = 'block';
+                                let html = '<table class="splits-table"><thead><tr><th>Mile</th><th>Time</th><th>Pace</th></tr></thead><tbody>';
+                                data.splits.forEach(s => {
+                                    html += `<tr><td>${s.mile}</td><td>${formatDuration(s.duration)}</td><td>${s.pace_str} /mi</td></tr>`;
+                                });
+                                html += '</tbody></table>';
+                                splitsTable.innerHTML = html;
+                            } else {
+                                splitsSection.style.display = 'none';
+                            }
+                        }
 
                         // Render Map
                         renderActivityMap(data.polyline);
@@ -2852,6 +2898,23 @@
         function closeModal() { document.getElementById('activityModal').classList.remove('active'); }
 
         const activityChartIds = ['activityElevChart', 'activityHrChart', 'activityCadenceChart', 'activityPowerChart', 'activitySpeedChart'];
+
+        function clearActivityCharts() {
+            activityChartIds.forEach(id => {
+                const canvas = document.getElementById(id);
+                if (canvas) {
+                    if (chartInstances[id]) {
+                        chartInstances[id].destroy();
+                        delete chartInstances[id];
+                    }
+                    // Re-enable canvas cloning to provide a truly fresh state,
+                    // which often fixes sizing issues in modals.
+                    const newCanvas = canvas.cloneNode(true);
+                    canvas.parentNode.replaceChild(newCanvas, canvas);
+                }
+            });
+        }
+
         function syncActivityCharts(source) {
             const { min, max } = source.scales.x;
             activityChartIds.forEach(id => {
@@ -2861,23 +2924,98 @@
         }
 
         function renderActivityCharts(charts, isRun, isCycle) {
-            if (!charts.timestamps) return;
+            if (!charts.timestamps || charts.timestamps.length === 0) {
+                console.warn("No timestamp data for activity charts");
+                return;
+            }
             const start = new Date(charts.timestamps[0]).getTime();
             const elapsed = charts.timestamps.map(t => (new Date(t).getTime() - start) / 1000);
 
-            renderDetailChart('activityElevChart', elapsed, charts.elevation.map(e => e * 3.28084), 'Elevation', '#94a3b8', 'ft');
-            renderDetailChart('activityHrChart', elapsed, charts.heart_rate, 'Heart Rate', '#f87171', 'bpm');
-            renderDetailChart('activityCadenceChart', elapsed, charts.cadence, isRun ? 'spm' : 'rpm', '#4ade80', '');
+            // hasData: True if array has at least one significant value
+            const hasData = (arr, checkSignificant = true) => {
+                if (!arr || arr.length === 0) return false;
+                let found = false;
+                let max = 0;
+                for (let i = 0; i < arr.length; i++) {
+                    const v = arr[i];
+                    if (v !== null && v !== undefined && !isNaN(v)) {
+                        found = true;
+                        if (checkSignificant) {
+                            const absV = Math.abs(v);
+                            if (absV > max) max = absV;
+                        } else if (!checkSignificant) {
+                            return true;
+                        }
+                    }
+                }
+                return checkSignificant ? (max > 0.001) : found;
+            };
 
-            if (charts.power && charts.power.length > 0) {
-                renderDetailChart('activityPowerChart', elapsed, charts.power, 'Power', '#a855f7', 'W', false, getPowerZoneColor);
+            const chartConfigs = [
+                { id: 'activityElevChart', data: charts.elevation, process: d => d.map(e => e === null ? null : e * 3.28084), label: 'Elevation', color: '#94a3b8', unit: 'ft', significant: true },
+                { id: 'activityHrChart', data: charts.heart_rate, process: d => d, label: 'Heart Rate', color: '#f87171', unit: 'bpm', significant: true },
+                { id: 'activityCadenceChart', data: charts.cadence, process: d => d, label: isRun ? 'spm' : 'rpm', color: '#4ade80', unit: '', significant: true },
+                { id: 'activityPowerChart', data: charts.power, process: d => d, label: 'Power', color: '#a855f7', unit: 'W', colorFunc: getPowerZoneColor, significant: true }
+            ];
+
+            chartConfigs.forEach(conf => {
+                const canvas = document.getElementById(conf.id);
+                if (!canvas) return;
+                const container = canvas.parentElement;
+                const title = container ? container.previousElementSibling : null;
+
+                if (hasData(conf.data, conf.significant)) {
+                    if (container) container.style.display = 'block';
+                    if (title && title.tagName === 'H3') title.style.display = 'block';
+
+                    setTimeout(() => {
+                        const processedData = conf.process(conf.data);
+                        // Convert to XY points for reliable linear scale rendering
+                        const points = elapsed.map((time, i) => {
+                            const val = processedData[i];
+                            return (val === null || val === undefined) ? null : { x: time, y: val };
+                        }).filter(p => p !== null);
+
+                        renderDetailChart(conf.id, points, conf.label, conf.color, conf.unit, false, conf.colorFunc);
+                    }, 50);
+                } else {
+                    if (container) container.style.display = 'none';
+                    if (title && title.tagName === 'H3') title.style.display = 'none';
+                }
+            });
+
+            // Speed/Pace
+            const speedCanvas = document.getElementById('activitySpeedChart');
+            const speedContainer = speedCanvas ? speedCanvas.parentElement : null;
+            const speedTitle = speedContainer ? speedContainer.previousElementSibling : null;
+
+            if (hasData(charts.speed, true)) {
+                if (speedContainer) speedContainer.style.display = 'block';
+                if (speedTitle && speedTitle.tagName === 'H3') speedTitle.style.display = 'block';
+                setTimeout(() => {
+                    let points = [];
+                    if (isRun) {
+                        points = elapsed.map((time, i) => {
+                            const s = charts.speed[i];
+                            if (s && s > 0.1) return { x: time, y: 26.8224 / s };
+                            return null;
+                        }).filter(p => p !== null);
+                        renderDetailChart('activitySpeedChart', points, 'Pace', '#38bdf8', '/mi', true);
+                    } else {
+                        points = elapsed.map((time, i) => {
+                            const s = charts.speed[i];
+                            return (s === null || s === undefined) ? null : { x: time, y: s * 2.23694 };
+                        }).filter(p => p !== null);
+                        renderDetailChart('activitySpeedChart', points, 'Speed', '#38bdf8', 'mph');
+                    }
+                }, 50);
+            } else {
+                if (speedContainer) speedContainer.style.display = 'none';
+                if (speedTitle && speedTitle.tagName === 'H3') speedTitle.style.display = 'none';
             }
-
-            if (isRun) renderDetailChart('activitySpeedChart', elapsed, charts.speed.map(s => s > 0.5 ? 26.8224 / s : null), 'Pace', '#38bdf8', '/mi', true);
-            else renderDetailChart('activitySpeedChart', elapsed, charts.speed.map(s => s * 2.23694), 'Speed', '#38bdf8', 'mph');
         }
 
-        function renderDetailChart(id, x, y, label, color, unit, rev = false, colorFunc = null) {
+        function renderDetailChart(id, points, label, color, unit, rev = false, colorFunc = null) {
             const canvas = document.getElementById(id);
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
@@ -2885,30 +3023,50 @@
 
             const dataset = {
                 label,
-                data: y,
+                data: points,
                 borderColor: color,
                 backgroundColor: color + '22',
                 fill: true,
                 pointRadius: 0,
-                tension: 0.4
+                tension: 0.4,
+                spanGaps: true
             };
 
             if (colorFunc) {
                 dataset.segment = {
                     borderColor: ctx => colorFunc(ctx.p1.parsed.y),
-                    backgroundColor: ctx => colorFunc(ctx.p1.parsed.y) + '44' // ~25% opacity
+                    backgroundColor: ctx => colorFunc(ctx.p1.parsed.y) + '44'
                 };
             }
 
             chartInstances[id] = new Chart(ctx, {
                 type: 'line',
-                data: { labels: x, datasets: [dataset] },
+                data: { datasets: [dataset] },
                 options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false }, zoom: { pan: { enabled: true, mode: 'x', onPan: (c) => syncActivityCharts(c.chart) }, zoom: { wheel: { enabled: true }, mode: 'x', onZoom: (c) => syncActivityCharts(c.chart) } } },
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false, // Performance improvement
+                    plugins: {
+                        legend: { display: false },
+                        zoom: {
+                            pan: { enabled: true, mode: 'x', onPan: (c) => syncActivityCharts(c.chart) },
+                            zoom: { wheel: { enabled: true }, mode: 'x', onZoom: (c) => syncActivityCharts(c.chart) }
+                        }
+                    },
                     scales: {
-                        y: { reverse: rev, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', callback: v => v ? v.toFixed(1) + ' ' + unit : '' } },
-                        x: { type: 'linear', ticks: { color: '#94a3b8', callback: v => formatDuration(v) }, grid: { display: false } }
+                        y: {
+                            reverse: rev,
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: {
+                                color: '#94a3b8',
+                                callback: v => (v !== null) ? v.toFixed(1) + ' ' + unit : ''
+                            }
+                        },
+                        x: {
+                            type: 'linear',
+                            ticks: { color: '#94a3b8', callback: v => formatDuration(v) },
+                            grid: { display: false }
+                        }
                     }
                 }
             });

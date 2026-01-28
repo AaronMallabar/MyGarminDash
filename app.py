@@ -2,6 +2,7 @@ import os
 import logging
 from google import genai
 import json
+import traceback
 from flask import Flask, render_template, jsonify, request
 from garminconnect import Garmin
 from datetime import date, timedelta, datetime
@@ -315,12 +316,17 @@ def get_ai_insights():
         if not suggestions:
             suggestions.append("Everything looks solid. This is your green light to stay the course or push a little harder.")
 
-        # Fetch Recent Activities for context
+        # Fetch Recent Activities for context (increased to 20 to cover more "recent" history)
         try:
-            acts_all = client.get_activities(0, 5)
-            acts = [a for a in acts_all if a.get('startTimeLocal', '').split(' ')[0] == today.isoformat()]
-        except:
-            acts = []
+            acts_all = client.get_activities(0, 20)
+            # Filter for today only for the 'Today's Narrative' section
+            acts_today = [a for a in acts_all if a.get('startTimeLocal', '').split(' ')[0] == today.isoformat()]
+            if acts_today:
+                today_blurb.append(f"You've already logged {len(acts_today)} activity{'ies' if len(acts_today) > 1 else ''} today, which is fantastic for your metabolic momentum.")
+        except Exception as e:
+            logger.warning(f"AI Insights: Failed to fetch recent activities: {e}")
+            acts_all = []
+            acts_today = []
 
         # Try to fetch current weight for context
         current_weight_lbs = "Unknown"
@@ -353,7 +359,7 @@ def get_ai_insights():
                 "distance_mi": round(n(a.get('distance', 0)) * 0.000621371, 2),
                 "duration_min": round(n(a.get('duration', 0)) / 60),
                 "date": a.get('startTimeLocal', '').split(' ')[0]
-            } for a in acts_all] if 'acts_all' in locals() else []
+            } for a in acts_all] if 'acts_all' in locals() and acts_all else []
         }
 
         # 6. Generate Generative AI Response (with Fallback)
@@ -417,23 +423,33 @@ def get_ai_insights():
             })
 
         except Exception as ai_err:
-            logger.warning(f"Gemini API or Parsing Error: {ai_err}. Falling back to hardcoded logic.")
+            if "RESOURCES_EXHAUSTED" in str(ai_err) or "429" in str(ai_err):
+                logger.warning(f"Gemini API Quota Exceeded (429). You've hit the daily limit for the Gemini 2.5 Flash model. Falling back to local logic.")
+            else:
+                logger.warning(f"Gemini API Error: {ai_err}. Falling back to local logic.")
             
             # FALLBACK TO HARDCODED LOGIC
             activity_insights = []
             max_hr = get_user_max_hr(client)
-            for act in (acts if 'acts' in locals() else []):
+            for act in (acts_all if 'acts_all' in locals() and acts_all else []):
                 avg_hr = n(act.get('averageHR', 0))
                 hr_pct = (avg_hr / max_hr) if max_hr > 0 and avg_hr > 0 else 0
                 was, worked, better = "Activity logged.", "General fitness.", "Keep it up."
+                highlight = "Great consistency."
                 if hr_pct > 0.85:
                     was, worked, better = "Peak intensity session.", "Anaerobic capacity.", "Prioritize recovery tomorrow."
+                    highlight = "High intensity effort."
                 elif hr_pct > 0.70:
                     was, worked, better = "Aerobic conditioning.", "Endurance.", "Maintain this pace."
+                    highlight = "Solid aerobic work."
                 
                 activity_insights.append({
+                    'activity_id': act.get('activityId'),
                     'name': act.get('activityName', 'Activity'),
-                    'was': was, 'worked_on': worked, 'better_next': better
+                    'highlight': highlight,
+                    'was': was, 
+                    'worked_on': worked, 
+                    'better_next': better
                 })
 
             return jsonify({
@@ -1227,10 +1243,15 @@ def get_intensity_minutes_history():
 @app.route('/api/activity/<int:activity_id>')
 def get_activity_details(activity_id):
     try:
+        logger.info(f"Fetching details for activity_id: {activity_id}")
         client = get_garmin_client()
         details = client.get_activity_details(activity_id)
-        # Also get general activity info which contains summaryDTO
-        activity_info = client.get_activity(activity_id)
+        if not details:
+            logger.warning(f"No details found for activity {activity_id}")
+            return jsonify({'error': "Activity details not available from Garmin"}), 404
+            
+        returned_id = details.get('activityId')
+        logger.info(f"Garmin returned details for ID: {returned_id} (Requested: {activity_id})")
         
         # Extract metrics and descriptors
         descriptors = details.get('metricDescriptors', [])
@@ -1238,108 +1259,124 @@ def get_activity_details(activity_id):
         
         # Create a mapping of key to index
         key_map = {d['key']: d['metricsIndex'] for d in descriptors}
+        logger.info(f"Available metrics keys: {list(key_map.keys())}")
         
+        def get_val(row, key):
+            idx = key_map.get(key)
+            if idx is not None and idx < len(row):
+                return row[idx]
+            return None
+
         charts = {
-            'heart_rate': [],
-            'speed': [],
-            'elevation': [],
-            'cadence': [],
-            'power': [],
-            'timestamps': [],
-            'distance': []
+            'heart_rate': [], 'speed': [], 'elevation': [],
+            'cadence': [], 'power': [], 'timestamps': [], 'distance': []
         }
         
+        # Build strict chart lists
         for m in metrics_list:
-            row = m.get('metrics', [])
+            row = m.get('metrics')
             if not row: continue
             
-            # Timestamp (ms)
-            ts = row[key_map['directTimestamp']] if 'directTimestamp' in key_map else None
+            ts = get_val(row, 'directTimestamp')
             if ts:
                 charts['timestamps'].append(ts)
+                charts['heart_rate'].append(get_val(row, 'directHeartRate'))
+                charts['speed'].append(get_val(row, 'directSpeed'))
+                charts['elevation'].append(get_val(row, 'directElevation'))
+                charts['power'].append(get_val(row, 'directPower'))
+                charts['distance'].append(get_val(row, 'sumDistance'))
                 
-                # Heart Rate
-                if 'directHeartRate' in key_map:
-                    charts['heart_rate'].append(row[key_map['directHeartRate']])
-                
-                # Speed (m/s)
-                if 'directSpeed' in key_map:
-                    charts['speed'].append(row[key_map['directSpeed']])
-                
-                # Elevation (m)
-                if 'directElevation' in key_map:
-                    charts['elevation'].append(row[key_map['directElevation']])
-                
-                # Cadence
-                if 'directBikeCadence' in key_map:
-                    charts['cadence'].append(row[key_map['directBikeCadence']])
-                elif 'directRunCadence' in key_map:
-                    charts['cadence'].append(row[key_map['directRunCadence']])
-                elif 'directDoubleCadence' in key_map:
-                    charts['cadence'].append(row[key_map['directDoubleCadence']])
-                elif 'directFractionalCadence' in key_map:
-                    charts['cadence'].append(row[key_map['directFractionalCadence']])
+                # Cadence logic
+                cad = get_val(row, 'directRunCadence')
+                if cad is None: cad = get_val(row, 'directDoubleCadence')
+                if cad is None: cad = get_val(row, 'directBikeCadence')
+                if cad is None: cad = get_val(row, 'directFractionalCadence')
+                charts['cadence'].append(cad)
 
-                # Power
-                if 'directPower' in key_map:
-                    charts['power'].append(row[key_map['directPower']])
-                
-                # Distance (meters)
-                if 'sumDistance' in key_map:
-                    charts['distance'].append(row[key_map['sumDistance']])
-
-        # Summary stats from DTO
+        # Summary Refinement
+        activity_info = client.get_activity(activity_id)
         summary = details.get('summaryDTO')
-        if not summary or not isinstance(summary, dict) or len(summary) < 5:
-            # If summary in details is missing or small, try the main activity info
-            summary = activity_info.get('summaryDTO', summary or {})
-        avg_speed = summary.get('averageSpeed') # m/s
+        if (not summary or not isinstance(summary, dict) or len(summary) < 5) and activity_info:
+            summary = activity_info.get('summaryDTO')
+        
+        if not summary or not isinstance(summary, dict):
+            summary = {}
+
+        # Calculate missing summary fields from charts
+        total_dist_m = summary.get('distance')
+        if not total_dist_m and charts['distance']:
+            # Find last non-null distance
+            for d in reversed(charts['distance']):
+                if d is not None:
+                    total_dist_m = d
+                    break
+        
+        total_dur_s = summary.get('duration')
+        if not total_dur_s and len(charts['timestamps']) > 1:
+            total_dur_s = (charts['timestamps'][-1] - charts['timestamps'][0]) / 1000
+
+        avg_speed = summary.get('averageSpeed')
+        if not avg_speed and total_dur_s and total_dur_s > 0:
+            if total_dist_m is not None:
+                avg_speed = total_dist_m / total_dur_s
+            else:
+                avg_speed = 0
+
         avg_pace_str = "--"
         if avg_speed and avg_speed > 0.1:
             pace_seconds = 1609.34 / avg_speed
             avg_pace_str = f"{int(pace_seconds//60)}:{int(pace_seconds%60):02d}"
 
-        # Distance calculation
+        # Mile Splits logic
         splits = []
-        if 'sumDuration' in key_map and 'sumDistance' in key_map:
-            mile_in_meters = 1609.34
-            next_mile = 1
-            last_duration = 0
-            last_dist = 0
-            
-            for i in range(len(metrics_list)):
-                m_row = metrics_list[i].get('metrics', [])
-                dist_m = m_row[key_map['sumDistance']] if len(m_row) > key_map['sumDistance'] else 0
-                dist_mi = dist_m / mile_in_meters
+        try:
+            if 'sumDistance' in key_map:
+                mile_in_m = 1609.34
+                next_mile = 1
+                last_dur = 0
+                last_dist = 0
+                start_ts = charts['timestamps'][0] if charts['timestamps'] else 0
                 
-                if dist_mi >= next_mile:
-                    curr_duration = m_row[key_map['sumDuration']] if len(m_row) > key_map['sumDuration'] else 0
-                    split_duration = curr_duration - last_duration
-                    splits.append({
-                        'mile': next_mile,
-                        'duration': split_duration, 
-                        'pace_str': f"{int(split_duration//60)}:{int(split_duration%60):02d}"
-                    })
-                    last_duration = curr_duration
-                    last_dist = dist_m
-                    next_mile += 1
-            
-            # Add final partial mile if it's significant
-            if metrics_list:
-                final_row = metrics_list[-1].get('metrics', [])
-                final_dist_m = final_row[key_map['sumDistance']] if len(final_row) > key_map['sumDistance'] else 0
-                final_duration = final_row[key_map['sumDuration']] if len(final_row) > key_map['sumDuration'] else 0
-                if final_dist_m > last_dist:
-                    diff_m = final_dist_m - last_dist
-                    diff_mi = diff_m / mile_in_meters
-                    diff_duration = final_duration - last_duration
-                    if diff_mi > 0.05: # Only if more than 0.05 miles left
-                        pace_per_mile = diff_duration / diff_mi
-                        splits.append({
-                            'mile': round((next_mile - 1) + diff_mi, 2),
-                            'duration': diff_duration,
-                            'pace_str': f"{int(pace_per_mile//60)}:{int(pace_per_mile%60):02d}"
-                        })
+                for m in metrics_list:
+                    row = m.get('metrics')
+                    if not row: continue
+                    
+                    curr_dist = get_val(row, 'sumDistance')
+                    if curr_dist and curr_dist >= next_mile * mile_in_m:
+                        # Find duration
+                        curr_dur = get_val(row, 'sumDuration')
+                        if curr_dur is None: # Fallback to timestamp
+                            ts = get_val(row, 'directTimestamp')
+                            curr_dur = (ts - start_ts) / 1000 if ts else 0
+                        
+                        split_dur = curr_dur - last_dur
+                        if split_dur > 0:
+                            splits.append({
+                                'mile': next_mile,
+                                'duration': split_dur,
+                                'pace_str': f"{int(split_dur//60)}:{int(split_dur%60):02d}"
+                            })
+                        last_dur = curr_dur
+                        last_dist = curr_dist
+                        next_mile += 1
+                
+                # Final partial mile
+                if total_dist_m and total_dist_m > last_dist:
+                    remain_m = total_dist_m - last_dist
+                    remain_mi = remain_m / mile_in_m
+                    if remain_mi > 0.02:
+                        remain_dur = total_dur_s - last_dur
+                        if remain_dur > 0:
+                            pace_pm = remain_dur / remain_mi
+                            splits.append({
+                                'mile': round((next_mile - 1) + remain_mi, 2),
+                                'duration': remain_dur,
+                                'pace_str': f"{int(pace_pm//60)}:{int(pace_pm%60):02d}"
+                            })
+        except Exception as split_err:
+            logger.error(f"Error calculating splits: {split_err}")
+
+        logger.info(f"Activity {activity_id}: found {len(splits)} splits, dist {total_dist_m}m, dur {total_dur_s}s")
 
         return jsonify({
             'activityId': activity_id,
@@ -1348,10 +1385,11 @@ def get_activity_details(activity_id):
             'splits': splits,
             'avg_pace_str': avg_pace_str,
             'avg_speed': avg_speed,
-            'polyline': details.get('geoPolylineDTO', {}).get('polyline', [])
+            'polyline': (details.get('geoPolylineDTO') or {}).get('polyline', [])
         })
     except Exception as e:
         logger.error(f"Error fetching activity details: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/add_weight', methods=['POST'])

@@ -1435,3 +1435,31 @@ h1 {
         opacity: 0.4;
     }
 }
+
+.splits-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+    font-size: 0.9rem;
+}
+
+.splits-table th {
+    text-align: left;
+    padding: 0.75rem;
+    color: var(--text-secondary);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-weight: 500;
+}
+
+.splits-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.splits-table tr:last-child td {
+    border-bottom: none;
+}
+
+.splits-table tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
