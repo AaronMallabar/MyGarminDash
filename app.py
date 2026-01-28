@@ -92,7 +92,7 @@ class PolylineCache:
     def save(self):
         try:
             with open(CACHE_FILE, 'wb') as f:
-                pickle.dump(self.cache, f)
+                pickle.dump(self.cache, f, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception as e:
             logger.error(f"Failed to save cache: {e}")
 
@@ -131,11 +131,22 @@ def background_polyline_fetcher(client, activity_ids, generation_id):
         
         try:
             details = client.get_activity_details(aid)
-            poly = details.get('geoPolylineDTO', {}).get('polyline', [])
-            return (aid, poly)
+            poly = (details.get('geoPolylineDTO') or {}).get('polyline', [])
+            if not poly:
+                return (aid, [])
+            
+            # Optimize: Convert to compact [[lat, lon]] format and downsample
+            compact = [[p['lat'], p['lon']] for p in poly if 'lat' in p and 'lon' in p]
+            
+            # Downsample for heatmap (500 pts is plenty of resolution for a map line)
+            if len(compact) > 500:
+                step = len(compact) // 500
+                compact = compact[::step]
+                
+            return (aid, compact)
         except Exception as e:
             # Rate limit or net error?
-            logger.warning(f"Error fetching {aid}: {e}")
+            logger.warning(f"Error fetching polyline for {aid}: {e}")
             return None
 
     try:
@@ -1378,6 +1389,10 @@ def get_activity_details(activity_id):
 
         logger.info(f"Activity {activity_id}: found {len(splits)} splits, dist {total_dist_m}m, dur {total_dur_s}s")
 
+        # Prepare polyline (compact it for front-end performance)
+        raw_poly = (details.get('geoPolylineDTO') or {}).get('polyline', [])
+        compact_poly = [[p['lat'], p['lon']] for p in raw_poly if 'lat' in p and 'lon' in p]
+        
         return jsonify({
             'activityId': activity_id,
             'charts': charts,
@@ -1385,7 +1400,7 @@ def get_activity_details(activity_id):
             'splits': splits,
             'avg_pace_str': avg_pace_str,
             'avg_speed': avg_speed,
-            'polyline': (details.get('geoPolylineDTO') or {}).get('polyline', [])
+            'polyline': compact_poly
         })
     except Exception as e:
         logger.error(f"Error fetching activity details: {e}")
@@ -1466,6 +1481,12 @@ def get_heatmap_data():
         today = get_today()
         if range_val == 'this_year':
             start_date = date(today.year, 1, 1)
+        elif range_val == 'this_month':
+            start_date = date(today.year, today.month, 1)
+        elif range_val == 'last_month':
+            first_this_month = date(today.year, today.month, 1)
+            end_date = first_this_month - timedelta(days=1)
+            start_date = date(end_date.year, end_date.month, 1)
         elif range_val == 'last_year':
             start_date = date(today.year - 1, 1, 1)
             end_date = date(today.year - 1, 12, 31) # Correctly set end date
@@ -1475,7 +1496,7 @@ def get_heatmap_data():
             start_date = today - timedelta(days=90)
             
         # Standard flow covers until today unless overridden
-        if range_val != 'last_year':
+        if range_val not in ['last_year', 'last_month']:
             end_date = today
 
         # 1. Fetch Activity List (Summary)

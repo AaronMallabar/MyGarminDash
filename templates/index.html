@@ -973,6 +973,8 @@
                     <!-- Range Selector -->
                     <select id="heatmap-range" onchange="updateGlobalHeatmap()"
                         style="background: #1e293b; color: #e2e8f0; border: 1px solid rgba(255,255,255,0.1); padding: 0.3rem 0.8rem; border-radius: 0.5rem; font-size: 0.85rem; cursor: pointer;">
+                        <option value="this_month" style="background: #1e293b; color: #e2e8f0;">This Month</option>
+                        <option value="last_month" style="background: #1e293b; color: #e2e8f0;">Last Month</option>
                         <option value="this_year" style="background: #1e293b; color: #e2e8f0;">This Year</option>
                         <option value="last_year" style="background: #1e293b; color: #e2e8f0;">Last Year</option>
                         <option value="all" style="background: #1e293b; color: #e2e8f0;">All Time</option>
@@ -2479,8 +2481,10 @@
 
             container.style.display = 'block';
 
-            // Convert Garmin polyline objects {lat, lon} to Leaflet array [lat, lon]
-            const latlngs = polyline.map(p => [p.lat, p.lon]);
+            // Handle both compact [[lat, lon]] and Garmin [{lat, lon}] formats
+            const latlngs = (polyline.length > 0 && Array.isArray(polyline[0]))
+                ? polyline
+                : polyline.map(p => [p.lat, p.lon]);
 
             // Dark mode map tiles (CartoDB Dark Matter)
             activityMap = L.map('activityMap', {
@@ -2703,7 +2707,8 @@
                 }
 
                 if (include && item.poly && item.poly.length > 1) {
-                    const latlngs = item.poly.map(p => [p.lat, p.lon]);
+                    // Handle both compact and Garmin formats
+                    const latlngs = Array.isArray(item.poly[0]) ? item.poly : item.poly.map(p => [p.lat, p.lon]);
                     const startPoint = latlngs[0];
 
                     // Add to Cluster Group (Invisible marker)
