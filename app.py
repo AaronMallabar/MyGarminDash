@@ -1,6 +1,6 @@
 import os
 import logging
-import google.generativeai as genai
+from google import genai
 import json
 from flask import Flask, render_template, jsonify, request
 from garminconnect import Garmin
@@ -23,8 +23,7 @@ def get_today():
     """Get today's date in Eastern Standard Time."""
     return datetime.now(EST).date()
 
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# Gemini configuration is now handled per-client instance
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -359,7 +358,8 @@ def get_ai_insights():
 
         # 6. Generate Generative AI Response (with Fallback)
         try:
-            model = genai.GenerativeModel('gemini-flash-latest')
+            # Initialize the client per request (or globally if preferred, but local is safe)
+            ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
             
             prompt = f"""
             You are a balanced, knowledgeable fitness mentor. 
@@ -392,7 +392,10 @@ def get_ai_insights():
             Return ONLY the JSON.
             """
 
-            response = model.generate_content(prompt)
+            response = ai_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt
+            )
             # Robust JSON cleaning
             clean_text = response.text.replace('```json', '').replace('```', '').strip()
             ai_data = json.loads(clean_text)
