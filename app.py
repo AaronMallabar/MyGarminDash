@@ -17,6 +17,9 @@ import pickle
 
 load_dotenv()
 
+# Helper for null-to-zero conversions
+n = lambda x: x if x is not None else 0
+
 # Timezone Configuration
 EST = ZoneInfo("America/New_York")
 
@@ -55,9 +58,28 @@ def get_garmin_client():
         logger.error(f"Failed to login to Garmin Connect: {e}")
         raise e
 
+def garmin_request(func, *args, **kwargs):
+    """Wrapper to handle Garmin API calls with retries for transient network errors."""
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait = (attempt + 1) * 2
+                logger.warning(f"Garmin API error: {e}. Retrying in {wait}s... (Attempt {attempt + 1}/{max_retries})")
+                time.sleep(wait)
+                # Force re-login on next attempt if it seems like a session issue
+                if any(err in str(e).lower() for err in ["session", "login", "auth", "expired"]):
+                    global garmin_client
+                    garmin_client = None
+            else:
+                logger.error(f"Garmin API failed after {max_retries} attempts: {e}")
+                raise e
+
 def get_user_max_hr(client):
     try:
-        profile = client.get_user_profile()
+        profile = garmin_request(client.get_user_profile)
         birth_str = profile.get('userData', {}).get('birthDate')
         if birth_str:
             birth_date = date.fromisoformat(birth_str)
@@ -110,6 +132,52 @@ class PolylineCache:
 # Initialize Cache
 poly_cache = PolylineCache()
 
+def group_activities_into_sessions(activities, hours_gap=2):
+    """Group activities into sessions based on a time window."""
+    if not activities:
+        return []
+        
+    # Filter out None values and ensure we have a list of dicts
+    activities = [a for a in activities if a is not None]
+    if not activities:
+        return []
+        
+    # Sort by time ascending for grouping
+    sorted_acts = sorted(activities, key=lambda x: x.get('startTimeLocal', ''))
+    
+    sessions = []
+    current_session = []
+    last_end_time = None
+    
+    for a in sorted_acts:
+        start_str = a.get('startTimeLocal', '')
+        # Handle duration (some activities might not have it)
+        dur = a.get('duration', 0)
+        if dur is None: dur = 0
+            
+        try:
+            # Garmin format is usually YYYY-MM-DD HH:MM:SS
+            start_dt = datetime.strptime(start_str, '%Y-%m-%d %H:%M:%S')
+        except:
+            start_dt = None
+            
+        if last_end_time and start_dt and (start_dt - last_end_time).total_seconds() < (hours_gap * 3600):
+            current_session.append(a)
+        else:
+            if current_session:
+                sessions.append(current_session)
+            current_session = [a]
+        
+        if start_dt:
+            last_end_time = start_dt + timedelta(seconds=dur)
+            
+    if current_session:
+        sessions.append(current_session)
+        
+    # Return most recent first
+    sessions.reverse()
+    return sessions
+
 # Global state for background fetch management
 fetch_generation = 0
 active_fetch_range = None
@@ -130,6 +198,13 @@ heatmap_cache = {
     'range': None
 }
 HEATMAP_CACHE_EXPIRY = 120  # 2 minute cache duration
+
+# Activity Heatmap Cache (GitHub style contribution map)
+activity_heatmap_cache = {
+    'data': None,
+    'timestamp': None
+}
+ACT_HEATMAP_CACHE_EXPIRY = 3600 # 1 hour
 
 # Background Worker
 def background_polyline_fetcher(client, activity_ids, generation_id):
@@ -352,17 +427,19 @@ def get_ai_insights():
         if not suggestions:
             suggestions.append("Everything looks solid. This is your green light to stay the course or push a little harder.")
 
-        # Fetch Recent Activities for context (Reduced further to 5 to save memory and stay within 30s timeout)
+        # Fetch Recent Activities and Group into Sessions (within 2 hours)
         try:
-            acts_all = client.get_activities(0, 5)
-            # Filter for today only for the 'Today's Narrative' section
-            acts_today = [a for a in acts_all if a.get('startTimeLocal', '').split(' ')[0] == today.isoformat()]
+            # Fetch 10 to allow for more grouping context while staying light
+            acts_raw = client.get_activities(0, 10)
+            sessions = group_activities_into_sessions(acts_raw)
+            
+            acts_today = [a for a in acts_raw if a.get('startTimeLocal', '').split(' ')[0] == today.isoformat()]
             if acts_today:
                 today_blurb.append(f"You've already logged {len(acts_today)} activity{'ies' if len(acts_today) > 1 else ''} today, which is fantastic for your metabolic momentum.")
         except Exception as e:
-            logger.warning(f"AI Insights: Failed to fetch recent activities: {e}")
-            acts_all = []
-            acts_today = []
+            logger.warning(f"AI Insights: Failed to fetch/group activities: {e}")
+            sessions = []
+            acts_raw = []
 
         # Try to fetch current weight for context
         current_weight_lbs = "Unknown"
@@ -375,8 +452,12 @@ def get_ai_insights():
         except:
             pass
 
-        # Prepare context for Gemini
+        # Prepare context for AI
+        now_est = datetime.now(EST)
         context = {
+            "current_time": now_est.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            "today_date": today.isoformat(),
+            "yesterday_date": (today - timedelta(days=1)).isoformat(),
             "persona": "Balanced fitness mentor with a focus on consistency and healthy body composition",
             "user_meta_goal": "Healthy weight management & workout frequency",
             "today_stats": {
@@ -389,13 +470,25 @@ def get_ai_insights():
             },
             "seven_day_history": history_list,
             "training_history": [{
-                "activity_id": a.get('activityId'),
-                "name": a.get('activityName'),
-                "type": a.get('activityType', {}).get('typeKey'),
-                "distance_mi": round(n(a.get('distance', 0)) * 0.000621371, 2),
-                "duration_min": round(n(a.get('duration', 0)) / 60),
-                "date": a.get('startTimeLocal', '').split(' ')[0]
-            } for a in acts_all] if 'acts_all' in locals() and acts_all else []
+                "session_id": "|".join([str(a.get('activityId')) for a in s]),
+                "is_multi_stage": len(s) > 1,
+                "stages": [{
+                    "activity_id": a.get('activityId'),
+                    "name": a.get('activityName'),
+                    "type": a.get('activityType', {}).get('typeKey'),
+                    "distance_mi": round(n(a.get('distance', 0)) * 0.000621371, 2),
+                    "duration_min": round(n(a.get('duration', 0)) / 60),
+                    "date": a.get('startTimeLocal', '').split(' ')[0],
+                    "time": a.get('startTimeLocal', '').split(' ')[1],
+                    "avg_hr": a.get('averageHR'),
+                    "max_hr": a.get('maxHR'),
+                    "calories": a.get('calories'),
+                    "avg_cadence": a.get('averageBikingCadenceInRevPerMinute') or a.get('averageRunningCadenceInStepsPerMinute'),
+                    "aerobic_te": a.get('aerobicTrainingEffect'),
+                    "anaerobic_te": a.get('anaerobicTrainingEffect'),
+                    "elevation_gain_ft": round(n(a.get('elevationGain', 0)) * 3.28084)
+                } for a in s]
+            } for s in sessions] if 'sessions' in locals() and sessions else []
         }
 
         # 6. Generate Generative AI Response (with Fallback)
@@ -408,6 +501,13 @@ def get_ai_insights():
             Your goal is to provide a concise, professional check-in based on the user's Garmin health data.
 
             CRITICAL CONTEXT: The user is working towards healthy weight management. 
+            TIME CONTEXT:
+            - Current Time: {context['current_time']}
+            - Today's Date: {context['today_date']}
+            - Yesterday's Date: {context['yesterday_date']}
+            Ensure you acknowledge the time of day (e.g., don't say Good Morning at 3 PM).
+            Be careful to look at the date/time of the activities in "training_history" to determine if they happened today or yesterday.
+            
             Tone Guidelines:
             - Find a "happy medium": Professional and encouraging, but not overly focused on weight loss or calories.
             - Focus on overall consistency, metabolic health, and performance.
@@ -419,23 +519,24 @@ def get_ai_insights():
 
             REQUIRED OUTPUT FORMAT:
             You must return a valid JSON object with:
-            - "daily_summary": 2-3 sentences. Focus on today's health outlook and consistency.
+            - "daily_summary": 2-3 sentences. Focus on today's health outlook and consistency. Use plain, friendly English (e.g. "Good effort today" instead of "Metabolic impact optimal").
             - "yesterday_summary": 1-2 sentences recap.
-            - "suggestions": An array of EXACTLY 2 strings. Helpful, high-value coaching tips for general wellness/performance.
-            - "activity_insights": An array of objects for EVERY activity listed in the "training_history".
+            - "suggestions": An array of EXACTLY 2 strings. Helpful, high-value coaching tips for general wellness/performance. Use conversational language.
+            - "activity_insights": An array of objects for EVERY session listed in the "training_history".
               Each activity insight object MUST include:
-              - "activity_id": The exact numeric ID.
-              - "name": Exact activity name.
-              - "highlight": 1 standout performance "win" from the workout.
-              - "was": 1 sentence recap of the metabolic or fitness achievement (e.g. Aerobic base building).
-              - "worked_on": 1-3 words on the focus (e.g. "Metabolic Efficiency").
-              - "better_next": A practical tip for next time.
+              - "session_id": The exact session_id string from the training_history.
+              - "name": If it's a multi-stage session, provide a combined name (e.g. "Brick Workout: Ride + Run"). Otherwise use the activity name.
+              - "highlight": A simple explanation of what happened. If multiple activities are grouped, analyze them as ONE workout with stages (e.g., "Started with a warm-up bike ride followed by an intense run"). 
+              - "was": 1-2 sentences explaining the REAL-WORLD benefit in plain English.
+              - "worked_on": 1-3 simple words (e.g. "Heart Health", "Leg Strength").
+              - "better_next": A practical, plain-English tip.
 
             Return ONLY the JSON.
             """
 
-            # Use Gemini 2.0 Flash for superior speed and reliability in 2026
-            model_name = 'gemini-2.0-flash'
+            # Use Gemma 3 27B for massive 14,400 RPD quota in early 2026
+            model_name = 'gemma-3-27b-it'
+            #model_name = 'gemini-3.0-flash'
             
             logger.info(f"AI Insights: Sending request to Gemini ({model_name})...")
             start_ai = time.time()
@@ -456,11 +557,22 @@ def get_ai_insights():
             else:
                 suggestions_text = str(suggestions_raw)
 
+            # Unpack Session insights back into single activity IDs for the frontend
+            final_activity_insights = []
+            for insight in ai_data.get('activity_insights', []):
+                sid = insight.get('session_id', '')
+                if sid:
+                    # Map the SAME insight to every ID in that session group
+                    for aid in sid.split('|'):
+                        new_insight = insight.copy()
+                        new_insight['activity_id'] = aid
+                        final_activity_insights.append(new_insight)
+
             result = {
                 'daily_summary': ai_data.get('daily_summary'),
                 'yesterday_summary': ai_data.get('yesterday_summary'),
                 'suggestions': suggestions_text,
-                'activity_insights': ai_data.get('activity_insights', []),
+                'activity_insights': final_activity_insights,
                 'is_ai': True
             }
             
@@ -472,7 +584,7 @@ def get_ai_insights():
 
         except Exception as ai_err:
             if "RESOURCES_EXHAUSTED" in str(ai_err) or "429" in str(ai_err):
-                logger.warning(f"Gemini API Quota Exceeded (429). You've hit the rate limit for the Gemini 2.0 Flash model. Falling back to local logic.")
+                logger.warning(f"Gemma API Quota Exceeded (429). You've hit the rate limit for the Gemma 3 27B model. Falling back to local logic.")
             else:
                 logger.warning(f"Gemini API Error: {ai_err}. Falling back to local logic.")
             
@@ -525,9 +637,33 @@ def get_stats():
         # We try today first
         sleep = client.get_sleep_data(today.isoformat())
         
-        # Recent activities (last 5)
-        activities = client.get_activities(0, 5)
+        # Recent activities (Grouped)
+        acts_raw = client.get_activities(0, 10)
+        sessions = group_activities_into_sessions(acts_raw)
         
+        # Flatten sessions for basic compatibility but keep group data
+        ui_activities = []
+        for s in sessions:
+            if len(s) == 1:
+                # Single activity
+                ui_activities.append(s[0])
+            else:
+                # Grouped activity session
+                total_dist = sum(n(a.get('distance', 0)) for a in s)
+                total_dur = sum(n(a.get('duration', 0)) for a in s)
+                # Use the primary activity (usually the longest or last) for the title
+                # Filtering s to ensure we have a valid key for max
+                primary = max(s, key=lambda x: n(x.get('distance', 0))) if s else s[0]
+                
+                grouped = primary.copy()
+                grouped['distance'] = total_dist
+                grouped['duration'] = total_dur
+                grouped['activityName'] = f"Grouped Session: {len(s)} Stages"
+                grouped['is_grouped'] = True
+                grouped['grouped_ids'] = [str(a.get('activityId')) for a in s]
+                grouped['grouped_activities'] = s
+                ui_activities.append(grouped)
+
         # Weight (Body composition) - search last 7 days for most recent entry
         weight_grams = None
         for i in range(7):
@@ -548,7 +684,7 @@ def get_stats():
             'sleep_seconds': sleep.get('dailySleepDTO', {}).get('sleepTimeSeconds'),
             'sleep_score': sleep.get('dailySleepDTO', {}).get('sleepScoreFeedback'),
             'hrv': client.get_hrv_data(today.isoformat()).get('hrvSummary'),
-            'activities': activities,
+            'activities': ui_activities,
             'weight_grams': weight_grams
         }
         
@@ -1374,12 +1510,25 @@ def get_activity_details(activity_id):
             pace_seconds = 1609.34 / avg_speed
             avg_pace_str = f"{int(pace_seconds//60)}:{int(pace_seconds%60):02d}"
 
-        # Mile Splits logic
+        # Determine activity type for splits
+        type_info = activity_info.get('activityType', {}) if activity_info else {}
+        type_key = type_info.get('typeKey', '').lower()
+        act_name = activity_info.get('activityName', '').lower() if activity_info else ""
+        
+        # Comprehensive cycling check (Type or Name)
+        is_cycling = any(k in type_key for k in ['cycling', 'ride', 'biking', 'virtual', 'indoor']) or \
+                     any(k in act_name for k in ['zwift', 'ride', 'cycling', 'peloton', 'trainerroad'])
+        
+        split_len = 5 if is_cycling else 1
+        
+        logger.info(f"Activity {activity_id} detected as {'CYCLING' if is_cycling else 'RUNNING/OTHER'} (type_key: {type_key})")
+        
+        # Splits logic
         splits = []
         try:
             if 'sumDistance' in key_map:
                 mile_in_m = 1609.34
-                next_mile = 1
+                next_split_dist = split_len * mile_in_m
                 last_dur = 0
                 last_dist = 0
                 start_ts = charts['timestamps'][0] if charts['timestamps'] else 0
@@ -1389,7 +1538,7 @@ def get_activity_details(activity_id):
                     if not row: continue
                     
                     curr_dist = get_val(row, 'sumDistance')
-                    if curr_dist and curr_dist >= next_mile * mile_in_m:
+                    if curr_dist and curr_dist >= next_split_dist:
                         # Find duration
                         curr_dur = get_val(row, 'sumDuration')
                         if curr_dur is None: # Fallback to timestamp
@@ -1397,28 +1546,46 @@ def get_activity_details(activity_id):
                             curr_dur = (ts - start_ts) / 1000 if ts else 0
                         
                         split_dur = curr_dur - last_dur
-                        if split_dur > 0:
+                        actual_dist_m = curr_dist - last_dist
+                        actual_dist_mi = actual_dist_m / mile_in_m
+                        
+                        if split_dur > 0 and actual_dist_mi > 0:
+                            if is_cycling:
+                                speed = actual_dist_mi / (split_dur / 3600)
+                                pace_str = f"{speed:.1f} mph"
+                            else:
+                                pace_val = split_dur / actual_dist_mi
+                                pace_str = f"{int(pace_val//60)}:{int(pace_val%60):02d}"
+
                             splits.append({
-                                'mile': next_mile,
+                                'mile': round(next_split_dist / mile_in_m, 0) if not is_cycling or (next_split_dist / mile_in_m) % 1 == 0 else round(next_split_dist / mile_in_m, 1),
                                 'duration': split_dur,
-                                'pace_str': f"{int(split_dur//60)}:{int(split_dur%60):02d}"
+                                'pace_str': pace_str
                             })
                         last_dur = curr_dur
                         last_dist = curr_dist
-                        next_mile += 1
+                        # Ensure we move to the next boundary even if we jumped multiple
+                        while next_split_dist <= curr_dist:
+                            next_split_dist += split_len * mile_in_m
                 
-                # Final partial mile
+                # Final partial split
                 if total_dist_m and total_dist_m > last_dist:
                     remain_m = total_dist_m - last_dist
                     remain_mi = remain_m / mile_in_m
-                    if remain_mi > 0.02:
+                    if remain_mi > 0.05: # Only show if significant (>0.05mi)
                         remain_dur = total_dur_s - last_dur
                         if remain_dur > 0:
-                            pace_pm = remain_dur / remain_mi
+                            if is_cycling:
+                                speed = remain_mi / (remain_dur / 3600)
+                                pace_str = f"{speed:.1f} mph"
+                            else:
+                                pace_pm = remain_dur / remain_mi
+                                pace_str = f"{int(pace_pm//60)}:{int(pace_pm%60):02d}"
+                            
                             splits.append({
-                                'mile': round((next_mile - 1) + remain_mi, 2),
+                                'mile': round(total_dist_m / mile_in_m, 2),
                                 'duration': remain_dur,
-                                'pace_str': f"{int(pace_pm//60)}:{int(pace_pm%60):02d}"
+                                'pace_str': pace_str
                             })
         except Exception as split_err:
             logger.error(f"Error calculating splits: {split_err}")
@@ -1467,24 +1634,30 @@ def add_weight():
 
 @app.route('/api/activity_heatmap')
 def get_activity_heatmap():
+    global activity_heatmap_cache
+    now = time.time()
+    
+    if activity_heatmap_cache['data'] and activity_heatmap_cache['timestamp']:
+        if now - activity_heatmap_cache['timestamp'] < ACT_HEATMAP_CACHE_EXPIRY:
+            return jsonify(activity_heatmap_cache['data'])
+
     try:
         client = get_garmin_client()
         today = get_today()
-        start_date = today - timedelta(days=365)
         
-        # Fetch last 1000 activities (should cover a year for most users)
-        activities = client.get_activities(0, 1000) 
+        # Fetch last 1000 activities
+        # Use retry wrapper for flakiness
+        activities = garmin_request(client.get_activities, 0, 1000) 
         
-        # Aggregate counts by date
-        # Format: { 'YYYY-MM-DD': count }
         heatmap = {}
-        
         for activity in activities:
             start_local = activity.get('startTimeLocal')
             if start_local:
                 date_str = start_local.split(' ')[0]
                 heatmap[date_str] = heatmap.get(date_str, 0) + 1
 
+        activity_heatmap_cache['data'] = heatmap
+        activity_heatmap_cache['timestamp'] = now
         return jsonify(heatmap)
 
     except Exception as e:

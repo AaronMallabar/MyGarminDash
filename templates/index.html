@@ -57,6 +57,21 @@
             font-family: 'Inter', sans-serif;
             font-weight: bold;
         }
+
+        .grouped-badge {
+            background: var(--accent-color);
+            color: #0f172a;
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 0.1rem 0.4rem;
+            border-radius: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+
+        .activity-item.grouped-session {
+            border-left: 3px solid var(--accent-color);
+        }
     </style>
 </head>
 
@@ -1163,70 +1178,6 @@
 
             <p id="modal-date" style="color: var(--text-secondary); margin-bottom: 2rem;"></p>
 
-            <div class="activity-detail-grid">
-
-                <div class="activity-detail-card">
-
-                    <div class="activity-detail-label">Distance</div>
-
-                    <div class="activity-detail-value" id="modal-distance">--</div>
-
-                </div>
-
-                <div class="activity-detail-card" id="modal-pace-label-container">
-
-                    <div class="activity-detail-label" id="modal-pace-label">Overall Pace</div>
-
-                    <div class="activity-detail-value" id="modal-pace">--</div>
-
-                </div>
-
-                <div class="activity-detail-card">
-
-                    <div class="activity-detail-label">Duration</div>
-
-                    <div class="activity-detail-value" id="modal-duration">--</div>
-
-                </div>
-
-                <div class="activity-detail-card">
-
-                    <div class="activity-detail-label">Avg HR</div>
-
-                    <div class="activity-detail-value" id="modal-hr">--</div>
-
-                </div>
-
-                <div class="activity-detail-card">
-
-                    <div class="activity-detail-label">Elevation</div>
-
-                    <div class="activity-detail-value" id="modal-elevation">--</div>
-
-                </div>
-
-                <div class="activity-detail-card">
-
-                    <div class="activity-detail-label">Avg Cadence</div>
-
-                    <div class="activity-detail-value" id="modal-cadence">--</div>
-
-                </div>
-
-                <div class="activity-detail-card" id="power-summary-card" style="display: none;">
-
-                    <div class="activity-detail-label">Avg Power</div>
-
-                    <div class="activity-detail-value" id="modal-power">--</div>
-
-                </div>
-
-                <div class="activity-detail-card">
-                    <div class="activity-detail-label">Calories</div>
-                    <div class="activity-detail-value" id="modal-calories">--</div>
-                </div>
-            </div>
-
             <div id="activity-map-container"
                 style="height: 350px; margin-bottom: 2rem; border-radius: 0.75rem; overflow: hidden; display: none; border: 1px solid rgba(255,255,255,0.1);">
                 <div id="activityMap" style="width: 100%; height: 100%; z-index: 1;"></div>
@@ -1241,64 +1192,13 @@
                 <div id="modal-ai-content" style="line-height: 1.6;"></div>
             </div>
 
-            <div id="splits-section" style="display: none; margin-bottom: 2rem;">
-
-                <h3 style="margin-bottom: 1rem;">Mile Splits</h3>
-
-                <div id="splits-table">
-
-                    <!-- Splits table injected here -->
-
-                </div>
-
-            </div>
-
-            <h3 style="margin-bottom: 1rem;">Elevation</h3>
-
-            <div class="small-chart-container">
-
-                <canvas id="activityElevChart"></canvas>
-
-            </div>
-
-            <h3 style="margin-bottom: 1rem;">Heart Rate</h3>
-
-            <div class="small-chart-container">
-
-                <canvas id="activityHrChart"></canvas>
-
-            </div>
-
-            <h3 style="margin-bottom: 1rem;">Cadence</h3>
-
-            <div class="small-chart-container">
-
-                <canvas id="activityCadenceChart"></canvas>
-
-            </div>
-
-            <h3 style="margin-bottom: 1rem;" id="power-title">Power</h3>
-
-            <div class="small-chart-container" id="power-chart-container" style="display: none;">
-
-                <canvas id="activityPowerChart"></canvas>
-
-            </div>
-
-            <h3 style="margin-bottom: 1rem;">Speed/Pace</h3>
-
-            <div class="small-chart-container">
-
-                <canvas id="activitySpeedChart"></canvas>
-
+            <div id="modal-dynamic-body">
+                <!-- Dynamic stages will be injected here -->
             </div>
 
             <div style="display: flex; justify-content: center; margin-top: 2rem;">
-
                 <button class="range-btn active" style="padding: 0.8rem 2rem;" onclick="closeModal()">Close
-
                     Details</button>
-
             </div>
 
         </div>
@@ -1814,46 +1714,58 @@
         async function fetchData() {
             try {
                 // Fetch basic stats
-                const statsRes = await fetch('/api/stats');
-                if (statsRes.ok) {
-                    const stats = await statsRes.json();
-                    if (!stats.error) updateDashboard(stats);
-                    else showError(stats.error);
+                try {
+                    const statsRes = await fetch('/api/stats');
+                    if (statsRes.ok) {
+                        const stats = await statsRes.json();
+                        if (!stats.error) updateDashboard(stats);
+                        else showError(stats.error);
+                    }
+                } catch (e) {
+                    console.error("Stats fetch failed", e);
+                    const activityList = document.getElementById('activity-list');
+                    if (activityList) activityList.innerHTML = '<div class="activity-item" style="justify-content: center;">Failed to load activities</div>';
                 }
 
                 // Fetch Goals Config
-                const goalsConfigRes = await fetch('/api/goals_config');
-                if (goalsConfigRes.ok) {
-                    const goalsConfig = await goalsConfigRes.json();
-                    if (!goalsConfig.error) {
-                        const runGoalEl = document.getElementById('month-run-goal');
-                        const cycleGoalEl = document.getElementById('month-cycle-goal');
-                        const yearRunGoalEl = document.getElementById('year-run-goal');
-                        const yearCycleGoalEl = document.getElementById('year-cycle-goal');
+                try {
+                    const goalsConfigRes = await fetch('/api/goals_config');
+                    if (goalsConfigRes.ok) {
+                        const goalsConfig = await goalsConfigRes.json();
+                        if (!goalsConfig.error) {
+                            const runGoalEl = document.getElementById('month-run-goal');
+                            const cycleGoalEl = document.getElementById('month-cycle-goal');
+                            const yearRunGoalEl = document.getElementById('year-run-goal');
+                            const yearCycleGoalEl = document.getElementById('year-cycle-goal');
 
-                        if (runGoalEl) runGoalEl.innerHTML = formatDualDistance(goalsConfig.monthly.running);
-                        if (cycleGoalEl) cycleGoalEl.innerHTML = formatDualDistance(goalsConfig.monthly.cycling);
-                        if (yearRunGoalEl) yearRunGoalEl.innerHTML = formatDualDistance(goalsConfig.yearly.running);
-                        if (yearCycleGoalEl) yearCycleGoalEl.innerHTML = formatDualDistance(goalsConfig.yearly.cycling);
+                            if (runGoalEl) runGoalEl.innerHTML = formatDualDistance(goalsConfig.monthly.running);
+                            if (cycleGoalEl) cycleGoalEl.innerHTML = formatDualDistance(goalsConfig.monthly.cycling);
+                            if (yearRunGoalEl) yearRunGoalEl.innerHTML = formatDualDistance(goalsConfig.yearly.running);
+                            if (yearCycleGoalEl) yearCycleGoalEl.innerHTML = formatDualDistance(goalsConfig.yearly.cycling);
+                        }
                     }
-                }
+                } catch (e) { console.error("Goals fetch failed", e); }
 
                 // Fetch Longterm Stats
-                const ltRes = await fetch('/api/longterm_stats');
-                if (ltRes.ok) {
-                    const ltStats = await ltRes.json();
-                    if (!ltStats.error) updateLongtermStats(ltStats);
-                }
+                try {
+                    const ltRes = await fetch('/api/longterm_stats');
+                    if (ltRes.ok) {
+                        const ltStats = await ltRes.json();
+                        if (!ltStats.error) updateLongtermStats(ltStats);
+                    }
+                } catch (e) { console.error("Longterm stats fetch failed", e); }
 
                 // Fetch YTD Mileage Comparison
-                const ytdRes = await fetch('/api/ytd_mileage_comparison');
-                if (ytdRes.ok) {
-                    const ytdData = await ytdRes.json();
-                    if (!ytdData.error) {
-                        renderYTDChart('ytdCyclingChart', ytdData.labels, ytdData.cycling);
-                        renderYTDChart('ytdRunningChart', ytdData.labels, ytdData.running);
+                try {
+                    const ytdRes = await fetch('/api/ytd_mileage_comparison');
+                    if (ytdRes.ok) {
+                        const ytdData = await ytdRes.json();
+                        if (!ytdData.error) {
+                            renderYTDChart('ytdCyclingChart', ytdData.labels, ytdData.cycling);
+                            renderYTDChart('ytdRunningChart', ytdData.labels, ytdData.running);
+                        }
                     }
-                }
+                } catch (e) { console.error("YTD fetch failed", e); }
 
                 // Initialize historical charts
                 updateWeightRange('1m');
@@ -1876,7 +1788,7 @@
 
             } catch (err) {
                 console.error(err);
-                showError('Could not load data. Check console.');
+                showError('Could not load dashboard. Check console.');
             }
         }
 
@@ -1901,19 +1813,31 @@
                 activityList.innerHTML = '';
                 if (data.activities && data.activities.length > 0) {
                     data.activities.forEach(activity => {
+                        if (!activity) return;
                         const el = document.createElement('div');
-                        el.className = 'activity-item';
-                        const date = new Date(activity.startTimeLocal).toLocaleDateString([], { month: 'short', day: 'numeric' });
-                        const distanceKm = (activity.distance / 1000).toFixed(2);
-                        const distanceMi = (activity.distance / 1609.34).toFixed(2);
-                        const durationMin = Math.round(activity.duration / 60);
+                        el.className = 'activity-item' + (activity.is_grouped ? ' grouped-session' : '');
+
+                        const startTime = activity.startTimeLocal || new Date().toISOString();
+                        const date = new Date(startTime).toLocaleDateString([], { month: 'short', day: 'numeric' });
+                        const dist = activity.distance || 0;
+                        const distanceKm = (dist / 1000).toFixed(2);
+                        const distanceMi = (dist / 1609.34).toFixed(2);
+                        const dur = activity.duration || 0;
+                        const durationMin = Math.round(dur / 60);
+
+                        const typeKey = (activity.activityType && activity.activityType.typeKey) || 'other';
+                        const typeDisplay = (activity.activityType && activity.activityType.display) || 'Activity';
+                        const actName = activity.activityName || 'Activity';
 
                         el.innerHTML = `
                             <div class="activity-info">
-                                <div class="activity-icon">${getActivityIcon(activity.activityType.typeKey)}</div>
+                                <div class="activity-icon">${getActivityIcon(typeKey)}</div>
                                 <div class="activity-details">
-                                    <h3>${activity.activityName}</h3>
-                                    <div class="activity-meta">${date} • ${activity.activityType.display}</div>
+                                    <h3 style="display: flex; align-items: center; gap: 0.5rem;">
+                                        ${actName}
+                                        ${activity.is_grouped ? `<span class="grouped-badge">${(activity.grouped_activities || []).length} Stages</span>` : ''}
+                                    </h3>
+                                    <div class="activity-meta">${date} • ${typeDisplay}</div>
                                 </div>
                             </div>
                             <div class="activity-stats">
@@ -1930,7 +1854,8 @@
                         el.onclick = () => openActivityDetail(activity.activityId, activity);
                         activityList.appendChild(el);
                     });
-                } else {
+                }
+                else {
                     activityList.innerHTML = '<div class="activity-item" style="justify-content: center;">No recent activities found</div>';
                 }
             }
@@ -2751,61 +2676,23 @@
             const modal = document.getElementById('activityModal');
             if (!modal) return;
             modal.classList.add('active');
-            const isRun = basic.activityType.typeKey.toLowerCase().includes('run');
-            const isCycle = basic.activityType.typeKey.toLowerCase().includes('cycling') || basic.activityType.typeKey.toLowerCase().includes('ride');
 
             // Reset Map
             const mapCont = document.getElementById('activity-map-container');
             if (mapCont) mapCont.style.display = 'none';
-
-            // Reset Charts
-            clearActivityCharts();
-
-            // Clear Splits and Insights to prevent data leakage
-            const splitsSection = document.getElementById('splits-section');
-            const splitsTable = document.getElementById('splits-table');
-            if (splitsSection) splitsSection.style.display = 'none';
-            if (splitsTable) splitsTable.innerHTML = '';
 
             const aiSection = document.getElementById('modal-ai-insight');
             const aiContent = document.getElementById('modal-ai-content');
             if (aiSection) aiSection.style.display = 'none';
             if (aiContent) aiContent.innerHTML = '<div class="loading"></div>';
 
+            const dynamicBody = document.getElementById('modal-dynamic-body');
+            if (dynamicBody) dynamicBody.innerHTML = '<div style="text-align:center; padding: 2rem;"><div class="loading"></div></div>';
+
             safeSetText('modal-title', basic.activityName);
             safeSetText('modal-date', new Date(basic.startTimeLocal).toLocaleString());
-            safeSetText('modal-distance', formatDualDistance(basic.distance / 1609.34));
-            safeSetText('modal-duration', Math.round(basic.duration / 60) + ' min');
-            safeSetText('modal-hr', basic.averageHR ? Math.round(basic.averageHR) + ' bpm' : '--');
-            safeSetText('modal-calories', Math.round(basic.calories) + ' kcal');
 
-            // Immediate population from basic summary data
-            if (basic.elevationGain !== undefined) {
-                const gainFeet = Math.round(basic.elevationGain * 3.28084);
-                const gainMeters = Math.round(basic.elevationGain);
-                safeSetText('modal-elevation', `${gainFeet} ft / ${gainMeters} m`);
-            } else {
-                safeSetText('modal-elevation', '--');
-            }
-
-            const basicCadence = basic.averageBikingCadenceInRevPerMinute || basic.averageRunningCadenceInStepsPerMinute || basic.averageCadence;
-            if (basicCadence) {
-                safeSetText('modal-cadence', Math.round(basicCadence) + (isRun ? ' spm' : ' rpm'));
-            } else {
-                safeSetText('modal-cadence', '--');
-            }
-
-            // Initial pace/speed from basic data
-            if (isCycle) {
-                safeSetText('modal-pace-label', 'Avg Speed');
-                const mph = (basic.averageSpeed * 2.23694).toFixed(1);
-                safeSetText('modal-pace', mph + ' mph');
-            } else {
-                safeSetText('modal-pace-label', 'Overall Pace');
-                safeSetText('modal-pace', '--');
-            }
-
-            // Check for AI Insight for this activity
+            // Check for AI Insight for this activity/session
             if (aiSection && aiContent) {
                 const insight = cachedActivityInsights[id];
                 if (insight) {
@@ -2824,133 +2711,200 @@
             }
 
             try {
-                const res = await fetch(`/api/activity/${id}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (!data.error) {
-                        console.log("Activity detail response:", data);
+                const ids = basic.is_grouped ? basic.grouped_ids : [id];
+                const results = await Promise.all(ids.map(stageId =>
+                    fetch(`/api/activity/${stageId}`).then(r => r.json())
+                ));
 
-                        // Update basic stats with better data if available
-                        const summary = data.summary || {};
-                        const hasPower = data.charts.power && data.charts.power.length > 0 && data.charts.power.some(p => p !== null && p > 0);
-                        const powerCard = document.getElementById('power-summary-card');
-                        if (powerCard) powerCard.style.display = hasPower ? 'block' : 'none';
+                if (dynamicBody) dynamicBody.innerHTML = '';
+                let allPolylines = [];
 
-                        if (hasPower && summary.averagePower) {
-                            safeSetText('modal-power', Math.round(summary.averagePower) + ' W');
-                        } else {
-                            safeSetText('modal-power', '--');
-                        }
+                results.forEach((data, index) => {
+                    if (!data || data.error) return;
 
-                        // Use the pace/speed from backend calculation
-                        if (!isCycle) {
-                            safeSetText('modal-pace', data.avg_pace_str || '--');
-                        } else if (data.avg_speed) {
-                            const mph = (data.avg_speed * 2.23694).toFixed(1);
-                            safeSetText('modal-pace', mph + ' mph');
-                        } else {
-                            safeSetText('modal-pace', '--');
-                        }
+                    const stageBasic = basic.is_grouped ? basic.grouped_activities[index] : basic;
+                    const stageNum = basic.is_grouped ? (index + 1) : null;
 
-                        if (summary.elevationGain !== undefined && summary.elevationGain !== null) {
-                            const gainFeet = Math.round(summary.elevationGain * 3.28084);
-                            const gainMeters = Math.round(summary.elevationGain);
-                            safeSetText('modal-elevation', `${gainFeet} ft / ${gainMeters} m`);
-                        } else {
-                            safeSetText('modal-elevation', '--');
-                        }
+                    // Render the stage UI
+                    renderStage(data, stageBasic, stageNum);
 
-                        const avgCadence = summary.averageBikeCadence || summary.averageRunCadence || summary.averageCadence ||
-                            summary.averageBikingCadenceInRevPerMinute || summary.averageRunningCadenceInStepsPerMinute;
-                        if (avgCadence) {
-                            safeSetText('modal-cadence', Math.round(avgCadence) + (isRun ? ' spm' : ' rpm'));
-                        } else {
-                            safeSetText('modal-cadence', '--');
-                        }
-
-                        if (summary.calories) {
-                            safeSetText('modal-calories', Math.round(summary.calories) + ' kcal');
-                        } else {
-                            safeSetText('modal-calories', '--');
-                        }
-
-                        renderActivityCharts(data.charts, isRun, isCycle);
-
-                        // Render Splits
-                        const splitsSection = document.getElementById('splits-section');
-                        const splitsTable = document.getElementById('splits-table');
-                        if (splitsSection && splitsTable) {
-                            if (data.splits && data.splits.length > 0) {
-                                splitsSection.style.display = 'block';
-                                let html = '<table class="splits-table"><thead><tr><th>Mile</th><th>Time</th><th>Pace</th></tr></thead><tbody>';
-                                data.splits.forEach(s => {
-                                    html += `<tr><td>${s.mile}</td><td>${formatDuration(s.duration)}</td><td>${s.pace_str} /mi</td></tr>`;
-                                });
-                                html += '</tbody></table>';
-                                splitsTable.innerHTML = html;
-                            } else {
-                                splitsSection.style.display = 'none';
-                            }
-                        }
-
-                        // Render Map
-                        renderActivityMap(data.polyline);
+                    if (data.polyline && data.polyline.length > 0) {
+                        allPolylines = allPolylines.concat(data.polyline);
                     }
+                });
+
+                // Render Map if we have any data
+                if (allPolylines.length > 0) {
+                    renderActivityMap(allPolylines);
                 }
-            } catch (err) { console.error('Activity detail error:', err); }
+            } catch (err) {
+                console.error('Activity detail error:', err);
+                if (dynamicBody) dynamicBody.innerHTML = '<div style="color: var(--danger-color); text-align:center;">Failed to load activity details.</div>';
+            }
         }
 
+        function renderStage(data, basic, stageNum) {
+            const dynamicBody = document.getElementById('modal-dynamic-body');
+            if (!dynamicBody) return;
+
+            const isRun = basic.activityType.typeKey.toLowerCase().includes('run');
+            const isCycle = basic.activityType.typeKey.toLowerCase().includes('cycling') || basic.activityType.typeKey.toLowerCase().includes('ride');
+            const prefix = `stage-${basic.activityId}`;
+
+            const summary = data.summary || basic;
+            const hasPower = data.charts.power && data.charts.power.length > 0 && data.charts.power.some(p => p !== null && p > 0);
+
+            // Create Stage Container
+            const stageDiv = document.createElement('div');
+            stageDiv.className = 'activity-stage';
+            stageDiv.style.marginBottom = '3rem';
+            stageDiv.style.paddingTop = '2rem';
+            stageDiv.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+
+            const distMi = (summary.distance / 1609.34).toFixed(2);
+            const durMin = Math.round(summary.duration / 60);
+
+            let paceStr = '--';
+            let paceLabel = isCycle ? 'Avg Speed' : 'Overall Pace';
+            if (isCycle) {
+                paceStr = (summary.averageSpeed * 2.23694).toFixed(1) + ' mph';
+            } else if (data.avg_pace_str) {
+                paceStr = data.avg_pace_str;
+            }
+
+            const elevGain = summary.elevationGain || 0;
+            const gainFeet = Math.round(elevGain * 3.28084);
+            const gainMeters = Math.round(elevGain);
+
+            const avgCadence = summary.averageBikeCadence || summary.averageRunCadence || summary.averageCadence ||
+                summary.averageBikingCadenceInRevPerMinute || summary.averageRunningCadenceInStepsPerMinute;
+
+            stageDiv.innerHTML = `
+                ${stageNum ? `<h3 style="color: var(--accent-color); margin-bottom: 1.5rem; font-family: 'Lexend', sans-serif;">Stage ${stageNum}: ${basic.activityName}</h3>` : ''}
+                
+                <div class="activity-detail-grid">
+                    <div class="activity-detail-card">
+                        <div class="activity-detail-label">Distance</div>
+                        <div class="activity-detail-value">${distMi} mi / ${(summary.distance / 1000).toFixed(2)} km</div>
+                    </div>
+                    <div class="activity-detail-card">
+                        <div class="activity-detail-label">${paceLabel}</div>
+                        <div class="activity-detail-value">${paceStr}</div>
+                    </div>
+                    <div class="activity-detail-card">
+                        <div class="activity-detail-label">Duration</div>
+                        <div class="activity-detail-value">${durMin} min</div>
+                    </div>
+                    <div class="activity-detail-card">
+                        <div class="activity-detail-label">Avg HR</div>
+                        <div class="activity-detail-value">${summary.averageHR ? Math.round(summary.averageHR) + ' bpm' : '--'}</div>
+                    </div>
+                    <div class="activity-detail-card">
+                        <div class="activity-detail-label">Elevation</div>
+                        <div class="activity-detail-value">${gainFeet} ft / ${gainMeters} m</div>
+                    </div>
+                    <div class="activity-detail-card">
+                        <div class="activity-detail-label">Avg Cadence</div>
+                        <div class="activity-detail-value">${avgCadence ? Math.round(avgCadence) + (isRun ? ' spm' : ' rpm') : '--'}</div>
+                    </div>
+                    <div class="activity-detail-card" style="display: ${hasPower ? 'block' : 'none'}">
+                        <div class="activity-detail-label">Avg Power</div>
+                        <div class="activity-detail-value">${summary.averagePower ? Math.round(summary.averagePower) + ' W' : '--'}</div>
+                    </div>
+                    <div class="activity-detail-card">
+                        <div class="activity-detail-label">Calories</div>
+                        <div class="activity-detail-value">${Math.round(summary.calories)} kcal</div>
+                    </div>
+                </div>
+
+                <div id="${prefix}-splits-section" style="display: none; margin-bottom: 2rem;">
+                    <h4 style="margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.9rem;">Mile Splits</h4>
+                    <div id="${prefix}-splits-table"></div>
+                </div>
+
+                <div class="stage-charts">
+                    <h4 style="margin-bottom: 1rem; font-size: 0.85rem; color: var(--text-secondary);">Elevation</h4>
+                    <div class="small-chart-container"><canvas id="${prefix}-activityElevChart"></canvas></div>
+
+                    <h4 style="margin-bottom: 1rem; font-size: 0.85rem; color: var(--text-secondary);">Heart Rate</h4>
+                    <div class="small-chart-container"><canvas id="${prefix}-activityHrChart"></canvas></div>
+
+                    <h4 style="margin-bottom: 1rem; font-size: 0.85rem; color: var(--text-secondary);">Cadence</h4>
+                    <div class="small-chart-container"><canvas id="${prefix}-activityCadenceChart"></canvas></div>
+
+                    <h4 id="${prefix}-power-title" style="margin-bottom: 1rem; font-size: 0.85rem; color: var(--text-secondary); display: none;">Power</h4>
+                    <div id="${prefix}-power-chart-container" class="small-chart-container" style="display: none;">
+                        <canvas id="${prefix}-activityPowerChart"></canvas>
+                    </div>
+
+                    <h4 style="margin-bottom: 1rem; font-size: 0.85rem; color: var(--text-secondary);">Speed/Pace</h4>
+                    <div class="small-chart-container"><canvas id="${prefix}-activitySpeedChart"></canvas></div>
+                </div>
+            `;
+            dynamicBody.appendChild(stageDiv);
+
+            // Render Splits for this stage
+            const splitsSection = document.getElementById(`${prefix}-splits-section`);
+            const splitsTable = document.getElementById(`${prefix}-splits-table`);
+            if (splitsSection && splitsTable && data.splits && data.splits.length > 0) {
+                splitsSection.style.display = 'block';
+                let html = `<table class="splits-table"><thead><tr><th>${isCycle ? 'Distance' : 'Mile'}</th><th>Time</th><th>${isCycle ? 'Speed' : 'Pace'}</th></tr></thead><tbody>`;
+                data.splits.forEach(s => {
+                    html += `<tr><td>${s.mile}</td><td>${formatDuration(s.duration)}</td><td>${s.pace_str}${isCycle ? '' : ' /mi'}</td></tr>`;
+                });
+                html += '</tbody></table>';
+                splitsTable.innerHTML = html;
+            }
+
+            // Render Charts for this stage
+            clearActivityCharts(prefix);
+            renderActivityCharts(data.charts, isRun, isCycle, prefix);
+        }
         function closeModal() { document.getElementById('activityModal').classList.remove('active'); }
 
         const activityChartIds = ['activityElevChart', 'activityHrChart', 'activityCadenceChart', 'activityPowerChart', 'activitySpeedChart'];
 
-        function clearActivityCharts() {
+        function clearActivityCharts(prefix = '') {
             activityChartIds.forEach(id => {
-                const canvas = document.getElementById(id);
+                const fullId = prefix ? `${prefix}-${id}` : id;
+                const canvas = document.getElementById(fullId);
                 if (canvas) {
-                    if (chartInstances[id]) {
-                        chartInstances[id].destroy();
-                        delete chartInstances[id];
+                    if (chartInstances[fullId]) {
+                        chartInstances[fullId].destroy();
+                        delete chartInstances[fullId];
                     }
-                    // Re-enable canvas cloning to provide a truly fresh state,
-                    // which often fixes sizing issues in modals.
                     const newCanvas = canvas.cloneNode(true);
                     canvas.parentNode.replaceChild(newCanvas, canvas);
                 }
             });
         }
 
-        function syncActivityCharts(source) {
+        function syncActivityCharts(source, prefix = '') {
             const { min, max } = source.scales.x;
             activityChartIds.forEach(id => {
-                const chart = chartInstances[id];
-                if (chart && chart !== source) { chart.options.scales.x.min = min; chart.options.scales.x.max = max; chart.update('none'); }
+                const fullId = prefix ? `${prefix}-${id}` : id;
+                const chart = chartInstances[fullId];
+                if (chart && chart !== source) {
+                    chart.options.scales.x.min = min;
+                    chart.options.scales.x.max = max;
+                    chart.update('none');
+                }
             });
         }
 
-        function renderActivityCharts(charts, isRun, isCycle) {
-            if (!charts.timestamps || charts.timestamps.length === 0) {
-                console.warn("No timestamp data for activity charts");
-                return;
-            }
+        function renderActivityCharts(charts, isRun, isCycle, prefix = '') {
+            if (!charts.timestamps || charts.timestamps.length === 0) return;
             const start = new Date(charts.timestamps[0]).getTime();
             const elapsed = charts.timestamps.map(t => (new Date(t).getTime() - start) / 1000);
 
-            // hasData: True if array has at least one significant value
             const hasData = (arr, checkSignificant = true) => {
                 if (!arr || arr.length === 0) return false;
-                let found = false;
-                let max = 0;
+                let found = false, max = 0;
                 for (let i = 0; i < arr.length; i++) {
                     const v = arr[i];
                     if (v !== null && v !== undefined && !isNaN(v)) {
                         found = true;
-                        if (checkSignificant) {
-                            const absV = Math.abs(v);
-                            if (absV > max) max = absV;
-                        } else if (!checkSignificant) {
-                            return true;
-                        }
+                        if (checkSignificant) { const absV = Math.abs(v); if (absV > max) max = absV; }
                     }
                 }
                 return checkSignificant ? (max > 0.001) : found;
@@ -2964,39 +2918,39 @@
             ];
 
             chartConfigs.forEach(conf => {
-                const canvas = document.getElementById(conf.id);
+                const fullId = prefix ? `${prefix}-${conf.id}` : conf.id;
+                const canvas = document.getElementById(fullId);
                 if (!canvas) return;
                 const container = canvas.parentElement;
-                const title = container ? container.previousElementSibling : null;
+                const title = document.getElementById(fullId.replace('Chart', '-title')) || container.previousElementSibling;
 
                 if (hasData(conf.data, conf.significant)) {
                     if (container) container.style.display = 'block';
-                    if (title && title.tagName === 'H3') title.style.display = 'block';
+                    if (title && title.tagName === 'H4') title.style.display = 'block';
 
                     setTimeout(() => {
                         const processedData = conf.process(conf.data);
-                        // Convert to XY points for reliable linear scale rendering
                         const points = elapsed.map((time, i) => {
                             const val = processedData[i];
                             return (val === null || val === undefined) ? null : { x: time, y: val };
                         }).filter(p => p !== null);
-
-                        renderDetailChart(conf.id, points, conf.label, conf.color, conf.unit, false, conf.colorFunc);
+                        renderDetailChart(fullId, points, conf.label, conf.color, conf.unit, false, conf.colorFunc, prefix);
                     }, 50);
                 } else {
                     if (container) container.style.display = 'none';
-                    if (title && title.tagName === 'H3') title.style.display = 'none';
+                    if (title && title.tagName === 'H4') title.style.display = 'none';
                 }
             });
 
             // Speed/Pace
-            const speedCanvas = document.getElementById('activitySpeedChart');
+            const fullSpeedId = prefix ? `${prefix}-activitySpeedChart` : 'activitySpeedChart';
+            const speedCanvas = document.getElementById(fullSpeedId);
             const speedContainer = speedCanvas ? speedCanvas.parentElement : null;
             const speedTitle = speedContainer ? speedContainer.previousElementSibling : null;
 
             if (hasData(charts.speed, true)) {
                 if (speedContainer) speedContainer.style.display = 'block';
-                if (speedTitle && speedTitle.tagName === 'H3') speedTitle.style.display = 'block';
+                if (speedTitle && speedTitle.tagName === 'H4') speedTitle.style.display = 'block';
                 setTimeout(() => {
                     let points = [];
                     if (isRun) {
@@ -3005,73 +2959,48 @@
                             if (s && s > 0.1) return { x: time, y: 26.8224 / s };
                             return null;
                         }).filter(p => p !== null);
-                        renderDetailChart('activitySpeedChart', points, 'Pace', '#38bdf8', '/mi', true);
+                        renderDetailChart(fullSpeedId, points, 'Pace', '#38bdf8', '/mi', true, null, prefix);
                     } else {
                         points = elapsed.map((time, i) => {
                             const s = charts.speed[i];
                             return (s === null || s === undefined) ? null : { x: time, y: s * 2.23694 };
                         }).filter(p => p !== null);
-                        renderDetailChart('activitySpeedChart', points, 'Speed', '#38bdf8', 'mph');
+                        renderDetailChart(fullSpeedId, points, 'Speed', '#38bdf8', 'mph', false, null, prefix);
                     }
                 }, 50);
-            } else {
-                if (speedContainer) speedContainer.style.display = 'none';
-                if (speedTitle && speedTitle.tagName === 'H3') speedTitle.style.display = 'none';
             }
         }
 
-        function renderDetailChart(id, points, label, color, unit, rev = false, colorFunc = null) {
+        function renderDetailChart(id, points, label, color, unit, rev = false, colorFunc = null, prefix = '') {
             const canvas = document.getElementById(id);
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
             if (chartInstances[id]) chartInstances[id].destroy();
 
-            const dataset = {
-                label,
-                data: points,
-                borderColor: color,
-                backgroundColor: color + '22',
-                fill: true,
-                pointRadius: 0,
-                tension: 0.4,
-                spanGaps: true
-            };
-
-            if (colorFunc) {
-                dataset.segment = {
-                    borderColor: ctx => colorFunc(ctx.p1.parsed.y),
-                    backgroundColor: ctx => colorFunc(ctx.p1.parsed.y) + '44'
-                };
-            }
-
             chartInstances[id] = new Chart(ctx, {
                 type: 'line',
-                data: { datasets: [dataset] },
+                data: {
+                    datasets: [{
+                        label, data: points, borderColor: color, backgroundColor: color + '22',
+                        fill: true, pointRadius: 0, tension: 0.4, spanGaps: true,
+                        segment: colorFunc ? {
+                            borderColor: ctx => colorFunc(ctx.p1.parsed.y),
+                            backgroundColor: ctx => colorFunc(ctx.p1.parsed.y) + '44'
+                        } : undefined
+                    }]
+                },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    animation: false, // Performance improvement
+                    responsive: true, maintainAspectRatio: false, animation: false,
                     plugins: {
                         legend: { display: false },
                         zoom: {
-                            pan: { enabled: true, mode: 'x', onPan: (c) => syncActivityCharts(c.chart) },
-                            zoom: { wheel: { enabled: true }, mode: 'x', onZoom: (c) => syncActivityCharts(c.chart) }
+                            pan: { enabled: true, mode: 'x', onPan: (c) => syncActivityCharts(c.chart, prefix) },
+                            zoom: { wheel: { enabled: true }, mode: 'x', onZoom: (c) => syncActivityCharts(c.chart, prefix) }
                         }
                     },
                     scales: {
-                        y: {
-                            reverse: rev,
-                            grid: { color: 'rgba(255,255,255,0.05)' },
-                            ticks: {
-                                color: '#94a3b8',
-                                callback: v => (v !== null) ? v.toFixed(1) + ' ' + unit : ''
-                            }
-                        },
-                        x: {
-                            type: 'linear',
-                            ticks: { color: '#94a3b8', callback: v => formatDuration(v) },
-                            grid: { display: false }
-                        }
+                        y: { reverse: rev, ticks: { color: '#94a3b8', callback: v => v.toFixed(1) + ' ' + unit }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                        x: { type: 'linear', ticks: { color: '#94a3b8', callback: v => formatDuration(v) }, grid: { display: false } }
                     }
                 }
             });
