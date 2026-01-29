@@ -123,6 +123,14 @@ ai_insights_cache = {
 }
 AI_CACHE_EXPIRY = 3600  # 1 hour cache duration
 
+# Heatmap Cache
+heatmap_cache = {
+    'data': None,
+    'timestamp': None,
+    'range': None
+}
+HEATMAP_CACHE_EXPIRY = 120  # 2 minute cache duration
+
 # Background Worker
 def background_polyline_fetcher(client, activity_ids, generation_id):
     """Fetch polylines for given IDs in background using parallel threads."""
@@ -157,8 +165,8 @@ def background_polyline_fetcher(client, activity_ids, generation_id):
             return None
 
     try:
-        # Use 4 workers instead of 8 to stay within Render's 512MB RAM limits
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        # Use 1 worker for background polylines on Render to prevent OOM/CPU starvation
+        with ThreadPoolExecutor(max_workers=1) as executor:
             # Filter IDs that need fetching
             to_fetch = [aid for aid in activity_ids if not poly_cache.has(aid)]
             
@@ -344,9 +352,9 @@ def get_ai_insights():
         if not suggestions:
             suggestions.append("Everything looks solid. This is your green light to stay the course or push a little harder.")
 
-        # Fetch Recent Activities for context (increased to 20 to cover more "recent" history)
+        # Fetch Recent Activities for context (Reduced further to 5 to save memory and stay within 30s timeout)
         try:
-            acts_all = client.get_activities(0, 20)
+            acts_all = client.get_activities(0, 5)
             # Filter for today only for the 'Today's Narrative' section
             acts_today = [a for a in acts_all if a.get('startTimeLocal', '').split(' ')[0] == today.isoformat()]
             if acts_today:
@@ -427,7 +435,7 @@ def get_ai_insights():
             """
 
             # Use Gemini 2.0 Flash for superior speed and reliability in 2026
-            model_name = 'gemini-2.5-flash'
+            model_name = 'gemini-2.0-flash'
             
             logger.info(f"AI Insights: Sending request to Gemini ({model_name})...")
             start_ai = time.time()
@@ -845,7 +853,7 @@ def get_hr_history():
                     pass
                 return None
 
-            workers = 4 # Capped for Render memory
+            workers = 2 # Capped for Render memory
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 results = list(executor.map(fetch_day, dates_to_fetch))
             
@@ -907,7 +915,7 @@ def get_stress_history():
                     pass
                 return None
 
-            workers = 4 # Capped for Render memory
+            workers = 2 # Capped for Render memory
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 results = list(executor.map(fetch_day, dates_to_fetch))
             
@@ -978,7 +986,7 @@ def get_sleep_history():
                     pass
                 return None
 
-            workers = 4 # Capped for Render memory
+            workers = 2 # Capped for Render memory
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 results = list(executor.map(fetch_day, dates_to_fetch))
             
@@ -1094,7 +1102,7 @@ def get_hrv():
                     pass
                 return None
 
-            workers = 4 # Capped for Render memory
+            workers = 2 # Capped for Render memory
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 results = list(executor.map(fetch_day, dates_to_fetch))
             
@@ -1157,7 +1165,7 @@ def get_hydration_history():
                     pass
                 return None
 
-            workers = 4 # Capped for Render memory
+            workers = 2 # Capped for Render memory
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 results = list(executor.map(fetch_day, dates_to_fetch))
             
@@ -1502,9 +1510,16 @@ def get_calendar_activities():
 
 @app.route('/api/heatmap_data')
 def get_heatmap_data():
+    global heatmap_cache
+    range_val = request.args.get('range', 'this_year')
+    now = time.time()
+    
+    if heatmap_cache['data'] and heatmap_cache['range'] == range_val:
+        if now - heatmap_cache['timestamp'] < HEATMAP_CACHE_EXPIRY:
+            return jsonify(heatmap_cache['data'])
+
     try:
         client = get_garmin_client()
-        range_val = request.args.get('range', 'this_year')
         
         today = get_today()
         if range_val == 'this_year':
@@ -1576,8 +1591,6 @@ def get_heatmap_data():
             global fetch_generation, active_fetch_range, is_fetching
             
             with fetch_lock:
-                # Scenario A: New Filter/Range selection
-                # We should cancel old work and start fresh
                 if range_val != active_fetch_range:
                     fetch_generation += 1
                     active_fetch_range = range_val
@@ -1585,36 +1598,31 @@ def get_heatmap_data():
                     current_gen = fetch_generation
                     
                     logger.info(f"New range '{range_val}': cancelling old, starting gen:{current_gen} for {len(missing_ids)} items.")
+                    # Use a lock to ensure only one fetcher runs at a time globally
                     thread = threading.Thread(target=background_polyline_fetcher, args=(client, missing_ids, current_gen))
                     thread.daemon = True
                     thread.start()
-                    
-                # Scenario B: Same Range (Polling)
-                # We should only spawn if the previous worker died/finished but we still have work
                 elif not is_fetching:
-                    # Resume/Restart
-                    # We might be in a state where a worker finished but new items appeared (unlikely given logic)
-                    # OR the prev worker crashed.
-                    # OR simply we are starting up initial load.
-                    # We reuse the current generation since it's the same logical request
                     is_fetching = True
                     current_gen = fetch_generation
-                    
                     logger.info(f"Range '{range_val}' active but no worker. Spawning gen:{current_gen} for {len(missing_ids)} items.")
                     thread = threading.Thread(target=background_polyline_fetcher, args=(client, missing_ids, current_gen))
                     thread.daemon = True
                     thread.start()
-                else:
-                    # Scenario C: Worker is already running for this range
-                    # Do nothing! seamless.
-                    logger.info(f"Worker active for '{range_val}' gen:{fetch_generation}. Skipping spawn.")
             
-        return jsonify({
+        result = {
             'count': len(result_points),
             'total_activities': len(activities),
             'missing_count': len(missing_ids),
             'data': result_points
-        })
+        }
+        
+        # Update Cache
+        heatmap_cache['data'] = result
+        heatmap_cache['timestamp'] = time.time()
+        heatmap_cache['range'] = range_val
+        
+        return jsonify(result)
 
     except Exception as e:
         logger.error(f"Error serving heatmap data: {e}")
