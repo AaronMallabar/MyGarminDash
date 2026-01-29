@@ -83,7 +83,16 @@
 
             <h1>Garmin Dashboard</h1>
 
-            <div id="last-sync" class="last-sync">Syncing...</div>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <div id="last-sync" class="last-sync">Syncing...</div>
+                <button onclick="openSettings()"
+                    style="background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); padding: 0.5rem; border-radius: 0.5rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; transition: all 0.2s;"
+                    onmouseover="this.style.background='rgba(56, 189, 248, 0.1)'"
+                    onmouseout="this.style.background='var(--card-bg)'">
+                    <span style="font-size: 1.2rem;">⚙️</span>
+                    <span>Settings</span>
+                </button>
+            </div>
 
         </header>
 
@@ -100,6 +109,8 @@
                         <div class="pulse-dot"></div>
                         <span id="ai-insight-title">AI Training Insight</span>
                     </div>
+                    <div id="ai-model-name"
+                        style="font-size: 0.7rem; color: var(--text-secondary); font-style: italic;"></div>
                 </div>
                 <div class="ai-grid">
                     <div class="insight-section">
@@ -1186,8 +1197,12 @@
             <div id="modal-ai-insight" class="ai-insight-box"
                 style="display: none; margin-bottom: 2rem; background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.1); padding: 1.5rem; border-radius: 1rem;">
                 <h3
-                    style="color: var(--accent-color); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
-                    <span>✨</span> Coach's Recap
+                    style="color: var(--accent-color); margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between;">
+                    <span style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span>✨</span> Coach's Recap
+                    </span>
+                    <span id="modal-ai-model-name"
+                        style="font-size: 0.7rem; color: var(--text-secondary); font-style: italic; font-weight: normal;"></span>
                 </h3>
                 <div id="modal-ai-content" style="line-height: 1.6;"></div>
             </div>
@@ -1203,6 +1218,38 @@
 
         </div>
 
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <button class="modal-close" onclick="closeSettings()">&times;</button>
+
+            <h2 style="margin-bottom: 2rem; display: flex; align-items: center; gap: 0.5rem;">
+                <span>⚙️</span> Dashboard Settings
+            </h2>
+
+            <div style="margin-bottom: 2rem;">
+                <h3 style="color: var(--accent-color); margin-bottom: 1rem; font-size: 1.1rem;">AI Model Selection</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.9rem;">
+                    Choose which AI model to use for generating insights. Different models have different capabilities
+                    and rate limits.
+                </p>
+
+                <div id="model-options" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <!-- Model options will be populated dynamically -->
+                </div>
+
+                <div id="settings-status"
+                    style="margin-top: 1rem; padding: 0.75rem; border-radius: 0.5rem; display: none;"></div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; gap: 1rem; margin-top: 2rem;">
+                <button class="range-btn" style="padding: 0.8rem 2rem;" onclick="closeSettings()">Cancel</button>
+                <button class="range-btn active" style="padding: 0.8rem 2rem;" onclick="saveSettings()">Save
+                    Settings</button>
+            </div>
+        </div>
     </div>
 
     <!-- Weight Log Modal -->
@@ -1253,6 +1300,23 @@
         // Global chart instances
         const chartInstances = {};
         let cachedActivityInsights = {};
+        let cachedModelName = '';
+
+        // Helper to format AI model names for display
+        function formatModelName(modelName) {
+            if (!modelName) return '';
+
+            const modelMap = {
+                'gemini-2.0-flash-exp': 'Gemini 2.0 Flash',
+                'gemini-1.5-pro': 'Gemini 1.5 Pro',
+                'gemini-1.5-flash': 'Gemini 1.5 Flash',
+                'gemma-3-27b-it': 'Gemma 3 27B',
+                'gemma-2-27b-it': 'Gemma 2 27B',
+                'Local Logic (Fallback)': 'Local Logic'
+            };
+
+            return modelMap[modelName] || modelName;
+        }
 
         // Helper to get local date string YYYY-MM-DD
         function getLocalDateStr(date = new Date()) {
@@ -1679,6 +1743,126 @@
             }
         }
 
+        // --- Settings Management ---
+
+        let currentSettings = null;
+        let selectedModel = null;
+
+        async function openSettings() {
+            const modal = document.getElementById('settingsModal');
+            if (!modal) return;
+
+            try {
+                const res = await fetch('/api/settings');
+                if (res.ok) {
+                    currentSettings = await res.json();
+                    selectedModel = currentSettings.ai_model;
+                    renderModelOptions(currentSettings);
+                    modal.classList.add('active');
+                }
+            } catch (err) {
+                console.error('Failed to load settings:', err);
+                showSettingsStatus('Failed to load settings', 'error');
+            }
+        }
+
+        function closeSettings() {
+            const modal = document.getElementById('settingsModal');
+            if (modal) modal.classList.remove('active');
+        }
+
+        function renderModelOptions(settings) {
+            const container = document.getElementById('model-options');
+            if (!container) return;
+
+            container.innerHTML = '';
+            const models = settings.available_models || [];
+
+            models.forEach(model => {
+                const isSelected = model.id === selectedModel;
+                const optionDiv = document.createElement('div');
+                optionDiv.style.cssText = `
+                    padding: 1rem;
+                    border: 2px solid ${isSelected ? 'var(--accent-color)' : 'rgba(255,255,255,0.1)'};
+                    border-radius: 0.75rem;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    background: ${isSelected ? 'rgba(56, 189, 248, 0.05)' : 'transparent'};
+                `;
+
+                optionDiv.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <input type="radio" name="ai-model" value="${model.id}" ${isSelected ? 'checked' : ''} 
+                               style="width: 20px; height: 20px; cursor: pointer; accent-color: var(--accent-color);">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; margin-bottom: 0.25rem;">${model.name}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary);">${model.description}</div>
+                        </div>
+                    </div>
+                `;
+
+                optionDiv.onclick = () => {
+                    selectedModel = model.id;
+                    renderModelOptions(settings);
+                };
+
+                container.appendChild(optionDiv);
+            });
+        }
+
+        async function saveSettings() {
+            if (!selectedModel) {
+                showSettingsStatus('Please select a model', 'error');
+                return;
+            }
+
+            showSettingsStatus('Saving...', 'info');
+
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ai_model: selectedModel })
+                });
+
+                if (res.ok) {
+                    const result = await res.json();
+                    if (result.success) {
+                        showSettingsStatus('Settings saved! AI insights will be regenerated.', 'success');
+                        setTimeout(() => {
+                            closeSettings();
+                            // Refresh AI insights with new model
+                            fetchAIInsights();
+                        }, 1500);
+                    } else {
+                        showSettingsStatus('Failed to save settings', 'error');
+                    }
+                } else {
+                    showSettingsStatus('Failed to save settings', 'error');
+                }
+            } catch (err) {
+                console.error('Failed to save settings:', err);
+                showSettingsStatus('Error saving settings', 'error');
+            }
+        }
+
+        function showSettingsStatus(message, type) {
+            const status = document.getElementById('settings-status');
+            if (!status) return;
+
+            const colors = {
+                success: { bg: 'rgba(74, 222, 128, 0.1)', text: '#4ade80' },
+                error: { bg: 'rgba(248, 113, 113, 0.1)', text: '#f87171' },
+                info: { bg: 'rgba(56, 189, 248, 0.1)', text: '#38bdf8' }
+            };
+
+            const color = colors[type] || colors.info;
+            status.style.background = color.bg;
+            status.style.color = color.text;
+            status.style.display = 'block';
+            status.textContent = message;
+        }
+
         async function fetchAIInsights() {
             try {
                 const res = await fetch('/api/ai_insights');
@@ -1694,6 +1878,15 @@
                         const titleEl = document.getElementById('ai-insight-title');
                         if (titleEl) {
                             titleEl.textContent = data.is_ai ? "AI Training Insight" : "Training Insight";
+                        }
+
+                        // Display and cache model name
+                        if (data.model_name) {
+                            cachedModelName = data.model_name;
+                            const modelNameEl = document.getElementById('ai-model-name');
+                            if (modelNameEl) {
+                                modelNameEl.textContent = formatModelName(data.model_name);
+                            }
                         }
 
                         // Cache insights for modal use, but don't render to main page list
@@ -2695,8 +2888,16 @@
             // Check for AI Insight for this activity/session
             if (aiSection && aiContent) {
                 const insight = cachedActivityInsights[id];
+                const modelNameEl = document.getElementById('modal-ai-model-name');
+
                 if (insight) {
                     aiSection.style.display = 'block';
+
+                    // Display model name
+                    if (modelNameEl && cachedModelName) {
+                        modelNameEl.textContent = cachedModelName;
+                    }
+
                     aiContent.innerHTML = `
                         <div style="background: rgba(56, 189, 248, 0.1); border-left: 3px solid var(--accent-color); padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 0 0.5rem 0.5rem 0; font-style: italic; font-weight: 500; font-family: 'Lexend', sans-serif;">
                             🌟 Highlight: ${insight.highlight || 'Standout performance recorded.'}
@@ -2707,6 +2908,7 @@
                     `;
                 } else {
                     aiSection.style.display = 'none';
+                    if (modelNameEl) modelNameEl.textContent = '';
                 }
             }
 

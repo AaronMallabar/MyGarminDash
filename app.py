@@ -36,6 +36,32 @@ logger = logging.getLogger(__name__)
 # Global client cache (simple version)
 garmin_client = None
 
+# Settings management
+SETTINGS_FILE = 'settings.json'
+DEFAULT_SETTINGS = {
+    'ai_model': 'gemma-3-27b-it'
+}
+
+def load_settings():
+    """Load settings from JSON file, return defaults if not found."""
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, 'r') as f:
+                return json.load(f)
+    except Exception as e:
+        logger.warning(f"Failed to load settings: {e}")
+    return DEFAULT_SETTINGS.copy()
+
+def save_settings(settings):
+    """Save settings to JSON file."""
+    try:
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(settings, f, indent=2)
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save settings: {e}")
+        return False
+
 def get_garmin_client():
     global garmin_client
     if garmin_client:
@@ -275,6 +301,51 @@ def background_polyline_fetcher(client, activity_ids, generation_id):
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/api/settings', methods=['GET'])
+def get_settings():
+    """Get current settings."""
+    try:
+        settings = load_settings()
+        # Add available models list
+        settings['available_models'] = [
+            {'id': 'gemini-3-flash-preview', 'name': 'Gemini 3.0 Flash (Experimental)', 'description': 'Latest experimental model'},
+            {'id': 'gemini-2.5-flash', 'name': 'Gemini 2.5 Flash', 'description': 'Most capable model'},
+            {'id': 'gemini-2.5-flash-lite', 'name': 'Gemini 2.5 Flash Lite', 'description': 'Optimized for massive scale and lowest cost'},
+            {'id': 'gemma-3-27b-it', 'name': 'Gemma 3 27B', 'description': 'High quota, great performance'}
+        ]
+        return jsonify(settings)
+    except Exception as e:
+        logger.error(f"Error getting settings: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/settings', methods=['POST'])
+def update_settings():
+    """Update settings."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        current_settings = load_settings()
+        
+        # Update only allowed fields
+        if 'ai_model' in data:
+            current_settings['ai_model'] = data['ai_model']
+            logger.info(f"AI model updated to: {data['ai_model']}")
+            
+            # Clear AI insights cache when model changes
+            global ai_insights_cache
+            ai_insights_cache = {'timestamp': 0, 'data': None}
+        
+        if save_settings(current_settings):
+            return jsonify({'success': True, 'settings': current_settings})
+        else:
+            return jsonify({'error': 'Failed to save settings'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error updating settings: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/ai_insights')
 def get_ai_insights():
@@ -535,10 +606,10 @@ def get_ai_insights():
             """
 
             # Use Gemma 3 27B for massive 14,400 RPD quota in early 2026
-            model_name = 'gemma-3-27b-it'
-            #model_name = 'gemini-3.0-flash'
+            settings = load_settings()
+            model_name = settings.get('ai_model', 'gemma-3-27b-it')
             
-            logger.info(f"AI Insights: Sending request to Gemini ({model_name})...")
+            logger.info(f"AI Insights: Sending request to {model_name}...")
             start_ai = time.time()
             response = ai_client.models.generate_content(
                 model=model_name,
@@ -573,7 +644,8 @@ def get_ai_insights():
                 'yesterday_summary': ai_data.get('yesterday_summary'),
                 'suggestions': suggestions_text,
                 'activity_insights': final_activity_insights,
-                'is_ai': True
+                'is_ai': True,
+                'model_name': model_name
             }
             
             # Cache the successful AI response
@@ -617,7 +689,8 @@ def get_ai_insights():
                 'yesterday_summary': yesterday_blurb,
                 'suggestions': " ".join(suggestions),
                 'activity_insights': activity_insights,
-                'is_ai': False
+                'is_ai': False,
+                'model_name': 'Local Logic (Fallback)'
             })
         
     except Exception as e:

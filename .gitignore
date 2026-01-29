@@ -18,6 +18,9 @@ __pycache__/
 *.pkl
 *.cache
 
+# User Settings
+settings.json
+
 # IDEs
 .vscode/
 .idea/
