@@ -116,6 +116,13 @@ active_fetch_range = None
 is_fetching = False
 fetch_lock = threading.Lock()
 
+# AI Insights Cache
+ai_insights_cache = {
+    'data': None,
+    'timestamp': None
+}
+AI_CACHE_EXPIRY = 3600  # 1 hour cache duration
+
 # Background Worker
 def background_polyline_fetcher(client, activity_ids, generation_id):
     """Fetch polylines for given IDs in background using parallel threads."""
@@ -150,8 +157,8 @@ def background_polyline_fetcher(client, activity_ids, generation_id):
             return None
 
     try:
-        # Use 8 workers for significant speedup without getting banned instantly
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        # Use 4 workers instead of 8 to stay within Render's 512MB RAM limits
+        with ThreadPoolExecutor(max_workers=4) as executor:
             # Filter IDs that need fetching
             to_fetch = [aid for aid in activity_ids if not poly_cache.has(aid)]
             
@@ -188,6 +195,15 @@ def index():
 
 @app.route('/api/ai_insights')
 def get_ai_insights():
+    global ai_insights_cache
+    
+    # Check cache first
+    now = time.time()
+    if ai_insights_cache['data'] and ai_insights_cache['timestamp']:
+        if now - ai_insights_cache['timestamp'] < AI_CACHE_EXPIRY:
+            logger.info("AI Insights: Returning cached response")
+            return jsonify(ai_insights_cache['data'])
+
     try:
         client = get_garmin_client()
         today = get_today()
@@ -248,7 +264,8 @@ def get_ai_insights():
                 return None
 
         past_dates = [today - timedelta(days=i) for i in range(1, 8)]
-        with ThreadPoolExecutor(max_workers=7) as executor:
+        # Reduce max_workers to 4 to save memory on Render's 512MB tier
+        with ThreadPoolExecutor(max_workers=4) as executor:
             history_list = list(executor.map(fetch_historical, past_dates))
         history_list = [h for h in history_list if h]
         
@@ -409,10 +426,16 @@ def get_ai_insights():
             Return ONLY the JSON.
             """
 
+            # Use Gemini 2.0 Flash for superior speed and reliability in 2026
+            model_name = 'gemini-2.5-flash'
+            
+            logger.info(f"AI Insights: Sending request to Gemini ({model_name})...")
+            start_ai = time.time()
             response = ai_client.models.generate_content(
-                model='gemini-3-flash-preview',
+                model=model_name,
                 contents=prompt
             )
+            logger.info(f"AI Insights: Gemini response received in {time.time() - start_ai:.2f}s")
             # Robust JSON cleaning
             clean_text = response.text.replace('```json', '').replace('```', '').strip()
             ai_data = json.loads(clean_text)
@@ -425,17 +448,23 @@ def get_ai_insights():
             else:
                 suggestions_text = str(suggestions_raw)
 
-            return jsonify({
+            result = {
                 'daily_summary': ai_data.get('daily_summary'),
                 'yesterday_summary': ai_data.get('yesterday_summary'),
                 'suggestions': suggestions_text,
                 'activity_insights': ai_data.get('activity_insights', []),
                 'is_ai': True
-            })
+            }
+            
+            # Cache the successful AI response
+            ai_insights_cache['data'] = result
+            ai_insights_cache['timestamp'] = time.time()
+            
+            return jsonify(result)
 
         except Exception as ai_err:
             if "RESOURCES_EXHAUSTED" in str(ai_err) or "429" in str(ai_err):
-                logger.warning(f"Gemini API Quota Exceeded (429). You've hit the daily limit for the Gemini 3 Flash model. Falling back to local logic.")
+                logger.warning(f"Gemini API Quota Exceeded (429). You've hit the rate limit for the Gemini 2.0 Flash model. Falling back to local logic.")
             else:
                 logger.warning(f"Gemini API Error: {ai_err}. Falling back to local logic.")
             
@@ -816,8 +845,7 @@ def get_hr_history():
                     pass
                 return None
 
-            # Use more threads for 1y to blast through it
-            workers = 40 if range_val == '1y' else 0
+            workers = 4 # Capped for Render memory
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 results = list(executor.map(fetch_day, dates_to_fetch))
             
@@ -879,7 +907,7 @@ def get_stress_history():
                     pass
                 return None
 
-            workers = 20 if range_val == '1y' else 10
+            workers = 4 # Capped for Render memory
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 results = list(executor.map(fetch_day, dates_to_fetch))
             
@@ -950,7 +978,7 @@ def get_sleep_history():
                     pass
                 return None
 
-            workers = 20 if range_val == '1y' else 10
+            workers = 4 # Capped for Render memory
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 results = list(executor.map(fetch_day, dates_to_fetch))
             
@@ -1066,7 +1094,7 @@ def get_hrv():
                     pass
                 return None
 
-            workers = 20 if range_val == '1y' else 10
+            workers = 4 # Capped for Render memory
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 results = list(executor.map(fetch_day, dates_to_fetch))
             
@@ -1129,7 +1157,7 @@ def get_hydration_history():
                     pass
                 return None
 
-            workers = 20 if range_val == '1y' else 10
+            workers = 4 # Capped for Render memory
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 results = list(executor.map(fetch_day, dates_to_fetch))
             
