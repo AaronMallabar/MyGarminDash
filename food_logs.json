@@ -1,0 +1,164 @@
+[
+  {
+    "id": 1770330408928,
+    "date": "2026-02-05",
+    "time": "06:30",
+    "name": "Morning Coffee",
+    "calories": 2,
+    "cholesterol_mg": 0,
+    "protein_g": 0,
+    "carbs_g": 0,
+    "fat_g": 0,
+    "category": "Breakfast",
+    "ingredients": [
+      {
+        "name": "Black Coffee",
+        "qty": "10",
+        "unit": "oz",
+        "calories": 2
+      }
+    ]
+  },
+  {
+    "id": 1770330436374,
+    "date": "2026-02-05",
+    "time": "12:01",
+    "name": "Turkey Sandwhich",
+    "calories": 480,
+    "cholesterol_mg": 0,
+    "protein_g": 0,
+    "carbs_g": 0,
+    "fat_g": 0,
+    "category": "Lunch",
+    "ingredients": [
+      {
+        "name": "L'Oven Fresh Bread",
+        "qty": "2",
+        "unit": "slices",
+        "calories": 140,
+        "cholesterol_mg": 0,
+        "protein_g": 0,
+        "carbs_g": 0,
+        "fat_g": 0
+      },
+      {
+        "name": "Deitz and Weiss Oven Roasted Turkey",
+        "qty": "4",
+        "unit": "slices",
+        "calories": 90,
+        "cholesterol_mg": 0,
+        "protein_g": 0,
+        "carbs_g": 0,
+        "fat_g": 0
+      },
+      {
+        "name": "PepperJack Cheese",
+        "qty": "1",
+        "unit": "slices",
+        "calories": 80,
+        "cholesterol_mg": 0,
+        "protein_g": 0,
+        "carbs_g": 0,
+        "fat_g": 0
+      },
+      {
+        "name": "Mayo",
+        "qty": "1",
+        "unit": "tbsp",
+        "calories": 90,
+        "cholesterol_mg": 0,
+        "protein_g": 0,
+        "carbs_g": 0,
+        "fat_g": 0
+      },
+      {
+        "name": "Burmans Chicken Dipping Sauce",
+        "qty": "1",
+        "unit": "tbsp",
+        "calories": 75,
+        "cholesterol_mg": 0,
+        "protein_g": 0,
+        "carbs_g": 0,
+        "fat_g": 0
+      },
+      {
+        "name": "Boston Lettuce",
+        "qty": "4",
+        "unit": "pieces",
+        "calories": 5,
+        "cholesterol_mg": 0,
+        "protein_g": 0,
+        "carbs_g": 0,
+        "fat_g": 0
+      }
+    ]
+  },
+  {
+    "id": 1770330474304,
+    "date": "2026-02-05",
+    "time": "12:01",
+    "name": "Morning Coffee",
+    "calories": 2,
+    "cholesterol_mg": 0,
+    "protein_g": 0,
+    "carbs_g": 0,
+    "fat_g": 0,
+    "category": "Breakfast",
+    "ingredients": [
+      {
+        "name": "Black Coffee",
+        "qty": "10",
+        "unit": "oz",
+        "calories": 2
+      }
+    ]
+  },
+  {
+    "id": 1770331004711,
+    "date": "2026-02-05",
+    "time": "12:01",
+    "name": "White Cheddar Popcorners",
+    "calories": 140,
+    "cholesterol_mg": 0,
+    "protein_g": 2,
+    "carbs_g": 21,
+    "fat_g": 6,
+    "category": "Snack",
+    "ingredients": [
+      {
+        "name": "White Cheddar Popcorners",
+        "qty": "1",
+        "unit": "pieces",
+        "calories": 140,
+        "cholesterol_mg": 0,
+        "protein_g": 2,
+        "carbs_g": 21,
+        "fat_g": 6
+      }
+    ]
+  },
+  {
+    "id": 1770331403944,
+    "date": "2026-02-05",
+    "time": "15:30",
+    "name": "Kinder Bueno",
+    "calories": 240,
+    "cholesterol_mg": 30,
+    "protein_g": 6,
+    "carbs_g": 26,
+    "fat_g": 12,
+    "category": "Snack",
+    "ingredients": [
+      {
+        "name": "Kinder Bueno",
+        "qty": "2",
+        "unit": "pieces",
+        "calories": 240,
+        "cholesterol_mg": 30,
+        "protein_g": 6,
+        "carbs_g": 26,
+        "fat_g": 12
+      }
+    ]
+  }
+]

@@ -1,0 +1,136 @@
+{
+  "Turkey Sandwhich ": {
+    "calories": 0,
+    "cholesterol_mg": 0,
+    "protein_g": 0,
+    "carbs_g": 0,
+    "fat_g": 0,
+    "ingredients": "-2 Slices Honey wheat Bread Loven Fresh\n-Spread Mayo on each slice\n-3-4 Slices of Dietz and Watson Oven Fresh Turkey\n-1 Slice Pepperjack Chees\n-Squirt of Burmans Chicken Dipping Sauce\n-4-5 leaves of boston lettuce"
+  },
+  "Morning Coffee": {
+    "calories": 2,
+    "cholesterol_mg": 0,
+    "protein_g": 0,
+    "carbs_g": 0,
+    "fat_g": 0,
+    "category": "Breakfast",
+    "ingredients": [
+      {
+        "name": "Black Coffee",
+        "qty": "10",
+        "unit": "oz",
+        "calories": 2
+      }
+    ]
+  },
+  "Turkey Sandwhich": {
+    "calories": 480,
+    "cholesterol_mg": 0,
+    "protein_g": 0,
+    "carbs_g": 0,
+    "fat_g": 0,
+    "category": "Lunch",
+    "ingredients": [
+      {
+        "name": "L'Oven Fresh Bread",
+        "qty": "2",
+        "unit": "slices",
+        "calories": 140,
+        "cholesterol_mg": 0,
+        "protein_g": 0,
+        "carbs_g": 0,
+        "fat_g": 0
+      },
+      {
+        "name": "Deitz and Weiss Oven Roasted Turkey",
+        "qty": "4",
+        "unit": "slices",
+        "calories": 90,
+        "cholesterol_mg": 0,
+        "protein_g": 0,
+        "carbs_g": 0,
+        "fat_g": 0
+      },
+      {
+        "name": "PepperJack Cheese",
+        "qty": "1",
+        "unit": "slices",
+        "calories": 80,
+        "cholesterol_mg": 0,
+        "protein_g": 0,
+        "carbs_g": 0,
+        "fat_g": 0
+      },
+      {
+        "name": "Mayo",
+        "qty": "1",
+        "unit": "tbsp",
+        "calories": 90,
+        "cholesterol_mg": 0,
+        "protein_g": 0,
+        "carbs_g": 0,
+        "fat_g": 0
+      },
+      {
+        "name": "Burmans Chicken Dipping Sauce",
+        "qty": "1",
+        "unit": "tbsp",
+        "calories": 75,
+        "cholesterol_mg": 0,
+        "protein_g": 0,
+        "carbs_g": 0,
+        "fat_g": 0
+      },
+      {
+        "name": "Boston Lettuce",
+        "qty": "4",
+        "unit": "pieces",
+        "calories": 5,
+        "cholesterol_mg": 0,
+        "protein_g": 0,
+        "carbs_g": 0,
+        "fat_g": 0
+      }
+    ]
+  },
+  "Kinder Bueno": {
+    "calories": 240,
+    "cholesterol_mg": 30,
+    "protein_g": 6,
+    "carbs_g": 26,
+    "fat_g": 12,
+    "category": "Snack",
+    "ingredients": [
+      {
+        "name": "Kinder Bueno",
+        "qty": "2",
+        "unit": "pieces",
+        "calories": 240,
+        "cholesterol_mg": 30,
+        "protein_g": 6,
+        "carbs_g": 26,
+        "fat_g": 12
+      }
+    ]
+  },
+  "White Cheddar Popcorners": {
+    "calories": 140,
+    "cholesterol_mg": 0,
+    "protein_g": 2,
+    "carbs_g": 21,
+    "fat_g": 6,
+    "category": "Snack",
+    "ingredients": [
+      {
+        "name": "White Cheddar Popcorners",
+        "qty": "1",
+        "unit": "pieces",
+        "calories": 140,
+        "cholesterol_mg": 0,
+        "protein_g": 2,
+        "carbs_g": 21,
+        "fat_g": 6
+      }
+    ]
+  }
+}

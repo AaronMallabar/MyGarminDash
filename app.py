@@ -45,6 +45,27 @@ DEFAULT_SETTINGS = {
     'ai_model': 'gemma-3-27b-it'
 }
 
+# Nutrition Storage
+FOOD_LOGS_FILE = 'food_logs.json'
+CUSTOM_FOODS_FILE = 'custom_foods.json'
+
+# Caching
+stats_cache = {}
+weight_cache = {'value': None, 'timestamp': 0}
+calorie_cache = {}
+
+def load_json(path, default):
+    if os.path.exists(path):
+        try:
+            with open(path, 'r') as f:
+                return json.load(f)
+        except: return default
+    return default
+
+def save_json(path, data):
+    with open(path, 'w') as f:
+        json.dump(data, f, indent=2)
+
 def load_settings():
     """Load settings from JSON file, return defaults if not found."""
     try:
@@ -118,6 +139,60 @@ def get_user_max_hr(client):
     except:
         pass
     return 190 # Default fallback
+
+def get_calorie_data(client, date_str):
+    """Fetch calorie data with robust fallbacks for sync issues."""
+    cache_key = f"calories_{date_str}"
+    if cache_key in calorie_cache: return calorie_cache[cache_key]
+
+    try:
+        stats = client.get_stats(date_str)
+        total_cal = n(stats.get('totalCalories'))
+        active_cal = n(stats.get('activeCalories'))
+        resting_cal = n(stats.get('bmrCalories') or stats.get('restingCalories'))
+        
+        if total_cal == 0:
+            # Try to get most recent weight from cache first
+            global weight_cache
+            weight_grams = weight_cache['value']
+            
+            # If no cached weight or it's old (1 hour), try one search
+            now = time.time()
+            if not weight_grams or (now - weight_cache['timestamp'] > 3600):
+                date_obj = date.fromisoformat(date_str)
+                for i in range(5): # Reduce search range to 5 days for speed
+                    check_date = (date_obj - timedelta(days=i)).isoformat()
+                    try:
+                        body_comp = client.get_body_composition(check_date)
+                        if body_comp and 'totalAverage' in body_comp and body_comp['totalAverage'].get('weight'):
+                            weight_grams = body_comp['totalAverage']['weight']
+                            weight_cache = {'value': weight_grams, 'timestamp': now}
+                            break
+                    except: continue
+            
+            weight_kg = (weight_grams / 1000) if weight_grams else 80
+            bmr_est = (10 * weight_kg + 900)
+            step_cal = n(stats.get('totalSteps')) * 0.04
+            
+            resting_cal = int(bmr_est)
+            active_cal = int(step_cal + (active_cal or 0))
+            total_cal = resting_cal + active_cal
+            logger.info(f"Calorie Fallback: {total_cal} kcal for {date_str}")
+            
+        result = {
+            'total': total_cal,
+            'active': active_cal,
+            'resting': resting_cal,
+            'steps': n(stats.get('totalSteps')),
+            'steps_goal': n(stats.get('totalStepsGoal')),
+            'resting_hr': n(stats.get('restingHeartRate')),
+            'stress_avg': n(stats.get('averageStressLevel'))
+        }
+        calorie_cache[cache_key] = result
+        return result
+    except Exception as e:
+        logger.error(f"Error calculating calories: {e}")
+        return {'total': 0, 'active': 0, 'resting': 0, 'steps': 0}
 
 # ==============================================================================
 # CACHE SYSTEM
@@ -779,30 +854,32 @@ def generate_insights_logic():
         model_name = settings.get('ai_model', 'gemma-3-27b-it')
         
         prompt = f"""
-        You are 'Athlete Intelligence', a elite-level Performance Analyst for AaronM.
+        You are 'Athlete Intelligence', my elite-level Performance Analyst.
         
         CRITICAL PERSONALITY:
-        - Aaron is a data-driven athlete who values technical depth over generic "good job" feedback.
+        - Address me directly as 'you'. 
+        - I am a data-driven athlete who values technical depth over generic "good job" feedback.
         - **NEVER** recommend "low-intensity walks" for rest. Focus on "Active Recovery," "Metabolic Flush," or "Structural Durability."
         - Be a "pattern seeker." Look for the **"Why"** behind the data:
-            - Is his HR high for a familiar pace? (Indicates fatigue or heat)
-            - Is he producing more power at a lower cadence? (Strength focus vs cardiovascular focus)
-            - Are his recent runs showing a "tightening" of pace consistency?
+            - Is your HR high for a familiar pace? (Indicates fatigue or heat)
+            - Are you producing more power at a lower cadence? (Strength focus vs cardiovascular focus)
+            - Are your recent runs showing a "tightening" of pace consistency?
         
         CRITICAL STYLE:
         - **Avoid being formulaic**. Do not just go down a checklist of Power, Speed, and HR for every session. 
         - **Find the Outlier**: Every session has one thing that stands out—Focus the analysis on THAT. 
         - Use Markdown bold (**) for stats only when they support a technical point.
-        - The goal is to provide insight Aaron **can't** see just by looking at a table of numbers.
+        - The goal is to provide insight I **can't** see just by looking at a table of numbers.
         
         UNITS: 
         - RUNNING: **minutes per mile** (e.g., 7:45/mi).
         - CYCLING: **Watts** (Avg/NP) and **mph**.
         - ELEVATION: **Feet**.
         - CADENCE: **spm** (Run) / **rpm** (Cycle).
+        - **TONE**: Direct, expert, coaching. Use 'you' and 'your'.
         
         COMPARISON DATA:
-        - Use "baselines_30d" to see if an activity is above/below his recent average.
+        - Use "baselines_30d" to see if an activity is above/below my recent average.
         - **MILESTONES**: Compare activities to `ytd_run_max_dist` or `ytd_cycle_max_power`. 
         - **RANKING**: Only consider sessions with `"period": "CURRENT_YEAR"` when calculating YTD rankings (e.g., 'longest run of the year'). DO NOT compare against 'PREVIOUS_YEAR' data for YTD claims.
         - If today's activity is a season best (longest run of the year, highest power of the year), you MUST lead with that accomplishment.
@@ -814,7 +891,8 @@ def generate_insights_logic():
         - For the **4 most recent** sessions, provide a long-form, multi-paragraph insight (Strava-style).
         - For everything else, provide a concise 2-sentence highlight.
         
-        CRITICAL: Every session in the 'training_history' MUST be accounted for in the 'activity_insights' response.
+        CRITICAL: Every session in the 'training_history' MUST be accounted for in the 'activity_insights' response. 
+        Address me using 'you' throughout.
         
         Return JSON structure:
         {{
@@ -965,29 +1043,36 @@ def get_stats():
                 grouped['grouped_activities'] = s
                 ui_activities.append(grouped)
 
-        # Weight (Body composition) - search last 7 days for most recent entry
-        weight_grams = None
-        for i in range(7):
-            check_date = (today - timedelta(days=i)).isoformat()
-            try:
-                body_comp = client.get_body_composition(check_date)
-                if body_comp and 'totalAverage' in body_comp and body_comp['totalAverage'].get('weight'):
-                    weight_grams = body_comp['totalAverage']['weight']
-                    break
-            except:
-                continue
-
         # Verify sleep date
         sleep_dto = sleep.get('dailySleepDTO', {}) if isinstance(sleep, dict) else {}
         if sleep_dto and sleep_dto.get('calendarDate') != today_str:
             logger.warning(f"Sleep data returned for {sleep_dto.get('calendarDate')} instead of {today_str}. Ignoring.")
             sleep_dto = {}
 
-        return jsonify({
-            'steps': n(stats.get('totalSteps')),
-            'steps_goal': n(stats.get('totalStepsGoal')),
-            'resting_hr': n(stats.get('restingHeartRate')),
-            'stress_avg': n(stats.get('averageStressLevel')),
+        # Weight - Use cached or fetch once
+        global weight_cache
+        now = time.time()
+        weight_grams = weight_cache['value']
+        
+        if not weight_grams or (now - weight_cache['timestamp'] > 3600):
+            for i in range(5):
+                check_date = (today - timedelta(days=i)).isoformat()
+                try:
+                    body_comp = client.get_body_composition(check_date)
+                    if body_comp and 'totalAverage' in body_comp and body_comp['totalAverage'].get('weight'):
+                        weight_grams = body_comp['totalAverage']['weight']
+                        weight_cache = {'value': weight_grams, 'timestamp': now}
+                        break
+                except: continue
+
+        # Use helper for calories and stats
+        cal_data = get_calorie_data(client, today_str)
+
+        response_data = {
+            'steps': cal_data['steps'],
+            'steps_goal': cal_data['steps_goal'],
+            'resting_hr': cal_data['resting_hr'],
+            'stress_avg': cal_data['stress_avg'],
             'sleep_seconds': n(sleep_dto.get('sleepTimeSeconds')),
             'sleep_score': n(
                 sleep_dto.get('sleepScore') or 
@@ -996,8 +1081,14 @@ def get_stats():
             ),
             'hrv': client.get_hrv_data(today.isoformat()).get('hrvSummary'),
             'activities': ui_activities,
-            'weight_grams': weight_grams
-        })
+            'weight_grams': weight_grams,
+            'calories': {
+                'total': cal_data['total'],
+                'active': cal_data['active'],
+                'resting': cal_data['resting']
+            }
+        }
+        return jsonify(response_data)
         
     except ValueError as ve:
         return jsonify({'error': str(ve)}), 500
@@ -1967,6 +2058,339 @@ def add_weight():
     except Exception as e:
         logger.error(f"Error adding weight: {e}")
         return jsonify({'error': str(e)}), 500
+
+# --- Nutrition & Calorie Tracking ---
+
+@app.route('/api/nutrition/logs', methods=['GET'])
+@login_required
+def get_food_logs():
+    date_str = request.args.get('date', get_today().isoformat())
+    logs = load_json(FOOD_LOGS_FILE, [])
+    day_logs = [log for log in logs if log['date'] == date_str]
+    return jsonify(day_logs)
+
+@app.route('/api/nutrition/log', methods=['POST'])
+@login_required
+def log_food():
+    data = request.json
+    raw_name = data.get('name', '')
+    if not raw_name:
+        return jsonify({'error': 'Food name required'}), 400
+    
+    # Support multiple food items separated by commas
+    items_to_log = [i.strip() for i in raw_name.split(',')]
+    logged_entries = []
+    
+    date_str = data.get('date', get_today().isoformat())
+    time_str = data.get('time', datetime.now(EST).strftime('%H:%M'))
+    custom_foods = load_json(CUSTOM_FOODS_FILE, {})
+    
+    ai_items = []
+    for name in items_to_log:
+        if name in custom_foods:
+            nutrition = custom_foods[name]
+            log_entry = {
+                'id': int(time.time() * 1000) + len(logged_entries),
+                'date': date_str,
+                'time': time_str,
+                'name': name,
+                **nutrition
+            }
+            logged_entries.append(log_entry)
+        else:
+            ai_items.append(name)
+            
+    if ai_items:
+        try:
+            ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            settings = load_settings()
+            model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
+            
+            prompt = f"""
+            Analyze these food items: {", ".join(ai_items)}
+            My Goals: Weight loss, low cholesterol.
+            Return ONLY a JSON array of objects, one for each item, with:
+            name (string), calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), fat_g (int), ai_note (str).
+            """
+            
+            response = ai_client.models.generate_content(model=model_name, contents=prompt)
+            clean_text = response.text.replace('```json', '').replace('```', '').strip()
+            estimates = json.loads(clean_text)
+            
+            for est in estimates:
+                log_entry = {
+                    'id': int(time.time() * 1000) + len(logged_entries),
+                    'date': date_str,
+                    'time': time_str,
+                    **est
+                }
+                logged_entries.append(log_entry)
+        except Exception as e:
+            logger.error(f"Bulk AI estimation failed: {e}")
+            for name in ai_items:
+                logged_entries.append({
+                    'id': int(time.time() * 1000) + len(logged_entries),
+                    'date': date_str, 'time': time_str, 'name': name,
+                    'calories': 0, 'cholesterol_mg': 0, 'protein_g': 0, 'carbs_g': 0, 'fat_g': 0, 'ai_note': 'Failed'
+                })
+
+    dry_run = request.args.get('dry_run') == 'true'
+    if not dry_run:
+        logs = load_json(FOOD_LOGS_FILE, [])
+        logs.extend(logged_entries)
+        save_json(FOOD_LOGS_FILE, logs)
+    
+    return jsonify(logged_entries)
+    
+    nutrition = None
+    if name in custom_foods:
+        nutrition = custom_foods[name]
+        logger.info(f"Nutrition: Found custom food '{name}'")
+    else:
+        # Use AI to estimate
+        try:
+            ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+            settings = load_settings()
+            model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
+            
+            prompt = f"""
+            Estimate nutritional values for: "{name}"
+            Aaron's Goals: Weight loss, low cholesterol.
+            Return ONLY a JSON object with: 
+            calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), fat_g (int), ai_note (str).
+            """
+            
+            response = ai_client.models.generate_content(model=model_name, contents=prompt)
+            clean_text = response.text.replace('```json', '').replace('```', '').strip()
+            nutrition = json.loads(clean_text)
+            logger.info(f"Nutrition: AI estimated '{name}' at {nutrition.get('calories')} kcal")
+        except Exception as e:
+            logger.error(f"AI Nutrition estimation failed: {e}")
+            nutrition = {'calories': 0, 'cholesterol_mg': 0, 'protein_g': 0, 'carbs_g': 0, 'fat_g': 0, 'ai_note': 'Estimation failed.'}
+
+    log_entry = {
+        'id': int(time.time() * 1000),
+        'date': date_str,
+        'time': time_str,
+        'name': name,
+        **nutrition
+    }
+    
+    logs = load_json(FOOD_LOGS_FILE, [])
+    logs.append(log_entry)
+    save_json(FOOD_LOGS_FILE, logs)
+    
+    return jsonify(log_entry)
+
+@app.route('/api/nutrition/delete', methods=['POST'])
+@login_required
+def delete_food_log():
+    log_id = request.json.get('id')
+    logs = load_json(FOOD_LOGS_FILE, [])
+    new_logs = [l for l in logs if l.get('id') != log_id]
+    save_json(FOOD_LOGS_FILE, new_logs)
+    return jsonify({'status': 'success'})
+
+@app.route('/api/nutrition/custom_foods', methods=['GET', 'POST'])
+@login_required
+def handle_custom_foods():
+    if request.method == 'GET':
+        return jsonify(load_json(CUSTOM_FOODS_FILE, {}))
+    
+    data = request.json
+    name = data.get('name')
+    if not name:
+        return jsonify({'error': 'Food name required'}), 400
+    
+    custom_foods = load_json(CUSTOM_FOODS_FILE, {})
+    custom_foods[name] = {
+        'calories': data.get('calories', 0),
+        'cholesterol_mg': data.get('cholesterol_mg', 0),
+        'protein_g': data.get('protein_g', 0),
+        'carbs_g': data.get('carbs_g', 0),
+        'fat_g': data.get('fat_g', 0),
+        'category': data.get('category', 'Meal'),
+        'ingredients': data.get('ingredients', []) # List of {name, qty, unit, cals}
+    }
+    save_json(CUSTOM_FOODS_FILE, custom_foods)
+    return jsonify({'status': 'success'})
+
+@app.route('/api/nutrition/delete_library_item', methods=['POST'])
+@login_required
+def delete_library_item():
+    name = request.json.get('name')
+    custom_foods = load_json(CUSTOM_FOODS_FILE, {})
+    if name in custom_foods:
+        del custom_foods[name]
+        save_json(CUSTOM_FOODS_FILE, custom_foods)
+    return jsonify({'status': 'success'})
+
+@app.route('/api/nutrition/estimate_ingredients', methods=['POST'])
+@login_required
+def estimate_ingredients():
+    data = request.json
+    ingredients = data.get('ingredients', [])
+    
+    if not ingredients:
+        return jsonify({'error': 'Ingredients required'}), 400
+        
+    try:
+        ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        settings = load_settings()
+        model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
+        
+        ing_list_str = "\n".join([f"- {i['qty']} {i['unit']} of {i['name']}" for i in ingredients])
+        
+        prompt = f"""
+        Estimate nutritional values for these ingredients collectively and individually:
+        {ing_list_str}
+        
+        Return ONLY a JSON array where each object corresponds to an ingredient and has:
+        calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), fat_g (int).
+        """
+        
+        response = ai_client.models.generate_content(model=model_name, contents=prompt)
+        clean_text = response.text.replace('```json', '').replace('```', '').strip()
+        result = json.loads(clean_text)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Bulk ingredient estimation failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/nutrition/export_library')
+@login_required
+def export_library_csv():
+    import csv
+    import io
+    from flask import make_response
+    
+    library = load_json(CUSTOM_FOODS_FILE, {})
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(['Name', 'Category', 'Calories', 'Cholesterol (mg)', 'Protein (g)', 'Carbs (g)', 'Fat (g)', 'Ingredients'])
+    
+    for name, data in library.items():
+        ings = data.get('ingredients') or []
+        ing_list = "; ".join([f"{i.get('qty','0')} {i.get('unit','pcs')} {i.get('name','Item')}" for i in ings])
+        cw.writerow([
+            name,
+            data.get('category'),
+            data.get('calories'),
+            data.get('cholesterol_mg'),
+            data.get('protein_g'),
+            data.get('carbs_g'),
+            data.get('fat_g'),
+            ing_list
+        ])
+    
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = "attachment; filename=food_library.csv"
+    output.headers["Content-Type"] = "text/csv"
+    return output
+
+@app.route('/api/nutrition/analysis')
+@login_required
+def get_nutrition_analysis():
+    date_str = request.args.get('date', get_today().isoformat())
+    
+    # Get intakes
+    logs = load_json(FOOD_LOGS_FILE, [])
+    day_logs = [log for log in logs if log['date'] == date_str]
+    total_in = sum(l.get('calories', 0) for l in day_logs)
+    total_chol = sum(l.get('cholesterol_mg', 0) for l in day_logs)
+    
+    # Get outtakes from Garmin with detailed breakdown and fallbacks
+    client = get_garmin_client()
+    cal_data = get_calorie_data(client, date_str)
+    
+    total_out = cal_data['total']
+    active_out = cal_data['active']
+    resting_out = cal_data['resting']
+    
+    # Check for no_ai flag
+    if request.args.get('no_ai') == 'true':
+        return jsonify({
+            'analysis': "Detailed analysis available on request.",
+            'metabolic': {
+                'total': total_out,
+                'resting': resting_out,
+                'active': active_out
+            }
+        })
+    
+    try:
+        ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        settings = load_settings()
+        model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
+        
+        food_list = ", ".join([l['name'] for l in day_logs]) or "No food logged yet."
+        
+        prompt = f"""
+        You are 'Athlete Intelligence', a personal health coach. Analyze my nutrition for {date_str}.
+        My Goals: Weight loss, low cholesterol.
+        
+        Metabolic Data:
+        - Total Energy Out: {total_out} kcal (Resting: {resting_out}, Active: {active_out})
+        - Total Energy In: {total_in} kcal
+        - Total Cholesterol: {total_chol} mg
+        - Logged Foods: {food_list}
+        
+        Address me directly as 'you'. Provide a concise, expert analysis (2 sentences). 
+        Focus on how my energy balance (intake vs total out) and cholesterol align with my weight loss and heart health goals. 
+        If 'Active' calories are high, mention my workout efficiency.
+        """
+        
+        response = ai_client.models.generate_content(model=model_name, contents=prompt)
+        return jsonify({
+            'analysis': response.text,
+            'metabolic': {
+                'total': total_out,
+                'resting': resting_out,
+                'active': active_out
+            }
+        })
+    except Exception as e:
+        logger.error(f"Nutrition analysis failed: {e}")
+        return jsonify({
+            'analysis': "Athlete Intelligence is currently refining your metabolic insights.",
+            'metabolic': {
+                'total': total_out,
+                'resting': resting_out,
+                'active': active_out
+            }
+        })
+
+@app.route('/api/nutrition/export')
+@login_required
+def export_food_csv():
+    import csv
+    import io
+    from flask import make_response
+    
+    logs = load_json(FOOD_LOGS_FILE, [])
+    # Sort by date and time
+    logs.sort(key=lambda x: (x['date'], x['time']))
+    
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(['Date', 'Time', 'Food', 'Calories', 'Cholesterol (mg)', 'Protein (g)', 'Carbs (g)', 'Fat (g)'])
+    
+    for l in logs:
+        cw.writerow([
+            l.get('date'),
+            l.get('time'),
+            l.get('name'),
+            l.get('calories'),
+            l.get('cholesterol_mg'),
+            l.get('protein_g'),
+            l.get('carbs_g'),
+            l.get('fat_g')
+        ])
+    
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = "attachment; filename=food_logs.csv"
+    output.headers["Content-Type"] = "text/csv"
+    return output
 
 @app.route('/api/activity_heatmap')
 @login_required

@@ -993,6 +993,140 @@
 
         </div>
 
+        <!-- Nutrition & Metabolism -->
+        <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Nutrition & Metabolism</h2>
+        <div class="nutrition-grid"
+            style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; margin-bottom: 3rem;">
+            <!-- Calorie Balance Card -->
+            <div class="card"
+                style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.05) 100%); border: 1px solid rgba(16, 185, 129, 0.2);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <div
+                        style="display: flex; align-items: center; gap: 1rem; background: rgba(255,255,255,0.05); padding: 0.5rem 1rem; border-radius: 1rem; border: 1px solid rgba(255,255,255,0.1);">
+                        <button class="nav-btn" onclick="shiftNutritionDate(-1)"
+                            style="width: 32px; height: 32px; padding: 0;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                stroke-linecap="round" stroke-linejoin="round" style="width: 16px;">
+                                <polyline points="15 18 9 12 15 6"></polyline>
+                            </svg>
+                        </button>
+                        <div id="nutrition-date-display"
+                            style="font-weight: 800; font-family: 'Lexend', sans-serif; min-width: 120px; text-align: center; font-size: 0.95rem; color: #10b981;">
+                            Today</div>
+                        <button class="nav-btn" onclick="shiftNutritionDate(1)"
+                            style="width: 32px; height: 32px; padding: 0;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                stroke-linecap="round" stroke-linejoin="round" style="width: 16px;">
+                                <polyline points="9 18 15 12 9 6"></polyline>
+                            </svg>
+                        </button>
+                        <button onclick="resetNutritionToToday()" id="nutrition-today-btn"
+                            style="background: rgba(16, 185, 129, 0.15); border: none; color: #10b981; padding: 0.4rem 0.8rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700; cursor: pointer; margin-left: 0.5rem; display: none;">Today</button>
+                    </div>
+                    <button class="range-btn active" onclick="openFoodModal()"
+                        style="background: #10b981; color: #fff; padding: 1rem 1.8rem; border-radius: 1rem; border: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.6rem; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 8px 16px rgba(16, 185, 129, 0.25);">
+                        <span>🍎</span> Log Food
+                    </button>
+                </div>
+
+                <div
+                    style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;">
+                    <div>
+                        <h3 style="font-size: 1.2rem; color: #10b981; margin-bottom: 0.5rem;">Energy Balance</h3>
+                        <div style="display: flex; align-items: baseline; gap: 0.75rem;">
+                            <div id="net-calories"
+                                style="font-size: 3.5rem; font-weight: 800; font-family: 'Lexend', sans-serif; letter-spacing: -2px;">
+                                --</div>
+                            <div id="net-label"
+                                style="font-size: 1rem; color: var(--text-secondary); font-weight: 600;">Net Calories
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- New Gauge Visualization (Scale Selector) -->
+                <div style="margin-bottom: 2.5rem; position: relative; padding: 0 1.5rem; margin-top: 2rem;">
+                    <div
+                        style="height: 8px; background: linear-gradient(to right, #10b981, rgba(255,255,255,0.05) 50%, #f87171); border-radius: 20px; position: relative; box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);">
+                        <!-- Scale Labels -->
+                        <div
+                            style="position: absolute; width: 100%; top: -22px; display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-secondary); font-weight: 800; font-family: 'Lexend', sans-serif; letter-spacing: 0.05em;">
+                            <span style="color: #10b981;">-5000</span>
+                            <span style="opacity: 0.3;">BALANCE</span>
+                            <span style="color: #f87171;">+5000</span>
+                        </div>
+
+                        <!-- Center Notch -->
+                        <div
+                            style="position: absolute; left: 50%; top: 0; width: 2px; height: 100%; background: rgba(255,255,255,0.2); transform: translateX(-50%); z-index: 1;">
+                        </div>
+
+                        <!-- Needle / Pointer -->
+                        <div id="balance-pointer"
+                            style="position: absolute; left: 50%; top: -10px; width: 4px; height: 28px; background: #fff; border-radius: 4px; transition: all 1s cubic-bezier(0.34, 1.56, 0.64, 1); box-shadow: 0 0 15px rgba(255,255,255,0.5); z-index: 5; transform: translateX(-50%);">
+                            <div
+                                style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 12px; height: 12px; background: inherit; border-radius: 50%; filter: blur(6px); opacity: 0.6;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+                    <div
+                        style="background: rgba(16, 185, 129, 0.05); padding: 1.2rem; border-radius: 1rem; border: 1px solid rgba(16, 185, 129, 0.1);">
+                        <div
+                            style="color: #10b981; font-size: 0.8rem; font-weight: 700; margin-bottom: 0.5rem; text-transform: uppercase;">
+                            Consumption</div>
+                        <div id="intake-calories"
+                            style="font-size: 1.6rem; font-weight: 800; font-family: 'Lexend', sans-serif;">--</div>
+                    </div>
+                    <div
+                        style="background: rgba(56, 189, 248, 0.05); padding: 1.2rem; border-radius: 1rem; border: 1px solid rgba(56, 189, 248, 0.1);">
+                        <div
+                            style="color: #38bdf8; font-size: 0.8rem; font-weight: 700; margin-bottom: 0.5rem; text-transform: uppercase;">
+                            Energy Out</div>
+                        <div id="outtake-calories"
+                            style="font-size: 1.6rem; font-weight: 800; font-family: 'Lexend', sans-serif;">--</div>
+                    </div>
+                </div>
+
+                <!-- Nutrition AI Blurb -->
+                <div id="nutrition-ai-box"
+                    style="background: rgba(16, 185, 129, 0.05); border-left: 3px solid #10b981; padding: 1.2rem; border-radius: 0 0.75rem 0.75rem 0;">
+                    <div
+                        style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #10b981; margin-bottom: 0.5rem; font-weight: 700;">
+                        Metabolic Analysis</div>
+                    <div id="nutrition-ai-content"
+                        style="font-size: 0.95rem; line-height: 1.6; color: var(--text-primary);">
+                        Waiting for nutrient stream logs...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Logs Card -->
+            <div class="card" style="display: flex; flex-direction: column;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <h3 id="food-list-title" style="font-size: 1rem;">Today's Food</h3>
+                    <a href="/api/nutrition/export" target="_blank"
+                        style="font-size: 0.8rem; color: var(--accent-color); text-decoration: none; border-bottom: 1px solid transparent; transition: all 0.2s;"
+                        onmouseover="this.style.borderBottomColor='var(--accent-color)'"
+                        onmouseout="this.style.borderBottomColor='transparent'">Export CSV</a>
+                </div>
+                <div id="food-logs-list"
+                    style="flex-grow: 1; overflow-y: auto; max-height: 380px; padding-right: 0.5rem;">
+                    <!-- Logs injected here -->
+                    <div style="text-align: center; color: var(--text-secondary); margin-top: 2rem;">No entries for
+                        today.</div>
+                </div>
+                <button onclick="openLibraryModal()"
+                    style="margin-top: 1.5rem; width: 100%; font-size: 0.9rem; padding: 0.8rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03); border-radius: 0.75rem; color: var(--text-secondary); cursor: pointer; transition: all 0.2s; font-weight: 600; font-family: 'Lexend', sans-serif;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.08)'; this.style.borderColor='rgba(255,255,255,0.2)';"
+                    onmouseout="this.style.background='rgba(255,255,255,0.03)'; this.style.borderColor='rgba(255,255,255,0.1)';">
+                    📖 Manage Food Library
+                </button>
+            </div>
+        </div>
+
         <!-- Global Activity Heatmap -->
         <section style="margin-bottom: 3rem;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
@@ -1321,6 +1455,168 @@
 
     </div>
 
+    <!-- Food Log Modal -->
+    <div id="foodModal" class="modal">
+        <div class="modal-content"
+            style="max-width: 650px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1);">
+            <button class="modal-close" onclick="closeFoodModal()">&times;</button>
+            <h2
+                style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.75rem; font-family: 'Lexend', sans-serif;">
+                <span style="font-size: 1.8rem;">🥗</span> Log Nutrition
+            </h2>
+
+            <div
+                style="display: flex; align-items: center; gap: 1rem; padding: 0.5rem 1rem; margin-bottom: 1.5rem; background: rgba(255,255,255,0.02); border-radius: 1rem; border: 1px solid rgba(255,255,255,0.05);">
+                <span style="font-size: 0.9rem; color: #94a3b8; font-weight: 600;">Time:</span>
+                <input type="time" id="food-log-time"
+                    style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 0.6rem 0.8rem; border-radius: 0.75rem; font-family: 'Lexend', sans-serif; cursor: pointer; border-left: 3px solid #10b981; font-size: 0.9rem;">
+            </div>
+
+            <!-- Main Search View -->
+            <div id="food-main-view">
+                <div style="margin-bottom: 2rem;">
+                    <div class="search-container" style="position: relative;">
+                        <input type="text" id="food-search-input" placeholder="What did you eat? (e.g. Turkey Sandwich)"
+                            style="width: 100%; padding: 1.2rem; border-radius: 1rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: white; font-size: 1.1rem; transition: all 0.2s; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);"
+                            oninput="onFoodSearchInput()"
+                            onfocus="this.style.borderColor='var(--accent-color)'; this.style.background='rgba(56, 189, 248, 0.05)'"
+                            onblur="this.style.borderColor='rgba(255,255,255,0.1)'; this.style.background='rgba(255,255,255,0.05)'">
+                        <div id="food-search-results"
+                            style="position: absolute; top: 100%; left: 0; right: 0; background: #1e293b; border: 1px solid rgba(255,255,255,0.2); border-radius: 0 0 1rem 1rem; z-index: 1000; display: none; overflow: hidden; box-shadow: 0 15px 35px rgba(0,0,0,0.6);">
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                    <button class="range-btn" style="flex: 1; padding: 1rem; border-radius: 0.75rem;"
+                        onclick="closeFoodModal()">Cancel</button>
+                    <button class="range-btn active" id="btn-log-food"
+                        style="flex: 1; padding: 1rem; border-radius: 0.75rem; background: #10b981;"
+                        onclick="submitFoodLog()">
+                        Analyze & Review with AI
+                    </button>
+                </div>
+
+                <div
+                    style="margin-top: 2.5rem; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 1.5rem; text-align: center;">
+                    <button onclick="showCustomFoodForm()"
+                        style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981; font-size: 0.95rem; cursor: pointer; padding: 0.8rem 1.5rem; font-weight: 600; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.5rem; transition: all 0.2s;"
+                        onmouseover="this.style.background='rgba(16, 185, 129, 0.2)'"
+                        onmouseout="this.style.background='rgba(16, 185, 129, 0.1)'">
+                        <span>➕</span> Create Gourmet Recipe / Meal
+                    </button>
+                </div>
+            </div>
+
+            <!-- Enhanced Custom Food Form -->
+            <div id="custom-food-form" style="display: none;">
+                <h3
+                    style="margin-bottom: 2rem; color: #10b981; display: flex; justify-content: space-between; align-items: center;">
+                    <span>Recipe Constructor</span>
+                    <button onclick="hideCustomFoodForm()"
+                        style="background:none; border:none; color:var(--text-secondary); cursor:pointer;">✕</button>
+                </h3>
+
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+                    <div>
+                        <label
+                            style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.4rem; display: block;">Recipe
+                            Name</label>
+                        <input type="text" id="custom-name" placeholder="e.g. Morning Turkey Club"
+                            style="width: 100%; padding: 1rem; border-radius: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white;">
+                    </div>
+                    <div>
+                        <label
+                            style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.4rem; display: block;">Category</label>
+                        <select id="custom-category"
+                            style="width: 100%; padding: 1rem; border-radius: 0.75rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white;">
+                            <option value="Breakfast">Breakfast</option>
+                            <option value="Lunch">Lunch</option>
+                            <option value="Dinner">Dinner</option>
+                            <option value="Snack">Snack</option>
+                            <option value="Meal">General Meal</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 2rem;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <span style="font-weight: 600; font-size: 0.9rem;">Ingredients</span>
+                        <button onclick="estimateAllIngredients()" id="btn-ai-scan" class="range-btn active"
+                            style="font-size: 0.75rem; background: #38bdf8; padding: 0.4rem 0.8rem; border-radius: 0.5rem; border: none; font-weight: 600;">
+                            ✨ AI Full Scan
+                        </button>
+                    </div>
+                    <div id="ingredient-list"
+                        style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;">
+                        <!-- Ingredient rows -->
+                    </div>
+                    <button class="range-btn" onclick="addIngredientRow()"
+                        style="width: 100%; border: 1px dashed rgba(255,255,255,0.2); background: none; font-size: 0.85rem; padding: 0.8rem; color: #94a3b8;">
+                        ＋ Add Ingredient
+                    </button>
+                </div>
+
+                <div
+                    style="background: rgba(255,255,255,0.03); padding: 1.5rem; border-radius: 1rem; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 2rem;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <span style="font-weight: 600;">Nutrient Summary</span>
+                        <div style="display: flex; gap: 1.5rem;">
+                            <div style="text-align: right;">
+                                <div
+                                    style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;">
+                                    Calories</div>
+                                <div id="summary-cal" style="font-size: 1.1rem; font-weight: 700;">0</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div
+                                    style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase;">
+                                    Cholesterol</div>
+                                <div id="summary-chol" style="font-size: 1.1rem; font-weight: 700; color: #fb923c;">0mg
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 1rem;">
+                    <button class="range-btn" style="flex: 1; padding: 1rem;"
+                        onclick="hideCustomFoodForm()">Back</button>
+                    <button class="range-btn"
+                        style="flex: 1.5; padding: 1rem; border: 1px solid rgba(16, 185, 129, 0.3); color: #10b981;"
+                        onclick="saveCustomFood(false)">
+                        Save to Library
+                    </button>
+                    <button class="range-btn active" style="flex: 2; padding: 1rem; background: #10b981;"
+                        onclick="saveCustomFood(true)">
+                        Save & Log Today
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Library Modal -->
+    <div id="libraryModal" class="modal">
+        <div class="modal-content"
+            style="max-width: 800px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1);">
+            <button class="modal-close" onclick="closeLibraryModal()">&times;</button>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <h2 style="font-family: 'Lexend', sans-serif;">Food Library</h2>
+                <a href="/api/nutrition/export_library" target="_blank" class="range-btn active"
+                    style="background: rgba(255,255,255,0.1); font-size: 0.85rem; color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 0.5rem;">Export
+                    CSV</a>
+            </div>
+
+            <div id="library-list"
+                style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; max-height: 60vh; overflow-y: auto; padding-right: 0.5rem;">
+                <!-- Library items -->
+            </div>
+        </div>
+    </div>
+
     <script>
         // Global chart instances
         const chartInstances = {};
@@ -1357,11 +1653,640 @@
             return new Date(y, m - 1, d);
         }
 
+        function formatTo12H(timeStr) {
+            if (!timeStr) return '';
+            const [hrs, mins] = timeStr.split(':');
+            let h = parseInt(hrs);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12 || 12;
+            return `${h}:${mins} ${ampm}`;
+        }
+
         // Helper to format distance in both miles and km
         function formatDualDistance(miles) {
             const km = (miles * 1.60934).toFixed(1);
             const mi = Number(miles).toFixed(1);
             return `${mi} mi / ${km} km`;
+        }
+
+        // --- Nutrition & Calorie Tracking ---
+        let customFoods = {};
+        let currentNutritionLogs = [];
+        let editingLogId = null;
+        let activeNutritionDate = new Date();
+
+        function shiftNutritionDate(dir) {
+            activeNutritionDate.setDate(activeNutritionDate.getDate() + dir);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const active = new Date(activeNutritionDate);
+            active.setHours(0, 0, 0, 0);
+
+            if (active > today) activeNutritionDate = new Date();
+
+            updateNutritionDateUI();
+            fetchNutritionData();
+        }
+
+        function resetNutritionToToday() {
+            activeNutritionDate = new Date();
+            updateNutritionDateUI();
+            fetchNutritionData();
+        }
+
+        function updateNutritionDateUI() {
+            const display = document.getElementById('nutrition-date-display');
+            const todayBtn = document.getElementById('nutrition-today-btn');
+            const title = document.getElementById('food-list-title');
+
+            const dateStr = getLocalDateStr(activeNutritionDate);
+            const todayStr = getLocalDateStr(new Date());
+
+            if (dateStr === todayStr) {
+                display.textContent = 'Today';
+                if (todayBtn) todayBtn.style.display = 'none';
+                if (title) title.textContent = "Today's Food";
+            } else {
+                const options = { month: 'short', day: 'numeric', year: 'numeric' };
+                display.textContent = activeNutritionDate.toLocaleDateString(undefined, options);
+                if (todayBtn) todayBtn.style.display = 'inline-block';
+                if (title) title.textContent = `Food for ${activeNutritionDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+            }
+        }
+
+        async function fetchNutritionData() {
+            try {
+                const dateStr = getLocalDateStr(activeNutritionDate);
+                const [logsRes, customRes] = await Promise.all([
+                    fetch(`/api/nutrition/logs?date=${dateStr}`),
+                    fetch('/api/nutrition/custom_foods')
+                ]);
+
+                if (logsRes.ok) {
+                    const logs = await logsRes.json();
+
+                    // Fetch stats - Use no_ai=true for faster load unless history is being browsed
+                    const isToday = getLocalDateStr(activeNutritionDate) === getLocalDateStr(new Date());
+                    const analysisUrl = `/api/nutrition/analysis?date=${dateStr}&no_ai=true`;
+                    const statsRes = await fetch(analysisUrl);
+                    const analysisData = await statsRes.json();
+
+                    let outtake = 0;
+                    if (isToday) {
+                        // For today, we might already have stats from updateDashboard
+                        // But we want to ensure sync, so we fetch locally if not provided
+                        outtake = analysisData.metabolic ? analysisData.metabolic.total : 0;
+                    } else {
+                        if (analysisData.metabolic) {
+                            outtake = analysisData.metabolic.total || 0;
+                        }
+                    }
+
+                    updateNutritionUI(logs, outtake, analysisData.analysis);
+                }
+                if (customRes.ok) {
+                    customFoods = await customRes.json();
+                }
+            } catch (err) {
+                console.error("Nutrition fetch error:", err);
+            }
+        }
+
+        function updateNutritionUI(logs, outtake, aiAnalysis) {
+            currentNutritionLogs = logs;
+            const intake = logs.reduce((sum, log) => sum + (log.calories || 0), 0);
+            const net = intake - outtake;
+
+            safeSetText('intake-calories', intake.toLocaleString());
+            safeSetText('outtake-calories', outtake.toLocaleString());
+
+            const netEl = document.getElementById('net-calories');
+            const netLabel = document.getElementById('net-label');
+            const pointer = document.getElementById('balance-pointer');
+
+            if (netEl && pointer) {
+                netEl.textContent = (net > 0 ? '+' : '') + Math.abs(net).toLocaleString();
+                netLabel.textContent = net > 0 ? 'Surplus' : 'Deficit (Burned)';
+
+                // Scale logic: -5000 to +5000
+                const maxRange = 5000;
+                // Clamp net between -5000 and 5000
+                const clampedNet = Math.max(-maxRange, Math.min(maxRange, net));
+                // Map -5000...5000 to 0%...100%
+                const posPct = ((clampedNet + maxRange) / (maxRange * 2)) * 100;
+
+                pointer.style.left = posPct + '%';
+
+                if (net <= 0) {
+                    pointer.style.background = '#10b981'; // Green for deficit
+                    pointer.style.boxShadow = '0 0 15px rgba(16, 185, 129, 0.8)';
+                    netEl.style.color = '#10b981';
+                } else {
+                    pointer.style.background = '#f87171'; // Red for surplus
+                    pointer.style.boxShadow = '0 0 15px rgba(248, 113, 113, 0.8)';
+                    netEl.style.color = '#f87171';
+                }
+            }
+
+            const list = document.getElementById('food-logs-list');
+            if (list) {
+                if (logs.length === 0) {
+                    list.innerHTML = `<div style="text-align: center; color: var(--text-secondary); margin-top: 2rem;">No entries for ${getLocalDateStr(activeNutritionDate) === getLocalDateStr(new Date()) ? 'today' : 'this date'}.</div>`;
+                } else {
+                    list.innerHTML = logs.slice().reverse().map(l => `
+                        <div class="activity-item" style="padding: 1rem; margin-bottom: 0.75rem; background: rgba(255,255,255,0.02); border-radius: 0.75rem; border: 1px solid rgba(255,255,255,0.05); align-items: center; display: flex;">
+                            <div style="font-size: 1.2rem; margin-right: 1rem;">${l.calories > 500 ? '🍱' : (l.calories > 200 ? '🥪' : '🍎')}</div>
+                            <div style="flex-grow: 1;">
+                                <div style="font-weight: 600; font-size: 0.95rem;">${l.name}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-secondary);">${formatTo12H(l.time)} • ${l.calories} kcal</div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button onclick="editAnyMeal(${l.id})" style="background: none; border: none; color: #38bdf8; cursor: pointer; opacity: 0.5; padding: 0.5rem; font-size: 0.8rem;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">Edit</button>
+                                <button onclick="deleteFoodLog(${l.id})" style="background: none; border: none; color: #f87171; cursor: pointer; opacity: 0.5; padding: 0.5rem;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">✕</button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            }
+
+            if (aiAnalysis) {
+                safeSetHTML('nutrition-ai-content', aiAnalysis);
+            } else {
+                refreshNutritionAnalysis();
+            }
+        }
+
+        async function refreshNutritionAnalysis() {
+            try {
+                const dateStr = getLocalDateStr(activeNutritionDate);
+                const res = await fetch(`/api/nutrition/analysis?date=${dateStr}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    safeSetHTML('nutrition-ai-content', data.analysis);
+                }
+            } catch (err) { console.error("Analysis error:", err); }
+        }
+
+        function openFoodModal() {
+            document.getElementById('foodModal').classList.add('active');
+            document.getElementById('food-search-input').focus();
+
+            // Set current time as default
+            const now = new Date();
+            const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+            document.getElementById('food-log-time').value = timeStr;
+        }
+        function closeFoodModal() { document.getElementById('foodModal').classList.remove('active'); }
+
+        function onFoodSearchInput() {
+            const query = document.getElementById('food-search-input').value.toLowerCase();
+            const results = document.getElementById('food-search-results');
+
+            if (!query) {
+                results.style.display = 'none';
+                return;
+            }
+
+            const matches = Object.keys(customFoods).filter(f => f.toLowerCase().includes(query));
+
+            if (matches.length > 0) {
+                results.innerHTML = matches.map(m => `
+                    <div style="padding: 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
+                        <div onclick="selectFood('${m}')" style="flex-grow: 1; cursor: pointer;">
+                            <div style="font-weight: 600;">${m}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary);">${customFoods[m].calories} kcal • Saved Recipe</div>
+                        </div>
+                        <button onclick="editLibraryItem('${m}')" style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.2); color: #38bdf8; padding: 0.4rem 0.8rem; border-radius: 0.4rem; font-size: 0.75rem; cursor: pointer; font-weight: 600;">Edit Recipe</button>
+                    </div>
+                `).join('');
+                results.style.display = 'block';
+            } else {
+                results.style.display = 'none';
+            }
+        }
+
+        function selectFood(name) {
+            document.getElementById('food-search-input').value = name;
+            document.getElementById('food-search-results').style.display = 'none';
+
+            // If it's a library item, open it in the constructor for review
+            if (customFoods[name]) {
+                editLibraryItem(name);
+            } else {
+                submitFoodLog();
+            }
+        }
+
+        async function submitFoodLog() {
+            const name = document.getElementById('food-search-input').value;
+            if (!name) return;
+
+            const btn = document.getElementById('btn-log-food');
+            const originalText = btn.textContent;
+            btn.textContent = "AI Analyzing...";
+            btn.disabled = true;
+
+            try {
+                // Dry run to get estimates without logging yet
+                const res = await fetch(`/api/nutrition/log?dry_run=true`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name })
+                });
+
+                if (res.ok) {
+                    const estimates = await res.json();
+                    if (estimates.length > 0) {
+                        const data = estimates[0];
+                        // Open constructor with these values
+                        showCustomFoodForm();
+                        document.getElementById('custom-name').value = data.name;
+
+                        const list = document.getElementById('ingredient-list');
+                        list.innerHTML = '';
+                        addIngredientRow({
+                            name: data.name,
+                            qty: 1,
+                            unit: 'serving',
+                            calories: data.calories,
+                            cholesterol_mg: data.cholesterol_mg || 0,
+                            protein_g: data.protein_g || 0,
+                            carbs_g: data.carbs_g || 0,
+                            fat_g: data.fat_g || 0
+                        });
+                        updateNutrientSummary();
+                        // Clear search
+                        document.getElementById('food-search-input').value = '';
+                    }
+                }
+            } catch (err) {
+                console.error("Log food error:", err);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function editAnyMeal(logId) {
+            const log = currentNutritionLogs.find(l => l.id === logId);
+            if (!log) return;
+
+            editingLogId = logId; // Mark for replacement
+
+            // Set the time picker to the log's time
+            if (log.time) {
+                document.getElementById('food-log-time').value = log.time;
+            }
+
+            // Check if it's in library
+            if (customFoods[log.name]) {
+                editLibraryItem(log.name);
+            } else {
+                // It's a manual/AI log, load into constructor directly
+                showCustomFoodForm();
+                document.getElementById('custom-name').value = log.name;
+                const list = document.getElementById('ingredient-list');
+                list.innerHTML = '';
+                addIngredientRow({
+                    name: log.name,
+                    qty: log.qty || 1,
+                    unit: log.unit || 'serving',
+                    calories: log.calories,
+                    cholesterol_mg: log.cholesterol_mg || 0,
+                    protein_g: log.protein_g || 0,
+                    carbs_g: log.carbs_g || 0,
+                    fat_g: log.fat_g || 0
+                });
+                updateNutrientSummary();
+            }
+        }
+
+
+        async function deleteFoodLog(id) {
+            if (!confirm("Remove this entry?")) return;
+            try {
+                await fetch('/api/nutrition/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: id })
+                });
+                fetchNutritionData();
+            } catch (err) { console.error("Delete log error:", err); }
+        }
+
+        // --- Recipe Constructor & Library Logic ---
+        let ingredientIndex = 0;
+
+        function showCustomFoodForm() {
+            document.getElementById('food-main-view').style.display = 'none';
+            document.getElementById('custom-food-form').style.display = 'block';
+            document.getElementById('ingredient-list').innerHTML = '';
+            ingredientIndex = 0;
+            addIngredientRow();
+        }
+
+        function hideCustomFoodForm() {
+            document.getElementById('food-main-view').style.display = 'block';
+            document.getElementById('custom-food-form').style.display = 'none';
+        }
+
+        function addIngredientRow(data = null) {
+            const list = document.getElementById('ingredient-list');
+            const rowId = `ing-row-${ingredientIndex++}`;
+            const div = document.createElement('div');
+            div.id = rowId;
+            div.className = 'ingredient-row';
+            div.style.cssText = 'display: grid; grid-template-columns: 2fr 1fr 1fr 1.2fr auto; gap: 0.5rem; align-items: end; background: rgba(255,255,255,0.02); padding: 0.5rem; border-radius: 0.5rem;';
+
+            div.innerHTML = `
+                <div>
+                    <input type="text" class="ing-name" placeholder="Item" value="${data?.name || ''}" 
+                        style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.5rem; font-size: 0.85rem;">
+                </div>
+                <div>
+                    <input type="number" class="ing-qty" placeholder="Qty" value="${data?.qty || 1}" 
+                        oninput="onQtyChange(this)"
+                        style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.5rem; font-size: 0.85rem;">
+                </div>
+                <div>
+                    <select class="ing-unit" style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; font-size: 0.8rem;">
+                        <option value="slices" ${data?.unit === 'slices' ? 'selected' : ''}>Slices</option>
+                        <option value="oz" ${data?.unit === 'oz' ? 'selected' : ''}>Oz</option>
+                        <option value="cups" ${data?.unit === 'cups' ? 'selected' : ''}>Cups</option>
+                        <option value="grams" ${data?.unit === 'grams' ? 'selected' : ''}>Grams</option>
+                        <option value="tbsp" ${data?.unit === 'tbsp' ? 'selected' : ''}>Tbsp</option>
+                        <option value="pieces" ${data?.unit === 'pieces' ? 'selected' : ''}>Pcs</option>
+                    </select>
+                </div>
+                <div style="position: relative;">
+                    <input type="number" class="ing-cal" placeholder="kcal" value="${data?.calories || 0}" 
+                        oninput="onCalChange(this)"
+                        data-pro="${data?.protein_g || 0}" data-carb="${data?.carbs_g || 0}" data-fat="${data?.fat_g || 0}"
+                        data-base-qty="${data?.qty || 1}"
+                        style="width: 100%; height: 32px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981; border-radius: 0.4rem; padding: 0 0.5rem; font-size: 0.85rem; font-weight: 700;">
+                    <input type="hidden" class="ing-chol" value="${data?.cholesterol_mg || 0}">
+                </div>
+                <button onclick="document.getElementById('${rowId}').remove(); updateNutrientSummary();" 
+                    style="background:none; border:none; color:#f87171; cursor:pointer; padding: 0 0.5rem;">✕</button>
+            `;
+            list.appendChild(div);
+        }
+
+        async function estimateAllIngredients() {
+            const rows = document.querySelectorAll('.ingredient-row');
+            if (rows.length === 0) return;
+
+            const btn = document.getElementById('btn-ai-scan');
+            const originalText = btn.textContent;
+            btn.textContent = 'AI Scanning...';
+            btn.disabled = true;
+
+            const ingredients = Array.from(rows).map(row => ({
+                name: row.querySelector('.ing-name').value,
+                qty: row.querySelector('.ing-qty').value,
+                unit: row.querySelector('.ing-unit').value
+            }));
+
+            try {
+                const res = await fetch('/api/nutrition/estimate_ingredients', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ingredients })
+                });
+
+                if (res.ok) {
+                    const estimates = await res.json();
+                    rows.forEach((row, i) => {
+                        if (estimates[i]) {
+                            const calInput = row.querySelector('.ing-cal');
+                            calInput.value = estimates[i].calories;
+                            row.querySelector('.ing-chol').value = estimates[i].cholesterol_mg || 0;
+                            calInput.setAttribute('data-pro', estimates[i].protein_g || 0);
+                            calInput.setAttribute('data-carb', estimates[i].carbs_g || 0);
+                            calInput.setAttribute('data-fat', estimates[i].fat_g || 0);
+                        }
+                    });
+                    updateNutrientSummary();
+                }
+            } catch (err) { console.error(err); }
+            finally {
+                btn.textContent = '✨ Scan Complete';
+                setTimeout(() => btn.textContent = originalText, 2000);
+                btn.disabled = false;
+            }
+        }
+
+        function onQtyChange(input) {
+            const row = input.closest('.ingredient-row');
+            const calInput = row.querySelector('.ing-cal');
+            const newQty = parseFloat(input.value) || 0;
+            const baseQty = parseFloat(calInput.getAttribute('data-base-qty')) || 1;
+
+            if (newQty > 0 && baseQty > 0) {
+                const ratio = newQty / baseQty;
+
+                // Scale calories
+                const currentCal = parseFloat(calInput.value) || 0;
+                calInput.value = Math.round(currentCal * ratio);
+
+                // Scale macros (stored in attributes)
+                const macros = ['pro', 'carb', 'fat'];
+                macros.forEach(m => {
+                    const val = parseFloat(calInput.getAttribute(`data-${m}`)) || 0;
+                    calInput.setAttribute(`data-${m}`, Math.round(val * ratio));
+                });
+
+                // Scale cholesterol
+                const chol = row.querySelector('.ing-chol');
+                chol.value = Math.round((parseInt(chol.value) || 0) * ratio);
+
+                calInput.setAttribute('data-base-qty', newQty);
+            }
+            updateNutrientSummary();
+        }
+
+        function onCalChange(input) {
+            // If user manually edits calories, it stays as the "total" for current qty
+            updateNutrientSummary();
+        }
+
+        function updateNutrientSummary() {
+            let totalCal = 0;
+            let totalChol = 0;
+            document.querySelectorAll('.ingredient-row').forEach(row => {
+                totalCal += parseInt(row.querySelector('.ing-cal').value) || 0;
+                totalChol += parseInt(row.querySelector('.ing-chol').value) || 0;
+            });
+            safeSetText('summary-cal', totalCal);
+            safeSetText('summary-chol', totalChol + 'mg');
+        }
+
+        async function saveCustomFood(alsoLog = true) {
+            const name = document.getElementById('custom-name').value;
+            const category = document.getElementById('custom-category').value;
+            if (!name) return alert("Please name your recipe.");
+
+            const ingredients = [];
+            let totalCal = 0;
+            let totalChol = 0;
+            let totalPro = 0, totalCarb = 0, totalFat = 0;
+
+            document.querySelectorAll('.ingredient-row').forEach(row => {
+                const calInput = row.querySelector('.ing-cal');
+                const cal = parseInt(calInput.value) || 0;
+                const cholVal = parseInt(row.querySelector('.ing-chol').value) || 0;
+                const pro = parseInt(calInput.getAttribute('data-pro')) || 0;
+                const carb = parseInt(calInput.getAttribute('data-carb')) || 0;
+                const fat = parseInt(calInput.getAttribute('data-fat')) || 0;
+
+                ingredients.push({
+                    name: row.querySelector('.ing-name').value,
+                    qty: row.querySelector('.ing-qty').value,
+                    unit: row.querySelector('.ing-unit').value,
+                    calories: cal,
+                    cholesterol_mg: cholVal,
+                    protein_g: pro,
+                    carbs_g: carb,
+                    fat_g: fat
+                });
+                totalCal += cal;
+                totalChol += cholVal;
+                totalPro += pro;
+                totalCarb += carb;
+                totalFat += fat;
+            });
+
+            try {
+                // 1. Save to library (Always)
+                await fetch('/api/nutrition/custom_foods', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name, category, ingredients,
+                        calories: totalCal, cholesterol_mg: totalChol,
+                        protein_g: totalPro, carbs_g: totalCarb, fat_g: totalFat
+                    })
+                });
+
+                // 2. Conditionally Log (or Update)
+                if (editingLogId) {
+                    // Remove old log first
+                    await fetch('/api/nutrition/delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: editingLogId })
+                    });
+                }
+
+                if (alsoLog || editingLogId) {
+                    const timeStr = document.getElementById('food-log-time').value;
+                    const dateStr = getLocalDateStr(activeNutritionDate);
+                    await fetch('/api/nutrition/log', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: name, date: dateStr, time: timeStr })
+                    });
+                }
+
+                editingLogId = null; // Reset
+                hideCustomFoodForm();
+                closeFoodModal();
+                fetchNutritionData();
+            } catch (err) { console.error(err); }
+        }
+
+
+        function openLibraryModal() {
+            document.getElementById('libraryModal').classList.add('active');
+            renderLibrary();
+        }
+        function closeLibraryModal() { document.getElementById('libraryModal').classList.remove('active'); }
+
+        async function renderLibrary() {
+            const list = document.getElementById('library-list');
+            try {
+                const res = await fetch('/api/nutrition/custom_foods');
+                const library = await res.json();
+
+                if (Object.keys(library).length === 0) {
+                    list.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-secondary);">Library is empty.</div>';
+                    return;
+                }
+
+                list.innerHTML = Object.entries(library).map(([name, data]) => `
+                    <div class="card" style="margin-bottom: 0; background: rgba(255,255,255,0.02);">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+                            <span style="font-size: 0.7rem; color: #10b981; font-weight: 700; text-transform: uppercase;">${data.category || 'Meal'}</span>
+                            <button onclick="deleteLibraryItem('${name}')" style="background:none; border:none; color:#f87171; cursor:pointer; opacity: 0.5;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">✕</button>
+                        </div>
+                        <div style="font-weight: 600; margin-bottom: 0.25rem;">${name}</div>
+                        <div style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem;">${data.calories} kcal</div>
+                        <div style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">
+                            ${(data.ingredients || []).map(i => `${i.qty} ${i.unit} ${i.name}`).join(', ')}
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; margin-top: 1.5rem;">
+                            <button onclick="editLibraryItem('${name}')" class="range-btn" style="flex: 1; padding: 0.6rem; font-size: 0.8rem; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.2); color: #38bdf8;">Edit</button>
+                            <button onclick="logFromLibrary('${name}')" class="range-btn active" style="flex: 2; padding: 0.6rem; font-size: 0.8rem; background: #10b981;">Log This</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (err) { console.error(err); }
+        }
+
+        async function deleteLibraryItem(name) {
+            if (!confirm(`Delete "${name}" from your library?`)) return;
+            await fetch('/api/nutrition/delete_library_item', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name })
+            });
+            renderLibrary();
+        }
+
+        async function editLibraryItem(name) {
+            try {
+                const res = await fetch('/api/nutrition/custom_foods');
+                const library = await res.json();
+                const data = library[name];
+                if (!data) return;
+
+                closeLibraryModal();
+                openFoodModal();
+                showCustomFoodForm();
+
+                document.getElementById('custom-name').value = name;
+                document.getElementById('custom-category').value = data.category || 'Meal';
+
+                const list = document.getElementById('ingredient-list');
+                list.innerHTML = '';
+                ingredientIndex = 0;
+
+                (data.ingredients || []).forEach(ing => {
+                    addIngredientRow(ing);
+                });
+
+                updateNutrientSummary();
+            } catch (err) { console.error(err); }
+        }
+
+        async function logFromLibrary(name) {
+            let timeStr;
+            const timeInput = document.getElementById('food-log-time');
+            if (timeInput && timeInput.value) {
+                timeStr = timeInput.value;
+            } else {
+                const now = new Date();
+                timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+            }
+
+            await fetch('/api/nutrition/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, date: getLocalDateStr(activeNutritionDate), time: timeStr })
+            });
+            closeLibraryModal();
+            closeFoodModal();
+            fetchNutritionData();
         }
 
         function safeSetText(id, text) {
@@ -2071,7 +2996,8 @@
                     updateHydrationRange('1d'),
                     updateHRVRange('1d'),
                     updateIMRange('1w'),
-                    fetchCalendarData()
+                    fetchCalendarData(),
+                    fetchNutritionData()
                 ]);
 
                 // 5. Light status update
@@ -2090,6 +3016,25 @@
             }
         }
 
+        // Expose functions to global window scope so onclick handlers work
+        window.shiftNutritionDate = shiftNutritionDate;
+        window.resetNutritionToToday = resetNutritionToToday;
+        window.openFoodModal = openFoodModal;
+        window.closeFoodModal = closeFoodModal;
+        window.onFoodSearchInput = onFoodSearchInput;
+        window.selectFood = selectFood;
+        window.submitFoodLog = submitFoodLog;
+        window.showCustomFoodForm = showCustomFoodForm;
+        window.hideCustomFoodForm = hideCustomFoodForm;
+        window.addIngredientRow = addIngredientRow;
+        window.saveCustomFood = saveCustomFood;
+        window.deleteFoodLog = deleteFoodLog;
+        window.editAnyMeal = editAnyMeal;
+        window.refreshNutritionAnalysis = refreshNutritionAnalysis;
+        window.editLibraryItem = editLibraryItem;
+        window.logFromLibrary = logFromLibrary;
+        window.closeLibraryModal = closeLibraryModal;
+        window.openLibraryModal = openLibraryModal;
         window.updateDashboard = function (data) {
             safeSetText('steps', data.steps ? data.steps.toLocaleString() : '0');
             safeSetText('rhr', data.resting_hr || '--');
