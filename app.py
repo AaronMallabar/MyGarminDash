@@ -3,7 +3,8 @@ import logging
 from google import genai
 import json
 import traceback
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for
+from functools import wraps
 from garminconnect import Garmin
 from datetime import date, timedelta, datetime
 from zoneinfo import ZoneInfo
@@ -30,6 +31,8 @@ def get_today():
 # Gemini configuration is now handled per-client instance
 
 app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "super-secret-dev-key")
+APP_PASSWORD = os.getenv("APP_PASSWORD", "admin") # Default for dev, set in Render
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -155,8 +158,28 @@ class PolylineCache:
     def has(self, activity_id):
         return activity_id in self.cache
 
+# AI Memory and State Cache
+AI_MEMORY_FILE = 'ai_memory_cache.json'
+
+def load_ai_memory():
+    try:
+        if os.path.exists(AI_MEMORY_FILE):
+            with open(AI_MEMORY_FILE, 'r') as f:
+                return json.load(f)
+    except:
+        pass
+    return {'activity_summaries': {}, 'last_health_state': {}}
+
+def save_ai_memory(memory):
+    try:
+        with open(AI_MEMORY_FILE, 'w') as f:
+            json.dump(memory, f)
+    except:
+        pass
+
 # Initialize Cache
 poly_cache = PolylineCache()
+ai_memory = load_ai_memory()
 
 def group_activities_into_sessions(activities, hours_gap=2):
     """Group activities into sessions based on a time window."""
@@ -215,7 +238,7 @@ ai_insights_cache = {
     'data': None,
     'timestamp': None
 }
-AI_CACHE_EXPIRY = 3600  # 1 hour cache duration
+AI_CACHE_EXPIRY = 60  # Reduced to 60s temporarily to force refresh for USER
 
 # Heatmap Cache
 heatmap_cache = {
@@ -233,6 +256,66 @@ activity_heatmap_cache = {
 ACT_HEATMAP_CACHE_EXPIRY = 3600 # 1 hour
 
 # Background Worker
+def server_warmup():
+    """Warms up the Garmin client and pre-fills caches on startup."""
+    global ai_insights_cache, activity_heatmap_cache
+    logger.info("Server Warmup: Starting deep background pre-fetch...")
+    try:
+        client = get_garmin_client()
+        # Pre-fetch activity heatmap (lightweight)
+        if not activity_heatmap_cache['data']:
+            logger.info("Server Warmup: Pre-fetching activity heatmap...")
+            # We call the logic with a proper year range for consistency
+            today = get_today()
+            start_date = today - timedelta(days=366)
+            activities = client.get_activities_by_date(start_date.isoformat(), today.isoformat())
+            
+            heatmap = {}
+            for activity in activities:
+                if not activity: continue
+                start_local = activity.get('startTimeLocal')
+                if start_local and len(start_local) >= 10:
+                    date_str = start_local[:10]
+                    if date_str not in heatmap:
+                        heatmap[date_str] = []
+                    
+                    dist_mi = round(n(activity.get('distance')) / 1609.34, 1)
+                    dur_m = round(n(activity.get('duration')) / 60)
+                    
+                    heatmap[date_str].append({
+                        'name': activity.get('activityName', 'Activity'),
+                        'type': activity.get('activityType', {}).get('typeKey', 'other'),
+                        'dist': dist_mi,
+                        'dur': dur_m
+                    })
+            activity_heatmap_cache['data'] = heatmap
+            activity_heatmap_cache['timestamp'] = time.time()
+
+        # Trigger AI Insight Generation in background
+        if not ai_insights_cache['data']:
+            logger.info("Server Warmup: Generating AI Insights in advance...")
+            # We call the internal function to avoid route handling overhead
+            # This will populate ai_insights_cache and ai_memory
+            generate_insights_logic()
+            
+        logger.info("Server Warmup: Completed.")
+    except Exception as e:
+        logger.error(f"Server Warmup Failed: {e}")
+
+@app.route('/api/warmup', methods=['GET'])
+def trigger_warmup():
+    """Endpoint for the login page to trigger a refresh/warmup of data."""
+    # We start it in a new thread so it doesn't block the login page load
+    threading.Thread(target=server_warmup, daemon=True).start()
+    return jsonify({'status': 'warmup_started'})
+
+# Shared logic for AI insights is defined further down the file.
+
+# Start warmup thread if not in debug reload
+if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
+    threading.Thread(target=server_warmup, daemon=True).start()
+
+# Background Worker for polylines
 def background_polyline_fetcher(client, activity_ids, generation_id):
     """Fetch polylines for given IDs in background using parallel threads."""
     global is_fetching
@@ -298,11 +381,41 @@ def background_polyline_fetcher(client, activity_ids, generation_id):
             logger.info(f"Background fetch gen:{generation_id} completed. Updated {count} activities.")
 
 
+# Authentication Decorator
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('logged_in'):
+            return redirect(url_for('login', next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if username == "AaronM" and password == APP_PASSWORD:
+            session['logged_in'] = True
+            return redirect(url_for('index'))
+        else:
+            error = 'Invalid Username or Password'
+    return render_template('login.html', error=error)
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login'))
+
 @app.route('/')
+@login_required
 def index():
     return render_template('index.html')
 
 @app.route('/api/settings', methods=['GET'])
+@login_required
 def get_settings():
     """Get current settings."""
     try:
@@ -320,6 +433,7 @@ def get_settings():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/settings', methods=['POST'])
+@login_required
 def update_settings():
     """Update settings."""
     try:
@@ -348,6 +462,7 @@ def update_settings():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/ai_insights')
+@login_required
 def get_ai_insights():
     global ai_insights_cache
     
@@ -359,352 +474,465 @@ def get_ai_insights():
             return jsonify(ai_insights_cache['data'])
 
     try:
+        result = generate_insights_logic()
+        if result and 'error' in result:
+            return jsonify(result), 503 # Service Unavailable or specific error
+        if result:
+            return jsonify(result)
+        return jsonify({'error': 'Failed to generate insights'}), 500
+    except Exception as e:
+        logger.error(f"Error serving AI insights: {e}")
+        return jsonify({'error': str(e)}), 500
+
+def generate_insights_logic():
+    global ai_insights_cache, ai_memory
+    
+    try:
         client = get_garmin_client()
         today = get_today()
         
-        # 1. Fetch Today's Deep Health Data (with safe fallbacks)
+        # 1. Fetch Today's Deep Health Data
         def safe_fetch(func, *args, **kwargs):
-            try:
-                res = func(*args, **kwargs)
-                return res if res is not None else {}
-            except Exception as e:
-                logger.warning(f"AI Insights: Failed to fetch {func.__name__ if hasattr(func, '__name__') else 'unknown'}: {e}")
-                return {}
-
-        def n(val):
-            """Ensure value is a number, default to 0 if None."""
-            return val if val is not None else 0
+            try: return func(*args, **kwargs) or {}
+            except: return {}
 
         stats = safe_fetch(client.get_stats, today.isoformat())
         sleep = safe_fetch(client.get_sleep_data, today.isoformat())
         hrv_res = safe_fetch(client.get_hrv_data, today.isoformat())
         hrv = hrv_res.get('hrvSummary', {}) if isinstance(hrv_res, dict) else {}
         
-        # Ensure we have common fields with defaults
-        steps_today = n(stats.get('totalSteps', 0)) if isinstance(stats, dict) else 0
-        stress_today = n(stats.get('averageStressLevel', 0)) if isinstance(stats, dict) else 0
-        
+        steps_today = n(stats.get('totalSteps', 0))
+        stress_today = n(stats.get('averageStressLevel', 0))
         dto_today = sleep.get('dailySleepDTO', {}) if isinstance(sleep, dict) else {}
-        if not isinstance(dto_today, dict): dto_today = {}
-        sleep_score_today = n(dto_today.get('sleepScore') or dto_today.get('score') or (sleep.get('sleepScore', 0) if isinstance(sleep, dict) else 0))
+        sleep_score_today = n(
+            dto_today.get('sleepScore') or 
+            dto_today.get('score') or 
+            dto_today.get('sleepScores', {}).get('overall', {}).get('value')
+        )
+        sleep_seconds_today = n(dto_today.get('sleepTimeSeconds', 0))
         
-        # 2. Fetch Deep Historical Data (Last 7 Days)
+        # If today's sleep is zero, try yesterday (sometimes Garmin's sync for 'today' is pending)
+        if sleep_seconds_today == 0:
+            yesterday = (today - timedelta(days=1)).isoformat()
+            y_sleep = safe_fetch(client.get_sleep_data, yesterday)
+            y_dto = y_sleep.get('dailySleepDTO', {}) if isinstance(y_sleep, dict) else {}
+            if n(y_dto.get('sleepTimeSeconds', 0)) > 0:
+                dto_today = y_dto
+                sleep_score_today = n(
+                    dto_today.get('sleepScore') or 
+                    dto_today.get('score') or 
+                    dto_today.get('sleepScores', {}).get('overall', {}).get('value')
+                )
+                sleep_seconds_today = n(dto_today.get('sleepTimeSeconds', 0))
+                logger.info("AI Insights: Using yesterday's sleep data as today's is zero.")
+
+        sleep_hours_today = round(sleep_seconds_today / 3600, 1)
+
+        # Fetch 7-Day History for Trend Analysis
         from concurrent.futures import ThreadPoolExecutor
         def fetch_historical(d):
             try:
                 s = client.get_stats(d.isoformat())
-                h = client.get_hydration_data(d.isoformat())
                 sl = client.get_sleep_data(d.isoformat())
-                
-                # Safe key retrieval
-                s_dict = s if isinstance(s, dict) else {}
-                h_dict = h if isinstance(h, dict) else {}
-                sl_dict = sl if isinstance(sl, dict) else {}
-                
-                dto = sl_dict.get('dailySleepDTO', {}) if isinstance(sl_dict, dict) else {}
-                if not isinstance(dto, dict): dto = {}
-                s_score = n(dto.get('sleepScore') or dto.get('score') or sl_dict.get('sleepScore', 0))
-                
+                dto = sl.get('dailySleepDTO', {}) if isinstance(sl, dict) else {}
+                score = n(
+                    dto.get('sleepScore') or 
+                    dto.get('score') or 
+                    dto.get('sleepScores', {}).get('overall', {}).get('value')
+                )
+                sleep_seconds = n(dto.get('sleepTimeSeconds', 0))
                 return {
                     'date': d.isoformat(),
-                    'steps': n(s_dict.get('totalSteps', 0)),
-                    'goal': n(s_dict.get('totalStepsGoal', 10000)),
-                    'hydration': n(h_dict.get('valueInML', 0) if h_dict else 0),
-                    'stress': n(s_dict.get('averageStressLevel', 0)),
-                    'sleep_score': s_score,
-                    'sleep_feedback': dto.get('sleepScoreFeedback', 'unknown')
+                    'steps': n(s.get('totalSteps', 0)),
+                    'stress': n(s.get('averageStressLevel', 0)),
+                    'sleep_score': score,
+                    'sleep_hours': round(sleep_seconds / 3600, 1)
                 }
-            except:
-                return None
+            except: return None
 
         past_dates = [today - timedelta(days=i) for i in range(1, 8)]
-        # Reduce max_workers to 4 to save memory on Render's 512MB tier
         with ThreadPoolExecutor(max_workers=4) as executor:
             history_list = list(executor.map(fetch_historical, past_dates))
         history_list = [h for h in history_list if h]
-        
-        # 3. Calculate Narratives and Trends
-        avg_steps = sum(n(h.get('steps', 0)) for h in history_list) / len(history_list) if history_list else 10000
-        valid_sleeps = [n(h.get('sleep_score', 0)) for h in history_list if n(h.get('sleep_score', 0)) > 0]
-        avg_sleep = sum(valid_sleeps) / max(1, len(valid_sleeps)) if valid_sleeps else 70
-        
-        valid_stress = [n(h.get('stress', 0)) for h in history_list if n(h.get('stress', 0)) > 0]
-        avg_stress = sum(valid_stress) / max(1, len(valid_stress)) if valid_stress else 25
-        
-        # 4. Today's Narrative
-        today_blurb = []
-        if steps_today > avg_steps * 1.2:
-            today_blurb.append(f"You're significantly more active today than your usual trend. This extra volume is building great aerobic capacity.")
-        elif steps_today < avg_steps * 0.8:
-            today_blurb.append(f"Today is a lower volume day for you. Your body might be calling for some lighter movement.")
-        else:
-            today_blurb.append(f"You're maintaining a very consistent movement rhythm today, which is the backbone of long-term fitness.")
 
-        if stress_today > avg_stress + 5:
-            today_blurb.append(f"Your internal load (stress: {stress_today}) is higher than your weekly average. This suggests your body is working harder to maintain equilibrium.")
-        elif stress_today < avg_stress - 5:
-            today_blurb.append(f"Your body is in a prime 'growth' state today with unusually low stress.")
+        # Fetch activities from Jan 1st of current year OR the last 30 days (whichever is earlier)
+        ytd_start = datetime(today.year, 1, 1).date()
+        baseline_start = today - timedelta(days=30)
+        fetch_start = min(ytd_start, baseline_start)
+        
+        logger.info(f"AI Insights: Fetching activities since {fetch_start} for YTD and baselines")
+        acts_hist = client.get_activities_by_date(fetch_start.isoformat(), today.isoformat())
+        
+        # Calculate Baselines (30d) and YTD Records
+        baselines = {
+            'run_avg_pace': 0, 'run_max_dist': 0, 'run_count': 0,
+            'cycle_avg_pace': 0, 'cycle_max_dist': 0, 'cycle_count': 0, 'cycle_avg_power': 0,
+            'avg_duration': 0,
+            'ytd_run_max_dist': 0,
+            'ytd_cycle_max_dist': 0,
+            'ytd_cycle_max_power': 0
+        }
+        
+        run_paces = []
+        cycle_paces = []
+        cycle_powers = []
+        durations = []
+        
+        # Baseline Helper for Cycling
+        def is_cycling_baseline(act):
+            tk = act.get('activityType', {}).get('typeKey', '').lower()
+            an = act.get('activityName', '').lower()
+            return any(k in tk for k in ['cycling', 'ride', 'biking', 'virtual', 'indoor']) or \
+                   any(k in an for k in ['zwift', 'ride', 'cycling', 'peloton', 'trainerroad'])
 
-        # Yesterday's Detailed Narrative
-        yesterday_blurb = "No data for yesterday."
-        if history_list:
-            y = history_list[0]
-            y_steps = n(y.get('steps', 0))
-            y_stress = n(y.get('stress', 0))
-            y_sleep = n(y.get('sleep_score', 0))
-            y_feedback = y.get('sleep_feedback', 'unknown')
+        for a in acts_hist:
+            start_time_str = a.get('startTimeLocal', '')
+            if not start_time_str: continue
             
-            y_narrative = []
-            if y_steps > 12000:
-                y_narrative.append(f"Yesterday was a high-output day ({y_steps:,} steps).")
-            elif y_steps < 5000:
-                y_narrative.append(f"Yesterday was a quiet, restorative day movement-wise.")
+            try:
+                act_date = datetime.strptime(start_time_str.split(' ')[0], '%Y-%m-%d').date()
+            except:
+                continue
+            
+            d_mi = n(a.get('distance', 0)) * 0.000621371
+            dur_m = n(a.get('duration', 0)) / 60
+            type_key = a.get('activityType', {}).get('typeKey', '')
+            
+            # YTD Records Tracking
+            if act_date >= ytd_start:
+                if 'running' in type_key:
+                    baselines['ytd_run_max_dist'] = max(baselines['ytd_run_max_dist'], d_mi)
+                elif is_cycling_baseline(a):
+                    baselines['ytd_cycle_max_dist'] = max(baselines['ytd_cycle_max_dist'], d_mi)
+                    summary = a.get('summaryDTO', {})
+                    p = a.get('averagePower') or a.get('avgPower') or summary.get('averagePower') or summary.get('avgPower')
+                    baselines['ytd_cycle_max_power'] = max(baselines['ytd_cycle_max_power'], n(p))
+
+            # 30-Day Rolling Baseline
+            if d_mi > 0 and dur_m > 0 and act_date >= baseline_start:
+                durations.append(dur_m)
+                if 'running' in type_key:
+                    baselines['run_count'] += 1
+                    run_paces.append(dur_m / d_mi)
+                    baselines['run_max_dist'] = max(baselines['run_max_dist'], d_mi)
+                elif is_cycling_baseline(a):
+                    baselines['cycle_count'] += 1
+                    baselines['cycle_max_dist'] = max(baselines['cycle_max_dist'], d_mi)
+                    cycle_paces.append(d_mi / (dur_m / 60))
+                    # Check historical power for 30d avg
+                    summary = a.get('summaryDTO', {})
+                    p = a.get('averagePower') or a.get('avgPower') or summary.get('averagePower') or summary.get('avgPower')
+                    if n(p) > 0: cycle_powers.append(p)
+        
+        if run_paces: baselines['run_avg_pace'] = sum(run_paces) / len(run_paces)
+        if cycle_paces: baselines['cycle_avg_pace'] = sum(cycle_paces) / len(cycle_paces)
+        if 'cycle_powers' in locals() and cycle_powers: baselines['cycle_avg_power'] = sum(cycle_powers) / len(cycle_powers)
+        if durations: baselines['avg_duration'] = sum(durations) / len(durations)
+
+        # Fetch Recent Activities for detailed analysis
+        acts_raw = acts_hist[:15]
+        
+        # Enrichment: Fetch full activity objects for the most recent 10 activities to get power/etc.
+        def fetch_full_act(a):
+            try:
+                aid = a.get('activityId')
+                if not aid: return a
+                
+                # Fetch both the full summary AND the second-by-second details
+                full = client.get_activity(aid)
+                details = client.get_activity_details(aid)
+                
+                if full: 
+                    a.update(full)
+                    # Also check nested summaryDTO
+                    s_dto = full.get('summaryDTO', {})
+                    if s_dto: a.update(s_dto)
+                
+                if details:
+                    descriptors = details.get('metricDescriptors', [])
+                    metrics_list = details.get('activityDetailMetrics', [])
+                    # Use EXACT mapping as used in the graph code
+                    key_map = {d['key']: d['metricsIndex'] for d in descriptors}
+                    
+                    p_key = 'directPower'
+                    if p_key in key_map:
+                        idx = key_map[p_key]
+                        powers = [n(m.get('metrics')[idx]) for m in metrics_list if m.get('metrics') and idx < len(m.get('metrics')) and m.get('metrics')[idx] is not None]
+                        if powers:
+                            a['extracted_avg_p'] = round(sum(powers) / len(powers))
+                            a['extracted_max_p'] = max(powers)
+                            logger.info(f"VERIFIED: Found {len(powers)} power dots for act {aid}. Avg: {a['extracted_avg_p']}W")
+                            
+            except Exception as e:
+                logger.warning(f"Failed to enrich activity {a.get('activityId')}: {e}")
+            return a
+
+        if acts_raw:
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                acts_raw = list(executor.map(fetch_full_act, acts_raw))
+
+        sessions = group_activities_into_sessions(acts_raw)
+        
+        # 2. Memory-Based Context Reduction
+        training_history_for_ai = []
+        # Robust Cycling Check helper
+        def is_cycling(act):
+            tk = act.get('activityType', {}).get('typeKey', '').lower()
+            an = act.get('activityName', '').lower()
+            return any(k in tk for k in ['cycling', 'ride', 'biking', 'virtual', 'indoor']) or \
+                   any(k in an for k in ['zwift', 'ride', 'cycling', 'peloton', 'trainerroad'])
+
+        for s in sessions:
+            session_id = "|".join([str(a.get('activityId')) for a in s])
+            
+            # Check if we already have a detailed summary for this session in memory
+            if session_id in ai_memory['activity_summaries']:
+                # Only send the summary we already generated, not the raw metrics
+                training_history_for_ai.append({
+                    "session_id": session_id,
+                    "cached_insight": ai_memory['activity_summaries'][session_id]
+                })
             else:
-                y_narrative.append(f"Yesterday was a typical, balanced movement day.")
+                # New session
+                is_cycling_session = any(is_cycling(a) for a in s)
+                stages = []
+                for a in s:
+                    d_mi = n(a.get('distance', 0)) * 0.000621371
+                    dur_m = n(a.get('duration', 0)) / 60
+                    
+                    # Robust local check for this stage
+                    this_is_run = 'running' in a.get('activityType', {}).get('typeKey', '').lower()
+                    this_is_cycle = is_cycling(a)
+                    
+                    stage_data = {
+                        "activity_id": a.get('activityId'),
+                        "name": a.get('activityName'),
+                        "distance_mi": round(d_mi, 2),
+                        "duration_min": round(dur_m),
+                        "date": a.get('startTimeLocal', '').split(' ')[0],
+                        "avg_hr": a.get('averageHR'),
+                        "avg_cadence": a.get('averageBikeCadence') or a.get('averageRunCadence') or a.get('averageCadence'),
+                        "elevation_gain_ft": round(n(a.get('elevationGain')) * 3.28084) if a.get('elevationGain') else 0
+                    }
+                    
+                    # Provide explicit pace strings to guide the AI
+                    if d_mi > 0 and dur_m > 0:
+                        if this_is_run:
+                            pace_dec = dur_m / d_mi
+                            m = int(pace_dec)
+                            s_rem = int((pace_dec - m) * 60)
+                            stage_data["pace_m_per_mi"] = f"{m}:{s_rem:02d}"
+                        elif this_is_cycle:
+                            stage_data["pace_mph"] = round(d_mi / (dur_m / 60), 1)
+                            # Priority Check: Extracted / Calculated > Summary > Stats
+                            avg_p = a.get('extracted_avg_p') or a.get('averagePower') or a.get('avgPower')
+                            max_p = a.get('extracted_max_p') or a.get('maxPower') or a.get('max_power')
+                            norm_p = a.get('normalizedPower') or a.get('normPower')
+                            
+                            if n(avg_p) > 0: 
+                                stage_data["avg_power_w"] = n(avg_p)
+                            if n(max_p) > 0: stage_data["max_power_w"] = n(max_p)
+                            if n(norm_p) > 0: stage_data["normalized_power_w"] = n(norm_p)
+                            
+                            stage_data["is_virtual"] = "virtual" in a.get('activityType', {}).get('typeKey', '').lower() or "zwift" in a.get('activityName', '').lower()
+                            
+                    stages.append(stage_data)
 
-            if y_stress > 35:
-                y_narrative.append(f"You carried quite a bit of physiological stress ({y_stress}).")
-            
-            if y_sleep > 80:
-                y_narrative.append(f"The highlight was your exceptional recovery—a sleep score of {y_sleep}.")
-            elif y_sleep > 0:
-                y_narrative.append(f"Your sleep ({y_sleep}) was {str(y_feedback).lower()}.")
-            
-            yesterday_blurb = " ".join(y_narrative)
+                # Prepare refined training history for AI
+                session_summary = {
+                    "session_id": session_id,
+                    "name": s[0].get('activityName', 'Cycling Session'),
+                    "is_multi_stage": len(s) > 1,
+                    "stages": stages,
+                    "period": "CURRENT_YEAR" if s[0].get('startTimeLocal', '').startswith(str(today.year)) else "PREVIOUS_YEAR"
+                }
 
-        # 5. Optimization Suggestions
-        suggestions = []
-        hrv_status = hrv.get('status') if isinstance(hrv, dict) else None
-        if hrv_status in ['UNBALANCED', 'LOW']:
-             suggestions.append("Your HRV trend is signaling a 'red light'. Opt for Zone 1 movement or mobility work.")
-        elif stress_today > 40:
-             suggestions.append("With your stress spiking today, prioritize deep breathing before bed.")
-        
-        # Robust hydration fetch
-        today_hyd = 0
-        try:
-            h_data = client.get_hydration_data(today.isoformat())
-            if isinstance(h_data, dict):
-                today_hyd = n(h_data.get('valueInML', 0))
-            elif isinstance(h_data, list) and len(h_data) > 0:
-                today_hyd = sum(n(item.get('valueInML', 0)) for item in h_data if isinstance(item, dict))
-        except:
-            today_hyd = 0
+                # CRITICAL: Pull power metrics to the top-level of the session so the AI can't miss them
+                if is_cycling_session:
+                    all_stage_powers = [stg.get('avg_power_w') for stg in stages if stg.get('avg_power_w')]
+                    if all_stage_powers:
+                        session_summary["session_avg_power_w"] = round(sum(all_stage_powers) / len(all_stage_powers))
+                    
+                    # LOGGING AUDIT: This verifies what is actually being sent to the AI
+                    logger.info(f"AI PAYLOAD AUDIT: Session {session_id} - Power: {session_summary.get('session_avg_power_w')}W")
 
-        if n(today_hyd) < 2000:
-            oz = round(n(today_hyd) * 0.033814, 1)
-            suggestions.append(f"You're behind your 2L hydration target ({oz} oz logged)—grab a glass now.")
+                training_history_for_ai.append(session_summary)
 
-        if not suggestions:
-            suggestions.append("Everything looks solid. This is your green light to stay the course or push a little harder.")
-
-        # Fetch Recent Activities and Group into Sessions (within 2 hours)
-        try:
-            # Fetch 10 to allow for more grouping context while staying light
-            acts_raw = client.get_activities(0, 10)
-            sessions = group_activities_into_sessions(acts_raw)
-            
-            acts_today = [a for a in acts_raw if a.get('startTimeLocal', '').split(' ')[0] == today.isoformat()]
-            if acts_today:
-                today_blurb.append(f"You've already logged {len(acts_today)} activity{'ies' if len(acts_today) > 1 else ''} today, which is fantastic for your metabolic momentum.")
-        except Exception as e:
-            logger.warning(f"AI Insights: Failed to fetch/group activities: {e}")
-            sessions = []
-            acts_raw = []
-
-        # Try to fetch current weight for context
-        current_weight_lbs = "Unknown"
-        try:
-            body = client.get_body_composition(today.isoformat())
-            if isinstance(body, dict) and 'totalBodyComposition' in body:
-                w_grams = body['totalBodyComposition'].get('weight')
-                if w_grams:
-                    current_weight_lbs = round((w_grams / 1000) * 2.20462, 1)
-        except:
-            pass
-
-        # Prepare context for AI
-        now_est = datetime.now(EST)
+        # Context Preparation
         context = {
-            "current_time": now_est.strftime("%Y-%m-%d %H:%M:%S %Z"),
             "today_date": today.isoformat(),
-            "yesterday_date": (today - timedelta(days=1)).isoformat(),
-            "persona": "Balanced fitness mentor with a focus on consistency and healthy body composition",
-            "user_meta_goal": "Healthy weight management & workout frequency",
             "today_stats": {
                 "steps": steps_today,
                 "stress": stress_today,
                 "sleep_score": sleep_score_today,
-                "hydration_oz": round(today_hyd * 0.033814, 1),
-                "current_weight_lbs": current_weight_lbs,
+                "sleep_hours": sleep_hours_today,
                 "hrv_status": hrv.get('status', 'Unknown')
             },
             "seven_day_history": history_list,
-            "training_history": [{
-                "session_id": "|".join([str(a.get('activityId')) for a in s]),
-                "is_multi_stage": len(s) > 1,
-                "stages": [{
-                    "activity_id": a.get('activityId'),
-                    "name": a.get('activityName'),
-                    "type": a.get('activityType', {}).get('typeKey'),
-                    "distance_mi": round(n(a.get('distance', 0)) * 0.000621371, 2),
-                    "duration_min": round(n(a.get('duration', 0)) / 60),
-                    "date": a.get('startTimeLocal', '').split(' ')[0],
-                    "time": a.get('startTimeLocal', '').split(' ')[1],
-                    "avg_hr": a.get('averageHR'),
-                    "max_hr": a.get('maxHR'),
-                    "calories": a.get('calories'),
-                    "avg_cadence": a.get('averageBikingCadenceInRevPerMinute') or a.get('averageRunningCadenceInStepsPerMinute'),
-                    "aerobic_te": a.get('aerobicTrainingEffect'),
-                    "anaerobic_te": a.get('anaerobicTrainingEffect'),
-                    "elevation_gain_ft": round(n(a.get('elevationGain', 0)) * 3.28084)
-                } for a in s]
-            } for s in sessions] if 'sessions' in locals() and sessions else []
+            "baselines_30d": baselines,
+            "training_history": training_history_for_ai
         }
 
-        # 6. Generate Generative AI Response (with Fallback)
-        try:
-            # Initialize the client per request (or globally if preferred, but local is safe)
-            ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-            
-            prompt = f"""
-            You are a balanced, knowledgeable fitness mentor. 
-            Your goal is to provide a concise, professional check-in based on the user's Garmin health data.
-
-            CRITICAL CONTEXT: The user is working towards healthy weight management. 
-            TIME CONTEXT:
-            - Current Time: {context['current_time']}
-            - Today's Date: {context['today_date']}
-            - Yesterday's Date: {context['yesterday_date']}
-            Ensure you acknowledge the time of day (e.g., don't say Good Morning at 3 PM).
-            Be careful to look at the date/time of the activities in "training_history" to determine if they happened today or yesterday.
-            
-            Tone Guidelines:
-            - Find a "happy medium": Professional and encouraging, but not overly focused on weight loss or calories.
-            - Focus on overall consistency, metabolic health, and performance.
-            - AVOID over-emphasizing "caloric burn" or "weight loss" in every sentence; treat them as secondary benefits of a solid training routine.
-            - Stay data-driven but keep the language comfortable and modern.
-
-            DATA CONTEXT:
-            {json.dumps(context, indent=2)}
-
-            REQUIRED OUTPUT FORMAT:
-            You must return a valid JSON object with:
-            - "daily_summary": 2-3 sentences. Focus on today's health outlook and consistency. Use plain, friendly English (e.g. "Good effort today" instead of "Metabolic impact optimal").
-            - "yesterday_summary": 1-2 sentences recap.
-            - "suggestions": An array of EXACTLY 2 strings. Helpful, high-value coaching tips for general wellness/performance. Use conversational language.
-            - "activity_insights": An array of objects for EVERY session listed in the "training_history".
-              Each activity insight object MUST include:
-              - "session_id": The exact session_id string from the training_history.
-              - "name": If it's a multi-stage session, provide a combined name (e.g. "Brick Workout: Ride + Run"). Otherwise use the activity name.
-              - "highlight": A simple explanation of what happened. If multiple activities are grouped, analyze them as ONE workout with stages (e.g., "Started with a warm-up bike ride followed by an intense run"). 
-              - "was": 1-2 sentences explaining the REAL-WORLD benefit in plain English.
-              - "worked_on": 1-3 simple words (e.g. "Heart Health", "Leg Strength").
-              - "better_next": A practical, plain-English tip.
-
-            Return ONLY the JSON.
-            """
-
-            # Use Gemma 3 27B for massive 14,400 RPD quota in early 2026
-            settings = load_settings()
-            model_name = settings.get('ai_model', 'gemma-3-27b-it')
-            
-            logger.info(f"AI Insights: Sending request to {model_name}...")
-            start_ai = time.time()
-            response = ai_client.models.generate_content(
-                model=model_name,
-                contents=prompt
-            )
-            logger.info(f"AI Insights: Gemini response received in {time.time() - start_ai:.2f}s")
-            # Robust JSON cleaning
-            clean_text = response.text.replace('```json', '').replace('```', '').strip()
-            ai_data = json.loads(clean_text)
-            
-            # Robust suggestions parsing
-            suggestions_raw = ai_data.get('suggestions', [])
-            if isinstance(suggestions_raw, list):
-                # Ensure all items are strings before joining
-                suggestions_text = " ".join([str(s) for s in suggestions_raw])
-            else:
-                suggestions_text = str(suggestions_raw)
-
-            # Unpack Session insights back into single activity IDs for the frontend
-            final_activity_insights = []
-            for insight in ai_data.get('activity_insights', []):
-                sid = insight.get('session_id', '')
-                if sid:
-                    # Map the SAME insight to every ID in that session group
-                    for aid in sid.split('|'):
-                        new_insight = insight.copy()
-                        new_insight['activity_id'] = aid
-                        final_activity_insights.append(new_insight)
-
-            result = {
-                'daily_summary': ai_data.get('daily_summary'),
-                'yesterday_summary': ai_data.get('yesterday_summary'),
-                'suggestions': suggestions_text,
-                'activity_insights': final_activity_insights,
-                'is_ai': True,
-                'model_name': model_name
-            }
-            
-            # Cache the successful AI response
-            ai_insights_cache['data'] = result
-            ai_insights_cache['timestamp'] = time.time()
-            
-            return jsonify(result)
-
-        except Exception as ai_err:
-            if "RESOURCES_EXHAUSTED" in str(ai_err) or "429" in str(ai_err):
-                logger.warning(f"Gemma API Quota Exceeded (429). You've hit the rate limit for the Gemma 3 27B model. Falling back to local logic.")
-            else:
-                logger.warning(f"Gemini API Error: {ai_err}. Falling back to local logic.")
-            
-            # FALLBACK TO HARDCODED LOGIC
-            activity_insights = []
-            max_hr = get_user_max_hr(client)
-            for act in (acts_all if 'acts_all' in locals() and acts_all else []):
-                avg_hr = n(act.get('averageHR', 0))
-                hr_pct = (avg_hr / max_hr) if max_hr > 0 and avg_hr > 0 else 0
-                was, worked, better = "Activity logged.", "General fitness.", "Keep it up."
-                highlight = "Great consistency."
-                if hr_pct > 0.85:
-                    was, worked, better = "Peak intensity session.", "Anaerobic capacity.", "Prioritize recovery tomorrow."
-                    highlight = "High intensity effort."
-                elif hr_pct > 0.70:
-                    was, worked, better = "Aerobic conditioning.", "Endurance.", "Maintain this pace."
-                    highlight = "Solid aerobic work."
-                
-                activity_insights.append({
-                    'activity_id': act.get('activityId'),
-                    'name': act.get('activityName', 'Activity'),
-                    'highlight': highlight,
-                    'was': was, 
-                    'worked_on': worked, 
-                    'better_next': better
-                })
-
-            return jsonify({
-                'daily_summary': " ".join(today_blurb),
-                'yesterday_summary': yesterday_blurb,
-                'suggestions': " ".join(suggestions),
-                'activity_insights': activity_insights,
-                'is_ai': False,
-                'model_name': 'Local Logic (Fallback)'
-            })
+        # Gemini Call
+        ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        settings = load_settings()
+        model_name = settings.get('ai_model', 'gemma-3-27b-it')
         
+        prompt = f"""
+        You are 'Athlete Intelligence', a elite-level Performance Analyst for AaronM.
+        
+        CRITICAL PERSONALITY:
+        - Aaron is a data-driven athlete who values technical depth over generic "good job" feedback.
+        - **NEVER** recommend "low-intensity walks" for rest. Focus on "Active Recovery," "Metabolic Flush," or "Structural Durability."
+        - Be a "pattern seeker." Look for the **"Why"** behind the data:
+            - Is his HR high for a familiar pace? (Indicates fatigue or heat)
+            - Is he producing more power at a lower cadence? (Strength focus vs cardiovascular focus)
+            - Are his recent runs showing a "tightening" of pace consistency?
+        
+        CRITICAL STYLE:
+        - **Avoid being formulaic**. Do not just go down a checklist of Power, Speed, and HR for every session. 
+        - **Find the Outlier**: Every session has one thing that stands out—Focus the analysis on THAT. 
+        - Use Markdown bold (**) for stats only when they support a technical point.
+        - The goal is to provide insight Aaron **can't** see just by looking at a table of numbers.
+        
+        UNITS: 
+        - RUNNING: **minutes per mile** (e.g., 7:45/mi).
+        - CYCLING: **Watts** (Avg/NP) and **mph**.
+        - ELEVATION: **Feet**.
+        - CADENCE: **spm** (Run) / **rpm** (Cycle).
+        
+        COMPARISON DATA:
+        - Use "baselines_30d" to see if an activity is above/below his recent average.
+        - **MILESTONES**: Compare activities to `ytd_run_max_dist` or `ytd_cycle_max_power`. 
+        - **RANKING**: Only consider sessions with `"period": "CURRENT_YEAR"` when calculating YTD rankings (e.g., 'longest run of the year'). DO NOT compare against 'PREVIOUS_YEAR' data for YTD claims.
+        - If today's activity is a season best (longest run of the year, highest power of the year), you MUST lead with that accomplishment.
+        
+        DATA: {json.dumps(context)}
+        
+        For sessions with "cached_insight", reuse it. 
+        For new sessions:
+        - For the **4 most recent** sessions, provide a long-form, multi-paragraph insight (Strava-style).
+        - For everything else, provide a concise 2-sentence highlight.
+        
+        CRITICAL: Every session in the 'training_history' MUST be accounted for in the 'activity_insights' response.
+        
+        Return JSON structure:
+        {{
+          "daily_summary": "A bold summary followed by 2 sentences looking at health trends.", 
+          "yesterday_summary": "1-2 sentences recap.", 
+          "suggestions": ["...", "..."],
+          "activity_insights": [{{ 
+              "session_id": "...", 
+              "name": "...", 
+              "highlight": "**BOLD SUMMARY** (e.g. **Negative Split Master!**)", 
+              "was": "Longer narrative analyzing pace vs 30d avg and consistency. Use **bold** for metrics.", 
+              "worked_on": "e.g. Aerobic Power", 
+              "better_next": "..." 
+          }}]
+        }}
+        """
+
+        response = ai_client.models.generate_content(model=model_name, contents=prompt)
+        raw_text = response.text
+        
+        # Robust JSON extraction
+        try:
+            import re
+            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            if json_match:
+                clean_text = json_match.group(0)
+            else:
+                clean_text = raw_text.replace('```json', '').replace('```', '').strip()
+            
+            ai_data = json.loads(clean_text)
+        except Exception as e:
+            logger.error(f"Failed to parse AI response: {e}")
+            logger.error(f"RAW TEXT: {raw_text}")
+            raise e
+
+        # Update Memory with new insights
+        for insight in ai_data.get('activity_insights', []):
+            sid = insight.get('session_id')
+            if sid:
+                # We always store it, even if it already existed, to get the freshest tone
+                ai_memory['activity_summaries'][sid] = insight
+        
+        # Fallback Check: If the AI skipped ANY sessions, we create a basic placeholder 
+        # so they aren't blank on the UI.
+        for s in sessions:
+            sid = "|".join([str(a.get('activityId')) for a in s])
+            if sid not in ai_memory['activity_summaries']:
+                logger.warning(f"AI skipped session {sid}, creating placeholder.")
+                ai_memory['activity_summaries'][sid] = {
+                    "session_id": sid,
+                    "name": s[0].get('activityName', 'Activity'),
+                    "highlight": "**Solid Consistency!**",
+                    "was": "This activity is part of your regular training rhythm. Good effort maintaining momentum.",
+                    "worked_on": "Consistency",
+                    "better_next": "Keep stacking these sessions to build your aerobic base."
+                }
+
+        save_ai_memory(ai_memory)
+
+        # Build final response with unrolled activity IDs
+        final_activity_insights = []
+        # We iterate over the sessions we originally identified to ensure nothing is missed
+        for s in sessions:
+            sid = "|".join([str(a.get('activityId')) for a in s])
+            # Get insight from memory (which now includes the ones just generated)
+            insight = ai_memory['activity_summaries'].get(sid)
+            
+            if insight:
+                # Map this session insight to every activity in the group
+                for a in s:
+                    unrolled = insight.copy()
+                    unrolled['activity_id'] = str(a.get('activityId'))
+                    final_activity_insights.append(unrolled)
+
+        result = {
+            'daily_summary': ai_data.get('daily_summary'),
+            'yesterday_summary': ai_data.get('yesterday_summary'),
+            'suggestions': " ".join(ai_data.get('suggestions', [])),
+            'activity_insights': final_activity_insights,
+            'is_ai': True,
+            'model_name': model_name
+        }
+        
+        ai_insights_cache['data'] = result
+        ai_insights_cache['timestamp'] = time.time()
+        return result
+
     except Exception as e:
-        logger.error(f"Error generating AI insights: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Logic generation failed: {e}")
+        error_msg = str(e)
+        # Try to extract a clean message if it's a Google API error
+        if "Quota exceeded" in error_msg or "429" in error_msg:
+            error_msg = "Gemini API Quota Exceeded. Please wait a minute before retrying."
+        elif "503" in error_msg:
+            error_msg = "Gemini API is temporarily overloaded. Please retry in a few seconds."
+            
+        return {
+            'error': error_msg,
+            'details': str(e),
+            'daily_summary': "Analysis Interrupted.",
+            'is_ai': False
+        }
 
 @app.route('/api/stats')
+@login_required
 def get_stats():
     try:
         client = get_garmin_client()
         today = get_today()
+        today_str = today.isoformat()
+        logger.info(f"Fetching stats for today: {today_str}")
         
         # specific date for stats (today)
-        stats = client.get_stats(today.isoformat())
+        stats = client.get_stats(today_str)
+        # Verify stats date - Garmin sometimes returns the last available day if today is empty
+        if stats and stats.get('calendarDate') != today_str:
+            logger.warning(f"Stats returned for {stats.get('calendarDate')} instead of {today_str}. Using empty stats for today.")
+            stats = {}
         
         # Sleep data (often for "last night" which might be today's date or yesterday's depending on API)
         # We try today first
@@ -749,19 +977,27 @@ def get_stats():
             except:
                 continue
 
-        data = {
-            'steps': stats.get('totalSteps'),
-            'steps_goal': stats.get('totalStepsGoal'),
-            'resting_hr': stats.get('restingHeartRate'),
-            'stress_avg': stats.get('averageStressLevel'),
-            'sleep_seconds': sleep.get('dailySleepDTO', {}).get('sleepTimeSeconds'),
-            'sleep_score': sleep.get('dailySleepDTO', {}).get('sleepScoreFeedback'),
+        # Verify sleep date
+        sleep_dto = sleep.get('dailySleepDTO', {}) if isinstance(sleep, dict) else {}
+        if sleep_dto and sleep_dto.get('calendarDate') != today_str:
+            logger.warning(f"Sleep data returned for {sleep_dto.get('calendarDate')} instead of {today_str}. Ignoring.")
+            sleep_dto = {}
+
+        return jsonify({
+            'steps': n(stats.get('totalSteps')),
+            'steps_goal': n(stats.get('totalStepsGoal')),
+            'resting_hr': n(stats.get('restingHeartRate')),
+            'stress_avg': n(stats.get('averageStressLevel')),
+            'sleep_seconds': n(sleep_dto.get('sleepTimeSeconds')),
+            'sleep_score': n(
+                sleep_dto.get('sleepScore') or 
+                sleep_dto.get('score') or 
+                sleep_dto.get('sleepScores', {}).get('overall', {}).get('value')
+            ),
             'hrv': client.get_hrv_data(today.isoformat()).get('hrvSummary'),
             'activities': ui_activities,
             'weight_grams': weight_grams
-        }
-        
-        return jsonify(data)
+        })
         
     except ValueError as ve:
         return jsonify({'error': str(ve)}), 500
@@ -770,6 +1006,7 @@ def get_stats():
         return jsonify({'error': 'Failed to fetch data from Garmin. Check server logs.'}), 500
 
 @app.route('/api/goals')
+@login_required
 def get_user_goals():
     try:
         client = get_garmin_client()
@@ -783,6 +1020,7 @@ def get_user_goals():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/goals_config')
+@login_required
 def get_goals_config():
     try:
         return jsonify({
@@ -800,6 +1038,7 @@ def get_goals_config():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/longterm_stats')
+@login_required
 def get_longterm_stats():
     try:
         client = get_garmin_client()
@@ -851,6 +1090,7 @@ def get_longterm_stats():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/ytd_mileage_comparison')
+@login_required
 def get_ytd_mileage_comparison():
     try:
         client = get_garmin_client()
@@ -954,6 +1194,7 @@ def get_ytd_mileage_comparison():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/steps_history')
+@login_required
 def get_steps_history():
     try:
         client = get_garmin_client()
@@ -1000,7 +1241,19 @@ def get_steps_history():
         elif range_val == '1m': requested_days = 30
         elif range_val == '1y': requested_days = 365
         
-        history = list(reversed(all_data[:requested_days]))
+        # Filter history to ensure we don't return data past the end_date if Garmin returns it
+        # and specifically for 1d view, ensure we are actually returning the requested day
+        history = [d for d in all_data if d['calendarDate'] <= end_date.isoformat()]
+        history = list(reversed(history[:requested_days]))
+        
+        # If we asked for 1d but history[0] isn't the right date, return an empty/zero placeholder
+        if range_val == '1d' and history and history[0].get('calendarDate') != end_date.isoformat():
+            logger.info(f"Steps: Requested {end_date.isoformat()}, but most recent is {history[0].get('calendarDate')}. Returning zero for today.")
+            history = [{
+                'calendarDate': end_date.isoformat(),
+                'totalSteps': 0,
+                'stepGoal': 10000
+            }]
 
         return jsonify({
             'history': history,
@@ -1012,6 +1265,7 @@ def get_steps_history():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/hr_history')
+@login_required
 def get_hr_history():
     try:
         client = get_garmin_client()
@@ -1081,6 +1335,7 @@ def get_hr_history():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/stress_history')
+@login_required
 def get_stress_history():
     try:
         client = get_garmin_client()
@@ -1141,6 +1396,7 @@ def get_stress_history():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/sleep_history')
+@login_required
 def get_sleep_history():
     try:
         client = get_garmin_client()
@@ -1212,6 +1468,7 @@ def get_sleep_history():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/weight_history')
+@login_required
 def get_weight_history():
     try:
         range_val = request.args.get('range', '1m')
@@ -1263,6 +1520,7 @@ def get_weight_history():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/hydration')
+@login_required
 def get_hydration():
     try:
         client = get_garmin_client()
@@ -1278,6 +1536,7 @@ def get_hydration():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/hrv')
+@login_required
 def get_hrv():
     try:
         client = get_garmin_client()
@@ -1332,6 +1591,7 @@ def get_hrv():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/hydration_history')
+@login_required
 def get_hydration_history():
     try:
         client = get_garmin_client()
@@ -1391,6 +1651,7 @@ def get_hydration_history():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/intensity_minutes_history')
+@login_required
 def get_intensity_minutes_history():
     try:
         client = get_garmin_client()
@@ -1497,6 +1758,7 @@ def get_intensity_minutes_history():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/activity/<int:activity_id>')
+@login_required
 def get_activity_details(activity_id):
     try:
         logger.info(f"Fetching details for activity_id: {activity_id}")
@@ -1684,6 +1946,7 @@ def get_activity_details(activity_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/add_weight', methods=['POST'])
+@login_required
 def add_weight():
     try:
         data = request.json
@@ -1706,29 +1969,71 @@ def add_weight():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/activity_heatmap')
+@login_required
 def get_activity_heatmap():
     global activity_heatmap_cache
     now = time.time()
     
     if activity_heatmap_cache['data'] and activity_heatmap_cache['timestamp']:
         if now - activity_heatmap_cache['timestamp'] < ACT_HEATMAP_CACHE_EXPIRY:
+            logger.info("Heatmap: Returning cached data.")
             return jsonify(activity_heatmap_cache['data'])
 
     try:
         client = get_garmin_client()
         today = get_today()
+        start_date = today - timedelta(days=366)
         
-        # Fetch last 1000 activities
-        # Use retry wrapper for flakiness
-        activities = garmin_request(client.get_activities, 0, 1000) 
+        # 1. Attempt date-range fetch (more precise for exactly 1 year)
+        start_str = start_date.isoformat()
+        end_str = today.isoformat()
+        logger.info(f"Heatmap: Attempting date-range fetch from {start_str} to {end_str}")
+        
+        activities = []
+        try:
+            activities = garmin_request(client.get_activities_by_date, start_str, end_str)
+        except Exception as e:
+            logger.warning(f"Heatmap: get_activities_by_date failed: {e}. Falling back...")
+
+        # 2. Fallback to count-based fetch if empty or failed
+        if not activities:
+            logger.info("Heatmap: No activities from date-range. Fetching last 1000...")
+            activities = garmin_request(client.get_activities, 0, 1000)
+        
+        logger.info(f"Heatmap: Found {len(activities) if activities else 0} total activities to process.")
         
         heatmap = {}
         for activity in activities:
+            if not activity: continue
             start_local = activity.get('startTimeLocal')
-            if start_local:
-                date_str = start_local.split(' ')[0]
-                heatmap[date_str] = heatmap.get(date_str, 0) + 1
+            if start_local and len(start_local) >= 10:
+                # Robust date extraction: first 10 characters are YYYY-MM-DD
+                date_str = start_local[:10]
+                
+                if date_str not in heatmap:
+                    heatmap[date_str] = []
+                
+                # Extract distance and duration safely
+                raw_dist = activity.get('distance')
+                raw_dur = activity.get('duration')
+                
+                dist_mi = round(n(raw_dist) / 1609.34, 1)
+                dur_m = round(n(raw_dur) / 60)
+                
+                # Add a succinct summary for the UI tooltip
+                heatmap[date_str].append({
+                    'name': activity.get('activityName', 'Activity'),
+                    'type': activity.get('activityType', {}).get('typeKey', 'other'),
+                    'dist': dist_mi,
+                    'dur': dur_m
+                })
 
+        # Debug: Log a few keys to verify format
+        if heatmap:
+            sample_keys = list(heatmap.keys())[:3]
+            logger.info(f"Heatmap: Generated {len(heatmap)} date keys. Samples: {sample_keys}")
+
+        # Final Cache Commit
         activity_heatmap_cache['data'] = heatmap
         activity_heatmap_cache['timestamp'] = now
         return jsonify(heatmap)
@@ -1738,6 +2043,7 @@ def get_activity_heatmap():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/calendar_activities')
+@login_required
 def get_calendar_activities():
     try:
         client = get_garmin_client()
@@ -1755,6 +2061,7 @@ def get_calendar_activities():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/heatmap_data')
+@login_required
 def get_heatmap_data():
     global heatmap_cache
     range_val = request.args.get('range', 'this_year')

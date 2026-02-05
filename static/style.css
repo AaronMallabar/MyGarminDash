@@ -1463,3 +1463,129 @@ h1 {
 .splits-table tr:hover {
     background: rgba(255, 255, 255, 0.02);
 }
+
+/* --- AI Thinking & Error States --- */
+.ai-think-container {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    gap: 1.5rem;
+    text-align: center;
+}
+
+.ai-scan-line {
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(to right, transparent, var(--accent-color), transparent);
+    position: relative;
+    overflow: hidden;
+}
+
+.ai-scan-line::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: var(--accent-color);
+    box-shadow: 0 0 20px var(--accent-color);
+    animation: scan 2s linear infinite;
+}
+
+@keyframes scan {
+    0% {
+        left: -100%;
+    }
+
+    100% {
+        left: 100%;
+    }
+}
+
+.ai-message {
+    font-family: 'Lexend', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    min-height: 1.5rem;
+}
+
+.ai-error-container {
+    display: none;
+    background: rgba(248, 113, 113, 0.05);
+    border: 1px solid rgba(248, 113, 113, 0.2);
+    border-radius: 1rem;
+    padding: 2rem;
+    margin: 1rem;
+    text-align: center;
+}
+
+.ai-error-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    filter: drop-shadow(0 0 10px rgba(248, 113, 113, 0.3));
+}
+
+.ai-error-title {
+    color: var(--danger-color);
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    font-family: 'Lexend', sans-serif;
+}
+
+.ai-error-details {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-family: 'Inter', sans-serif;
+    line-height: 1.5;
+}
+
+/* Heatmap Tooltip */
+#heatmap-tooltip {
+    position: fixed;
+    background: rgba(15, 23, 42, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 0.75rem;
+    padding: 0.8rem 1rem;
+    color: white;
+    font-size: 0.85rem;
+    z-index: 2000;
+    pointer-events: none;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    display: none;
+    min-width: 160px;
+    border-top: 2px solid var(--accent-color);
+}
+
+.heatmap-tooltip-date {
+    font-weight: 700;
+    color: var(--accent-color);
+    margin-bottom: 0.4rem;
+    font-family: 'Lexend', sans-serif;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.heatmap-tooltip-activity {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.85rem;
+}
+
+.heatmap-cell {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.heatmap-cell:hover {
+    transform: scale(1.25);
+    z-index: 50;
+    filter: brightness(1.2) drop-shadow(0 0 5px var(--accent-color));
+}

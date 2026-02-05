@@ -8,7 +8,7 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>Garmin Dashboard</title>
+    <title>Aaron's Fitness Dashboard</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
 
@@ -81,7 +81,7 @@
 
         <header>
 
-            <h1>Garmin Dashboard</h1>
+            <h1>Aaron's Fitness Dashboard</h1>
 
             <div style="display: flex; align-items: center; gap: 1rem;">
                 <div id="last-sync" class="last-sync">Syncing...</div>
@@ -92,6 +92,12 @@
                     <span style="font-size: 1.2rem;">⚙️</span>
                     <span>Settings</span>
                 </button>
+                <a href="{{ url_for('logout') }}"
+                    style="background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.2); color: #f87171; padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; text-decoration: none; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; transition: all 0.2s;"
+                    onmouseover="this.style.background='rgba(248, 113, 113, 0.2)'"
+                    onmouseout="this.style.background='rgba(248, 113, 113, 0.1)'">
+                    <span>Logout</span>
+                </a>
             </div>
 
         </header>
@@ -112,7 +118,7 @@
                     <div id="ai-model-name"
                         style="font-size: 0.7rem; color: var(--text-secondary); font-style: italic;"></div>
                 </div>
-                <div class="ai-grid">
+                <div class="ai-grid" id="ai-content-grid">
                     <div class="insight-section">
                         <h3>Daily Summary</h3>
                         <div class="insight-content" id="ai-daily-summary">
@@ -131,6 +137,25 @@
                             Analyzing your metrics for improvements...
                         </div>
                     </div>
+                </div>
+
+                <!-- Thinking State -->
+                <div id="ai-thinking" class="ai-think-container">
+                    <div class="ai-scan-line"></div>
+                    <div class="ai-message" id="ai-loading-msg">Processing biometric data streams...</div>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary);">Athlete Intelligence is optimizing
+                        your performance profile.</div>
+                </div>
+
+                <!-- Error State -->
+                <div id="ai-error" class="ai-error-container">
+                    <div class="ai-error-icon">⚠️</div>
+                    <div class="ai-error-title" id="ai-err-title">Analysis Interrupted</div>
+                    <div class="ai-error-details" id="ai-err-details">Something went wrong while connecting to the elite
+                        analyst core.</div>
+                    <button onclick="fetchAIInsights()"
+                        style="margin-top: 1rem; background: var(--accent-color); color: white; border: none; padding: 0.5rem 1.5rem; border-radius: 0.5rem; cursor: pointer; font-weight: 600;">Retry
+                        Analysis</button>
                 </div>
             </div>
         </div>
@@ -1307,6 +1332,7 @@
             if (!modelName) return '';
 
             const modelMap = {
+                'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
                 'gemini-2.0-flash-exp': 'Gemini 2.0 Flash',
                 'gemini-1.5-pro': 'Gemini 1.5 Pro',
                 'gemini-1.5-flash': 'Gemini 1.5 Flash',
@@ -1341,6 +1367,17 @@
         function safeSetText(id, text) {
             const el = document.getElementById(id);
             if (el) el.textContent = text;
+        }
+
+        function safeSetHTML(id, text) {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = parseMarkdown(text || '');
+        }
+
+        function parseMarkdown(text) {
+            if (!text) return '';
+            // Basic bold support
+            return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         }
 
         function showError(msg) {
@@ -1864,124 +1901,192 @@
         }
 
         async function fetchAIInsights() {
+            const thinking = document.getElementById('ai-thinking');
+            const grid = document.getElementById('ai-content-grid');
+            const error = document.getElementById('ai-error');
+            const modelLabel = document.getElementById('ai-model-name');
+            const section = document.getElementById('ai-insights-section');
+
+            if (section) section.style.display = 'block';
+            if (thinking) thinking.style.display = 'flex';
+            if (grid) grid.style.display = 'none';
+            if (error) error.style.display = 'none';
+
+            // Creative thinking messages
+            const messages = [
+                "Scanning metabolic history...",
+                "Calculating power-to-weight trends...",
+                "Analyzing recovery efficiency...",
+                "Identifying training outliers...",
+                "Optimizing cardiac drift profiles...",
+                "Benchmarking YTD milestones...",
+                "Synthesizing coach insights..."
+            ];
+            let msgIdx = 0;
+            const msgEl = document.getElementById('ai-loading-msg');
+            const interval = setInterval(() => {
+                if (msgEl) {
+                    msgEl.style.opacity = 0;
+                    setTimeout(() => {
+                        msgEl.textContent = messages[msgIdx % messages.length];
+                        msgEl.style.opacity = 1;
+                        msgIdx++;
+                    }, 200);
+                }
+            }, 3000);
+
             try {
                 const res = await fetch('/api/ai_insights');
+                clearInterval(interval);
+
                 if (res.ok) {
                     const data = await res.json();
-                    if (!data.error) {
-                        const section = document.getElementById('ai-insights-section');
-                        if (section) section.style.display = 'block';
-                        safeSetText('ai-daily-summary', data.daily_summary);
-                        safeSetText('ai-yesterday-summary', data.yesterday_summary);
-                        safeSetText('ai-suggestions', data.suggestions);
 
-                        const titleEl = document.getElementById('ai-insight-title');
-                        if (titleEl) {
-                            titleEl.textContent = data.is_ai ? "AI Training Insight" : "Training Insight";
-                        }
+                    if (data.error) {
+                        if (thinking) thinking.style.display = 'none';
+                        if (grid) grid.style.display = 'none';
+                        if (error) {
+                            error.style.display = 'block';
+                            const titleEl = document.getElementById('ai-err-title');
+                            const detailsEl = document.getElementById('ai-err-details');
 
-                        // Display and cache model name
-                        if (data.model_name) {
-                            cachedModelName = data.model_name;
-                            const modelNameEl = document.getElementById('ai-model-name');
-                            if (modelNameEl) {
-                                modelNameEl.textContent = formatModelName(data.model_name);
+                            titleEl.textContent = "Analysis Interrupted";
+                            detailsEl.innerHTML = `<div style="margin-bottom: 0.5rem; font-weight: 600;">${data.error}</div><div style="font-size: 0.75rem; opacity: 0.7; font-family: monospace; background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 0.25rem; overflow-x: auto; text-align: left;">${data.details || ''}</div>`;
+
+                            if (data.error.toLowerCase().includes('quota') || data.error.includes('429')) {
+                                titleEl.textContent = "Model Capacity Reached";
                             }
                         }
-
-                        // Cache insights for modal use, but don't render to main page list
-                        if (data.activity_insights && data.activity_insights.length > 0) {
-                            data.activity_insights.forEach(insight => {
-                                if (insight.activity_id) {
-                                    cachedActivityInsights[insight.activity_id] = insight;
-                                }
-                            });
-                        }
+                        return;
                     }
+
+                    if (thinking) thinking.style.display = 'none';
+                    if (grid) grid.style.display = 'grid';
+
+                    safeSetHTML('ai-daily-summary', data.daily_summary);
+                    safeSetHTML('ai-yesterday-summary', data.yesterday_summary);
+                    safeSetHTML('ai-suggestions', data.suggestions);
+
+                    const titleEl = document.getElementById('ai-insight-title');
+                    if (titleEl) {
+                        titleEl.textContent = data.is_ai ? "AI Training Insight" : "Training Insight";
+                    }
+
+                    if (data.model_name) {
+                        cachedModelName = data.model_name;
+                        if (modelLabel) modelLabel.textContent = formatModelName(data.model_name);
+                    }
+
+                    if (data.activity_insights) {
+                        data.activity_insights.forEach(insight => {
+                            if (insight.activity_id) cachedActivityInsights[insight.activity_id] = insight;
+                        });
+                    }
+                } else {
+                    throw new Error(`Server responded with ${res.status}`);
                 }
             } catch (err) {
+                clearInterval(interval);
                 console.error('AI insights error:', err);
+                if (thinking) thinking.style.display = 'none';
+                if (grid) grid.style.display = 'none';
+                if (error) {
+                    error.style.display = 'block';
+                    document.getElementById('ai-err-title').textContent = "Connection Terminated";
+                    document.getElementById('ai-err-details').textContent = err.message || "The analyst core is currently offline.";
+                }
             }
         }
 
         async function fetchData() {
+            // 1. Fetch AI Insights (HIGHEST PRIORITY - Start immediately, don't block others)
+            fetchAIInsights();
+
             try {
-                // Fetch basic stats
-                try {
-                    const statsRes = await fetch('/api/stats');
-                    if (statsRes.ok) {
-                        const stats = await statsRes.json();
-                        if (!stats.error) updateDashboard(stats);
-                        else showError(stats.error);
-                    }
-                } catch (e) {
-                    console.error("Stats fetch failed", e);
+                // 2. Fetch basic stats (Medium Priority)
+                const statsRes = await fetch('/api/stats');
+                if (statsRes.ok) {
+                    const stats = await statsRes.json();
+                    if (!stats.error) updateDashboard(stats);
+                    else showError(stats.error);
+                } else {
+                    console.error("Stats fetch failed with status:", statsRes.status);
                     const activityList = document.getElementById('activity-list');
                     if (activityList) activityList.innerHTML = '<div class="activity-item" style="justify-content: center;">Failed to load activities</div>';
                 }
 
-                // Fetch Goals Config
-                try {
-                    const goalsConfigRes = await fetch('/api/goals_config');
-                    if (goalsConfigRes.ok) {
-                        const goalsConfig = await goalsConfigRes.json();
-                        if (!goalsConfig.error) {
-                            const runGoalEl = document.getElementById('month-run-goal');
-                            const cycleGoalEl = document.getElementById('month-cycle-goal');
-                            const yearRunGoalEl = document.getElementById('year-run-goal');
-                            const yearCycleGoalEl = document.getElementById('year-cycle-goal');
+                // 3. Fetch configurations and summaries
+                const [goalsRes, ltRes, ytdRes] = await Promise.allSettled([
+                    fetch('/api/goals_config'),
+                    fetch('/api/longterm_stats'),
+                    fetch('/api/ytd_mileage_comparison')
+                ]);
 
-                            if (runGoalEl) runGoalEl.innerHTML = formatDualDistance(goalsConfig.monthly.running);
-                            if (cycleGoalEl) cycleGoalEl.innerHTML = formatDualDistance(goalsConfig.monthly.cycling);
-                            if (yearRunGoalEl) yearRunGoalEl.innerHTML = formatDualDistance(goalsConfig.yearly.running);
-                            if (yearCycleGoalEl) yearCycleGoalEl.innerHTML = formatDualDistance(goalsConfig.yearly.cycling);
-                        }
+                if (goalsRes.status === 'fulfilled' && goalsRes.value.ok) {
+                    const goalsConfig = await goalsRes.value.json();
+                    if (!goalsConfig.error) {
+                        const runGoalEl = document.getElementById('month-run-goal');
+                        const cycleGoalEl = document.getElementById('month-cycle-goal');
+                        const yearRunGoalEl = document.getElementById('year-run-goal');
+                        const yearCycleGoalEl = document.getElementById('year-cycle-goal');
+
+                        if (runGoalEl) runGoalEl.innerHTML = formatDualDistance(goalsConfig.monthly.running);
+                        if (cycleGoalEl) cycleGoalEl.innerHTML = formatDualDistance(goalsConfig.monthly.cycling);
+                        if (yearRunGoalEl) yearRunGoalEl.innerHTML = formatDualDistance(goalsConfig.yearly.running);
+                        if (yearCycleGoalEl) yearCycleGoalEl.innerHTML = formatDualDistance(goalsConfig.yearly.cycling);
+                    } else {
+                        console.error("Goals config error:", goalsConfig.error);
                     }
-                } catch (e) { console.error("Goals fetch failed", e); }
+                } else if (goalsRes.status === 'rejected') {
+                    console.error("Goals fetch failed:", goalsRes.reason);
+                }
 
-                // Fetch Longterm Stats
-                try {
-                    const ltRes = await fetch('/api/longterm_stats');
-                    if (ltRes.ok) {
-                        const ltStats = await ltRes.json();
-                        if (!ltStats.error) updateLongtermStats(ltStats);
+                if (ltRes.status === 'fulfilled' && ltRes.value.ok) {
+                    const ltStats = await ltRes.value.json();
+                    if (!ltStats.error) updateLongtermStats(ltStats);
+                    else console.error("Longterm stats error:", ltStats.error);
+                } else if (ltRes.status === 'rejected') {
+                    console.error("Longterm stats fetch failed:", ltRes.reason);
+                }
+
+                if (ytdRes.status === 'fulfilled' && ytdRes.value.ok) {
+                    const ytdData = await ytdRes.value.json();
+                    if (!ytdData.error) {
+                        renderYTDChart('ytdCyclingChart', ytdData.labels, ytdData.cycling);
+                        renderYTDChart('ytdRunningChart', ytdData.labels, ytdData.running);
+                    } else {
+                        console.error("YTD mileage comparison error:", ytdData.error);
                     }
-                } catch (e) { console.error("Longterm stats fetch failed", e); }
+                } else if (ytdRes.status === 'rejected') {
+                    console.error("YTD fetch failed:", ytdRes.reason);
+                }
 
-                // Fetch YTD Mileage Comparison
-                try {
-                    const ytdRes = await fetch('/api/ytd_mileage_comparison');
-                    if (ytdRes.ok) {
-                        const ytdData = await ytdRes.json();
-                        if (!ytdData.error) {
-                            renderYTDChart('ytdCyclingChart', ytdData.labels, ytdData.cycling);
-                            renderYTDChart('ytdRunningChart', ytdData.labels, ytdData.running);
-                        }
-                    }
-                } catch (e) { console.error("YTD fetch failed", e); }
+                // 4. Initialize historical charts (Parallel)
+                await Promise.allSettled([
+                    updateWeightRange('1m'),
+                    updateStepsRange('1w'),
+                    updateHRRange('1d'),
+                    updateStressRange('1d'),
+                    updateSleepRange('1d'),
+                    updateHydrationRange('1d'),
+                    updateHRVRange('1d'),
+                    updateIMRange('1w'),
+                    fetchCalendarData()
+                ]);
 
-                // Initialize historical charts
-                updateWeightRange('1m');
-                updateStepsRange('1w');
-                updateHRRange('1d');
-                updateStressRange('1d');
-                updateSleepRange('1d');
-                updateHydrationRange('1d');
-                updateHRVRange('1d');
-                updateIMRange('1w');
-                fetchActivityHeatmap();
-                fetchCalendarData();
-
-                // Fetch AI Insights
-                fetchAIInsights();
-
-                // Update timestamp
+                // 5. Light status update
                 const syncEl = document.getElementById('last-sync');
                 if (syncEl) syncEl.textContent = 'Synced: ' + new Date().toLocaleTimeString();
 
+                // 6. Heavy Route Overlays (LOWEST PRIORITY - Load last after everything else)
+                setTimeout(() => {
+                    fetchActivityHeatmap();
+                    updateGlobalHeatmap();
+                }, 1500);
+
             } catch (err) {
-                console.error(err);
-                showError('Could not load dashboard. Check console.');
+                console.error("Dashboard load error:", err);
+                showError('Could not load dashboard fully. Check console.');
             }
         }
 
@@ -2900,11 +3005,11 @@
 
                     aiContent.innerHTML = `
                         <div style="background: rgba(56, 189, 248, 0.1); border-left: 3px solid var(--accent-color); padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 0 0.5rem 0.5rem 0; font-style: italic; font-weight: 500; font-family: 'Lexend', sans-serif;">
-                            🌟 Highlight: ${insight.highlight || 'Standout performance recorded.'}
+                            🌟 Highlight: ${parseMarkdown(insight.highlight || 'Standout performance recorded.')}
                         </div>
-                        <p style="margin-bottom: 0.8rem;"><strong>Recap:</strong> ${insight.was}</p>
-                        <p style="margin-bottom: 0.8rem;"><strong>Focus:</strong> ${insight.worked_on}</p>
-                        <p><strong>Coach's Tip:</strong> ${insight.better_next}</p>
+                        <p style="margin-bottom: 0.8rem;"><strong>Recap:</strong> ${parseMarkdown(insight.was)}</p>
+                        <p style="margin-bottom: 0.8rem;"><strong>Focus:</strong> ${parseMarkdown(insight.worked_on)}</p>
+                        <p><strong>Coach's Tip:</strong> ${parseMarkdown(insight.better_next)}</p>
                     `;
                 } else {
                     aiSection.style.display = 'none';
@@ -3236,20 +3341,86 @@
             const container = document.getElementById('activity-heatmap');
             if (!container) return;
             container.innerHTML = '';
+
+
+            const tooltip = document.getElementById('heatmap-tooltip');
             const today = new Date();
-            const start = new Date(); start.setDate(today.getDate() - 365);
-            start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); // Start on Monday
+            const start = new Date();
+            start.setDate(today.getDate() - 365);
+            start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
 
             let currentWeek = [];
             let current = new Date(start);
+
             while (current <= today || current.getDay() !== 1) {
                 const dStr = getLocalDateStr(current);
-                currentWeek.push({ count: data[dStr] || 0 });
+                const activities = data[dStr] || [];
+
+
+                currentWeek.push({
+                    date: new Date(current),
+                    dateStr: dStr,
+                    activities: activities,
+                    count: activities.length
+                });
+
                 if (current.getDay() === 0) {
-                    const col = document.createElement('div'); col.style.display = 'flex'; col.style.flexDirection = 'column'; col.style.gap = '4px';
+                    const col = document.createElement('div');
+                    col.style.display = 'flex';
+                    col.style.flexDirection = 'column';
+                    col.style.gap = '4px';
+
                     currentWeek.forEach(day => {
-                        const cell = document.createElement('div'); cell.style.width = '12px'; cell.style.height = '12px'; cell.style.borderRadius = '2px';
-                        cell.style.background = day.count === 0 ? 'rgba(255,255,255,0.05)' : day.count === 1 ? 'rgba(34, 197, 94, 0.4)' : day.count === 2 ? 'rgba(34, 197, 94, 0.7)' : '#22c55e';
+                        const cell = document.createElement('div');
+                        cell.className = 'heatmap-cell';
+                        cell.style.width = '12px';
+                        cell.style.height = '12px';
+                        cell.style.borderRadius = '2px';
+
+                        let bg = 'rgba(255,255,255,0.05)';
+                        if (day.count === 1) bg = 'rgba(34, 197, 94, 0.4)';
+                        else if (day.count === 2) bg = 'rgba(34, 197, 94, 0.7)';
+                        else if (day.count >= 3) bg = '#22c55e';
+                        cell.style.background = bg;
+
+                        const showTooltip = (e) => {
+                            if (!tooltip) return;
+                            const d = day.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+                            let html = `<div class="heatmap-tooltip-date">${d}</div>`;
+
+                            if (day.activities.length > 0) {
+                                day.activities.forEach(a => {
+                                    html += `
+                                        <div class="heatmap-tooltip-activity">
+                                            <span>${a.name}</span>
+                                            <span style="color: var(--text-secondary); white-space: nowrap;">${a.dist}mi / ${a.dur}m</span>
+                                        </div>
+                                    `;
+                                });
+                            } else {
+                                html += `<div style="color: var(--text-secondary); font-size: 0.75rem;">No activities</div>`;
+                            }
+
+                            tooltip.innerHTML = html;
+                            tooltip.style.display = 'block';
+
+                            const x = e.clientX + 15;
+                            const y = e.clientY + 15;
+                            const rect = tooltip.getBoundingClientRect();
+                            const finalX = (x + rect.width > window.innerWidth) ? (e.clientX - rect.width - 15) : x;
+                            const finalY = (y + rect.height > window.innerHeight) ? (e.clientY - rect.height - 15) : y;
+
+                            tooltip.style.left = finalX + 'px';
+                            tooltip.style.top = finalY + 'px';
+                        };
+
+                        const hideTooltip = () => { if (tooltip) tooltip.style.display = 'none'; };
+
+                        cell.onmouseenter = showTooltip;
+                        cell.onmousemove = showTooltip;
+                        cell.onmouseleave = hideTooltip;
+                        cell.onclick = (e) => { showTooltip(e); };
+
                         col.appendChild(cell);
                     });
                     container.appendChild(col);
@@ -3621,14 +3792,17 @@
             }
         }
 
-        // Start everything
-        fetchData();
-        updateGlobalHeatmap();
+        // Start everything when DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchData();
+        });
 
         window.addEventListener('resize', () => {
             Object.values(chartInstances).forEach(chart => { chart.update(); });
         });
     </script>
+    <div id="heatmap-tooltip"></div>
 </body>
+
 
 </html>

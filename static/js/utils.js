@@ -77,12 +77,29 @@ function formatDualDistance(miles) {
 
 /**
  * Safely set text content of an element by ID
- * @param {string} id - Element ID
- * @param {string} text - Text content to set
  */
 function safeSetText(id, text) {
     const el = document.getElementById(id);
     if (el) el.textContent = text;
+}
+
+/**
+ * Safely set HTML content of an element by ID, parsing simple Markdown
+ */
+function safeSetHTML(id, text) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.innerHTML = parseMarkdown(text || '');
+    }
+}
+
+/**
+ * Basic Markdown parser for bold text
+ */
+function parseMarkdown(text) {
+    if (!text) return '';
+    // Replace **bold** with <strong>bold</strong>
+    return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 }
 
 /**
