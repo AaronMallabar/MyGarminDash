@@ -1107,10 +1107,19 @@
             <div class="card" style="display: flex; flex-direction: column;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                     <h3 id="food-list-title" style="font-size: 1rem;">Today's Food</h3>
-                    <a href="/api/nutrition/export" target="_blank"
-                        style="font-size: 0.8rem; color: var(--accent-color); text-decoration: none; border-bottom: 1px solid transparent; transition: all 0.2s;"
-                        onmouseover="this.style.borderBottomColor='var(--accent-color)'"
-                        onmouseout="this.style.borderBottomColor='transparent'">Export CSV</a>
+                    <div style="display: flex; gap: 0.75rem; align-items: center;">
+                        <a href="/api/nutrition/export" target="_blank"
+                            style="font-size: 0.8rem; color: var(--accent-color); text-decoration: none; border-bottom: 1px solid transparent; transition: all 0.2s;"
+                            onmouseover="this.style.borderBottomColor='var(--accent-color)'"
+                            onmouseout="this.style.borderBottomColor='transparent'">Export CSV</a>
+                        <span style="color: rgba(255,255,255,0.1);">|</span>
+                        <button onclick="document.getElementById('import-logs-input').click()"
+                            style="background: none; border: none; font-size: 0.8rem; color: var(--accent-color); cursor: pointer; border-bottom: 1px solid transparent; padding: 0; font-family: inherit;"
+                            onmouseover="this.style.borderBottomColor='var(--accent-color)'"
+                            onmouseout="this.style.borderBottomColor='transparent'">Import CSV</button>
+                        <input type="file" id="import-logs-input" accept=".csv" style="display: none;"
+                            onchange="importLogs(this)">
+                    </div>
                 </div>
                 <div id="food-logs-list"
                     style="flex-grow: 1; overflow-y: auto; max-height: 380px; padding-right: 0.5rem;">
@@ -1731,18 +1740,12 @@
                     const statsRes = await fetch(analysisUrl);
                     const analysisData = await statsRes.json();
 
-                    let outtake = 0;
-                    if (isToday) {
-                        // For today, we might already have stats from updateDashboard
-                        // But we want to ensure sync, so we fetch locally if not provided
-                        outtake = analysisData.metabolic ? analysisData.metabolic.total : 0;
-                    } else {
-                        if (analysisData.metabolic) {
-                            outtake = analysisData.metabolic.total || 0;
-                        }
+                    let metabolic = { total: 0, active: 0, resting: 0 };
+                    if (analysisData.metabolic) {
+                        metabolic = analysisData.metabolic;
                     }
 
-                    updateNutritionUI(logs, outtake, analysisData.analysis);
+                    updateNutritionUI(logs, metabolic, analysisData.analysis);
                 }
                 if (customRes.ok) {
                     customFoods = await customRes.json();
@@ -1752,13 +1755,35 @@
             }
         }
 
-        function updateNutritionUI(logs, outtake, aiAnalysis) {
+        function updateNutritionUI(logs, metabolicData, aiAnalysis) {
             currentNutritionLogs = logs;
+
+            let outtakeTotal = 0;
+            let active = 0;
+            let resting = 0;
+
+            if (typeof metabolicData === 'object' && metabolicData !== null) {
+                outtakeTotal = metabolicData.total || 0;
+                active = metabolicData.active || 0;
+                resting = metabolicData.resting || 0;
+            } else {
+                outtakeTotal = Number(metabolicData) || 0;
+            }
+
             const intake = logs.reduce((sum, log) => sum + (log.calories || 0), 0);
-            const net = intake - outtake;
+            const net = intake - outtakeTotal;
 
             safeSetText('intake-calories', intake.toLocaleString());
-            safeSetText('outtake-calories', outtake.toLocaleString());
+
+            const outtakeEl = document.getElementById('outtake-calories');
+            if (outtakeEl) {
+                outtakeEl.innerHTML = `
+                    <div style="line-height: 1;">${outtakeTotal.toLocaleString()}</div>
+                    <div style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 600; margin-top: 0.4rem; white-space: nowrap; opacity: 0.9;">
+                        ${active.toLocaleString()} Active + ${resting.toLocaleString()} Passive
+                    </div>
+                `;
+            }
 
             const netEl = document.getElementById('net-calories');
             const netLabel = document.getElementById('net-label');
@@ -1809,14 +1834,37 @@
                 }
             }
 
-            if (aiAnalysis) {
+            if (aiAnalysis && aiAnalysis !== "Detailed analysis available on request.") {
                 safeSetHTML('nutrition-ai-content', aiAnalysis);
             } else {
-                refreshNutritionAnalysis();
+                const container = document.getElementById('nutrition-ai-content');
+                if (container) {
+                    container.innerHTML = `
+                        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+                            <div style="color: var(--text-secondary); font-size: 0.9rem;">Analysis available on demand.</div>
+                            <button onclick="refreshNutritionAnalysis()" 
+                                style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #10b981; padding: 0.5rem 1rem; border-radius: 0.5rem; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: all 0.2s;"
+                                onmouseover="this.style.background='rgba(16, 185, 129, 0.2)'"
+                                onmouseout="this.style.background='rgba(16, 185, 129, 0.1)'">
+                                ✨ Analyze with AI
+                            </button>
+                        </div>
+                    `;
+                }
             }
         }
 
         async function refreshNutritionAnalysis() {
+            const container = document.getElementById('nutrition-ai-content');
+            if (container) {
+                container.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-secondary);">
+                        <div class="loading" style="width: 16px; height: 16px;"></div>
+                        <span>Analyzing nutrition...</span>
+                    </div>
+                `;
+            }
+
             try {
                 const dateStr = getLocalDateStr(activeNutritionDate);
                 const res = await fetch(`/api/nutrition/analysis?date=${dateStr}`);
@@ -1824,7 +1872,10 @@
                     const data = await res.json();
                     safeSetHTML('nutrition-ai-content', data.analysis);
                 }
-            } catch (err) { console.error("Analysis error:", err); }
+            } catch (err) {
+                console.error("Analysis error:", err);
+                if (container) container.textContent = "Analysis failed. Please try again.";
+            }
         }
 
         function openFoodModal() {
@@ -2303,6 +2354,32 @@
             if (!text) return '';
             // Basic bold support
             return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        }
+
+        async function importLogs(input) {
+            if (!input.files || !input.files[0]) return;
+            const file = input.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch('/api/nutrition/import', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    alert(`Successfully imported ${data.count} logs.`);
+                    fetchNutritionData();
+                } else {
+                    const err = await res.json();
+                    alert('Import failed: ' + (err.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Import error: ' + e);
+            } finally {
+                input.value = ''; // Reset
+            }
         }
 
         function showError(msg) {

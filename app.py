@@ -52,6 +52,7 @@ CUSTOM_FOODS_FILE = 'custom_foods.json'
 # Caching
 stats_cache = {}
 weight_cache = {'value': None, 'timestamp': 0}
+user_profile_cache = {'data': None, 'timestamp': 0}
 calorie_cache = {}
 
 def load_json(path, default):
@@ -127,6 +128,65 @@ def garmin_request(func, *args, **kwargs):
                 logger.error(f"Garmin API failed after {max_retries} attempts: {e}")
                 raise e
 
+def get_user_profile_data(client):
+    """Get user profile data (age, height, gender, weight) with caching for BMR calculation."""
+    global user_profile_cache
+    
+    # Check cache (24 hour expiry since profile data doesn't change often)
+    now = time.time()
+    if user_profile_cache['data'] and (now - user_profile_cache['timestamp'] < 86400):
+        return user_profile_cache['data']
+    
+    try:
+        profile = garmin_request(client.get_user_profile)
+        
+        # Debug: Log the full profile structure to find where height is stored
+        logger.info(f"Full profile keys: {profile.keys()}")
+        
+        user_data = profile.get('userData', {})
+        bio_data = profile.get('biometricProfile', {})
+        
+        logger.info(f"userData keys: {user_data.keys()}")
+        logger.info(f"biometricProfile keys: {bio_data.keys()}")
+        
+        # Get age from birth date
+        age = None
+        birth_str = user_data.get('birthDate')
+        if birth_str:
+            birth_date = date.fromisoformat(birth_str)
+            today = get_today()
+            age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+        
+        # Get height in cm - check multiple possible locations
+        height_cm = bio_data.get('height') or user_data.get('height') or bio_data.get('heightInCentimeters')
+        
+        # Fallback: Check settings.json for manually specified height
+        if not height_cm:
+            settings = load_settings()
+            height_cm = settings.get('height_cm')
+            if height_cm:
+                logger.info(f"Using height from settings.json: {height_cm}cm")
+        
+        # Get weight in grams from user profile
+        weight_grams = user_data.get('weight')
+        
+        # Get gender ('MALE' or 'FEMALE')
+        gender = user_data.get('gender')
+        
+        profile_data = {
+            'age': age,
+            'height_cm': height_cm,
+            'gender': gender,
+            'weight_grams': weight_grams
+        }
+        
+        user_profile_cache = {'data': profile_data, 'timestamp': now}
+        logger.info(f"User profile cached: age={age}, height={height_cm}cm, weight={weight_grams}g, gender={gender}")
+        return profile_data
+    except Exception as e:
+        logger.warning(f"Failed to get user profile: {e}")
+        return {'age': None, 'height_cm': None, 'gender': None, 'weight_grams': None}
+
 def get_user_max_hr(client):
     try:
         profile = garmin_request(client.get_user_profile)
@@ -152,32 +212,97 @@ def get_calorie_data(client, date_str):
         resting_cal = n(stats.get('bmrCalories') or stats.get('restingCalories'))
         
         if total_cal == 0:
-            # Try to get most recent weight from cache first
-            global weight_cache
-            weight_grams = weight_cache['value']
+            # Get user profile for accurate BMR calculation (Mifflin-St Jeor equation)
+            profile_data = get_user_profile_data(client)
+            age = profile_data.get('age')
+            height_cm = profile_data.get('height_cm')
+            gender = profile_data.get('gender')
             
-            # If no cached weight or it's old (1 hour), try one search
-            now = time.time()
-            if not weight_grams or (now - weight_cache['timestamp'] > 3600):
-                date_obj = date.fromisoformat(date_str)
-                for i in range(5): # Reduce search range to 5 days for speed
-                    check_date = (date_obj - timedelta(days=i)).isoformat()
-                    try:
-                        body_comp = client.get_body_composition(check_date)
-                        if body_comp and 'totalAverage' in body_comp and body_comp['totalAverage'].get('weight'):
-                            weight_grams = body_comp['totalAverage']['weight']
-                            weight_cache = {'value': weight_grams, 'timestamp': now}
-                            break
-                    except: continue
+            # Validate we have all required data
+            if not age:
+                raise ValueError(f"Cannot calculate BMR: Age data not available in user profile")
+            if not height_cm:
+                raise ValueError(f"Cannot calculate BMR: Height data not available in user profile")
             
-            weight_kg = (weight_grams / 1000) if weight_grams else 80
-            bmr_est = (10 * weight_kg + 900)
-            step_cal = n(stats.get('totalSteps')) * 0.04
+            # Get weight - try profile first, then cache, then body composition
+            weight_grams = profile_data.get('weight_grams')
+            
+            # If no weight in profile, try cache or fetch from body composition
+            if not weight_grams:
+                global weight_cache
+                weight_grams = weight_cache['value']
+                
+                # If no cached weight or it's old (1 hour), try to fetch it
+                now = time.time()
+                if not weight_grams or (now - weight_cache['timestamp'] > 3600):
+                    date_obj = date.fromisoformat(date_str)
+                    for i in range(5):
+                        check_date = (date_obj - timedelta(days=i)).isoformat()
+                        try:
+                            body_comp = client.get_body_composition(check_date)
+                            if body_comp and 'totalAverage' in body_comp and body_comp['totalAverage'].get('weight'):
+                                weight_grams = body_comp['totalAverage']['weight']
+                                weight_cache = {'value': weight_grams, 'timestamp': now}
+                                break
+                        except: continue
+            
+            if not weight_grams:
+                raise ValueError(f"Cannot calculate BMR: Weight data not available")
+            
+            weight_kg = weight_grams / 1000
+            
+            # Calculate BMR using Mifflin-St Jeor equation
+            # Men: BMR = (10 × weight_kg) + (6.25 × height_cm) - (5 × age) + 5
+            # Women: BMR = (10 × weight_kg) + (6.25 × height_cm) - (5 × age) - 161
+            bmr_est = (10 * weight_kg) + (6.25 * height_cm) - (5 * age)
+            if gender == 'MALE':
+                bmr_est += 5
+            else:  # Default to female formula if not specified or if female
+                bmr_est -= 161
+            logger.info(f"BMR calculated using Mifflin-St Jeor: {bmr_est:.0f} kcal (age={age}, height={height_cm}cm, weight={weight_kg:.1f}kg, gender={gender})")
+            
+            # Calculate step calories based on actual weight
+            # Formula: ~0.04 cal/step for 70kg person, scaled by weight
+            calories_per_step = 0.04 * (weight_kg / 70)
+            step_cal = n(stats.get('totalSteps')) * calories_per_step
+            logger.info(f"Step calories: {step_cal:.0f} kcal ({n(stats.get('totalSteps'))} steps × {calories_per_step:.4f} cal/step)")
             
             resting_cal = int(bmr_est)
             active_cal = int(step_cal + (active_cal or 0))
             total_cal = resting_cal + active_cal
-            logger.info(f"Calorie Fallback: {total_cal} kcal for {date_str}")
+            logger.info(f"Calorie calculation: {total_cal} kcal for {date_str}")
+            
+        # --- NEW: Verify against specific activities for the day ---
+        # Sometimes get_stats() lags behind get_activities(), especially for "activeCalories"
+        try:
+            activities = client.get_activities_by_date(date_str, date_str)
+            if activities:
+                act_cals_sum = 0
+                for a in activities:
+                    # Robustly get calories
+                    c = a.get('calories')
+                    if c is None:
+                        c = a.get('summaryDTO', {}).get('calories')
+                    act_cals_sum += n(c)
+                
+                # Correction Logic
+                if act_cals_sum > 0 and active_cal < act_cals_sum:
+                    logger.info(f"Calorie Correction {date_str}: Stats({active_cal}) < Activities({act_cals_sum}). Adjusting.")
+                    
+                    # If active_cal is very low compared to activity sum (e.g. < 50%), it likely missed the activities entirely
+                    # and only contains step/NEAT calories. So we ADD them.
+                    if active_cal < (act_cals_sum * 0.5):
+                        active_cal += int(act_cals_sum)
+                    else:
+                        # If it's close but under, it might just be a partial sync or small drift. 
+                        # We clamp to the known activity sum to be safe.
+                        active_cal = int(act_cals_sum)
+                        
+                    # Recalculate total
+                    total_cal = resting_cal + active_cal
+        except Exception as act_e:
+             logger.warning(f"Failed to verify activity calories: {act_e}")
+        # -----------------------------------------------------------
             
         result = {
             'total': total_cal,
@@ -2288,6 +2413,129 @@ def export_library_csv():
     output.headers["Content-Type"] = "text/csv"
     return output
 
+
+@app.route('/api/nutrition/export')
+@login_required
+def export_logs_csv():
+    import csv
+    import io
+    from flask import make_response
+    
+    logs = load_json(FOOD_LOGS_FILE, [])
+    si = io.StringIO()
+    cw = csv.writer(si)
+    # Header matching the user's request for "exact same format" for re-import
+    cw.writerow(['Date', 'Time', 'Name', 'Calories', 'Cholesterol (mg)', 'Protein (g)', 'Carbs (g)', 'Fat (g)', 'Category', 'Ingredients', 'AI Note'])
+    
+    for log in logs:
+        # Flatten ingredients if present
+        ing_data = log.get('ingredients', [])
+        ing_str = "; ".join([f"{i.get('qty','')} {i.get('unit','')} {i.get('name','')}" for i in ing_data]) if ing_data else ""
+        
+        cw.writerow([
+            log.get('date', ''),
+            log.get('time', ''),
+            log.get('name', ''),
+            log.get('calories', 0),
+            log.get('cholesterol_mg', 0),
+            log.get('protein_g', 0),
+            log.get('carbs_g', 0),
+            log.get('fat_g', 0),
+            log.get('category', ''),
+            ing_str,
+            log.get('ai_note', '')
+        ])
+    
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = f"attachment; filename=food_logs_{get_today()}.csv"
+    output.headers["Content-Type"] = "text/csv"
+    return output
+
+@app.route('/api/nutrition/import', methods=['POST'])
+@login_required
+def import_logs_csv():
+    import csv
+    import io
+    
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+        
+    try:
+        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+        csv_input = csv.reader(stream)
+        
+        header = next(csv_input, None)
+        # We expect a header but won't strictly validate every column name to allow for slight variations if user edits manually
+        # Expected: Date, Time, Name, Calories, Cholesterol (mg), Protein (g), Carbs (g), Fat (g), Category, Ingredients, AI Note
+        
+        new_logs = []
+        current_logs = load_json(FOOD_LOGS_FILE, [])
+        existing_ids = {l['id'] for l in current_logs} # Although we generate new IDs, we could check for duplicates based on content?
+        # For now, just append. User said "pick up where I left off", implies filling gaps or restoring.
+        
+        base_id = int(time.time() * 1000)
+        
+        for i, row in enumerate(csv_input):
+            if not row: continue
+            
+            # Basic parsing based on index
+            # 0: Date, 1: Time, 2: Name ...
+            try:
+                date_val = row[0]
+                time_val = row[1]
+                name_val = row[2]
+                
+                # Parse ingredients string back to list if possible
+                ing_str = row[9] if len(row) > 9 else ""
+                ingredients = []
+                if ing_str:
+                    # Simple parse: "1 unit Item; 2 oz Meat"
+                    # This is lossy but better than nothing. 
+                    # Actually, the export format created above uses "; " delimiter.
+                    parts = ing_str.split(';')
+                    for p in parts:
+                        p = p.strip()
+                        if p:
+                            # Try to split by spaces? "qty unit name"
+                            # This is hard to perfect without a strict format.
+                            # We will store it as a raw string or try to parse locally?
+                            # For simplicity, we might just leave ingredients empty or try a best effort.
+                            # Current UI doesn't heavily rely on ingredients for *logs*, mainly for *library*.
+                            # Logs just have nutrient totals.
+                            pass
+                
+                log_entry = {
+                    'id': base_id + i,
+                    'date': date_val,
+                    'time': time_val,
+                    'name': name_val,
+                    'calories': int(row[3]) if row[3] else 0,
+                    'cholesterol_mg': int(row[4]) if len(row)>4 and row[4] else 0,
+                    'protein_g': int(row[5]) if len(row)>5 and row[5] else 0,
+                    'carbs_g': int(row[6]) if len(row)>6 and row[6] else 0,
+                    'fat_g': int(row[7]) if len(row)>7 and row[7] else 0,
+                    'category': row[8] if len(row)>8 else '',
+                    'ai_note': row[10] if len(row)>10 else '',
+                    # We skip rebuilding detailed ingredients list for logs as it's complex and totals are what matters for the dashboard
+                }
+                new_logs.append(log_entry)
+            except Exception as e:
+                logger.warning(f"Skipping malformed row {i}: {e}")
+                
+        current_logs.extend(new_logs)
+        save_json(FOOD_LOGS_FILE, current_logs)
+        
+        return jsonify({'status': 'success', 'count': len(new_logs)})
+        
+    except Exception as e:
+        logger.error(f"Import failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+    
+
 @app.route('/api/nutrition/analysis')
 @login_required
 def get_nutrition_analysis():
@@ -2298,6 +2546,18 @@ def get_nutrition_analysis():
     day_logs = [log for log in logs if log['date'] == date_str]
     total_in = sum(l.get('calories', 0) for l in day_logs)
     total_chol = sum(l.get('cholesterol_mg', 0) for l in day_logs)
+
+    # Convert date_str to a date object to find the range
+    target_date = datetime.fromisoformat(date_str).date()
+    seven_days_ago = target_date - timedelta(days=7)
+
+    history_summary = []
+    for i in range(7):
+        d = (seven_days_ago + timedelta(days=i)).isoformat()
+        daily_sum = sum(l.get('calories', 0) for l in logs if l['date'] == d)
+        history_summary.append(f"{d}: {daily_sum} kcal")
+    
+    history_str = ", ".join(history_summary)
     
     # Get outtakes from Garmin with detailed breakdown and fallbacks
     client = get_garmin_client()
@@ -2324,6 +2584,23 @@ def get_nutrition_analysis():
         model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
         
         food_list = ", ".join([l['name'] for l in day_logs]) or "No food logged yet."
+
+        # 1. Define the current status based on time
+        now_est = datetime.now(EST)
+        current_hour = now_est.hour
+        time_str = now_est.strftime("%I:%M %p")
+
+        # 2. Logic to handle the "Meal Expectation"
+        # Assume 3 main meals: breakfast, lunch, dinner
+        if current_hour < 12:
+            meals_remaining = "at least 2 main meals (lunch and dinner)"
+            time_context = "early morning"
+        elif current_hour < 18:
+            meals_remaining = "at least 1 major meal (dinner)"
+            time_context = "mid-afternoon"
+        else:
+            meals_remaining = "potentially a late snack or the day is concluding"
+            time_context = "evening"
         
         prompt = f"""
         You are 'Athlete Intelligence', a personal health coach. Analyze my nutrition for {date_str}.
@@ -2334,10 +2611,21 @@ def get_nutrition_analysis():
         - Total Energy In: {total_in} kcal
         - Total Cholesterol: {total_chol} mg
         - Logged Foods: {food_list}
+
+        7-Day Calorie History (for trend analysis): {history_str}
         
-        Address me directly as 'you'. Provide a concise, expert analysis (2 sentences). 
+        - Address me directly as 'you'. 
+        - I still have {meals_remaining} expected for the rest of the day since it is {time_str}
+          DO NOT praise a 'significant deficit' as an achievement if the day is not over;
+          instead, frame it as 'Available Fuel Capacity' for my upcoming meals.
+        -I already know what time of day it is you dont need to be explicit. 
+        
+        Provide a concise analysis (2-3 sentences). 
         Focus on how my energy balance (intake vs total out) and cholesterol align with my weight loss and heart health goals. 
-        If 'Active' calories are high, mention my workout efficiency.
+        If 'Active' calories are high, mention my workout efficiency. 
+        Note the current time and how many meal I have expected for the rest of the day.
+        Let me know if there are any trends over time of my calories.
+        If I overate yesteday, motivate me to eat less today, or if I underate yesterday, suggest that I can eat more today. 
         """
         
         response = ai_client.models.generate_content(model=model_name, contents=prompt)
