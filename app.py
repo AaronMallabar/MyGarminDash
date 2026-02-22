@@ -1,4 +1,5 @@
 import os
+import subprocess
 import logging
 from google import genai
 import json
@@ -27,6 +28,40 @@ EST = ZoneInfo("America/New_York")
 def get_today():
     """Get today's date in Eastern Standard Time."""
     return datetime.now(EST).date()
+
+def get_git_command():
+    """Find the git command, checking common Windows paths as fallback."""
+    try:
+        subprocess.run(['git', '--version'], check=True, capture_output=True)
+        return 'git'
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        if os.name == 'nt':
+            common_paths = [
+                r"C:\Program Files\Git\cmd\git.exe",
+                r"C:\Program Files\Git\bin\git.exe",
+                r"C:\Users\User\AppData\Local\Programs\Git\cmd\git.exe"
+            ]
+            for path in common_paths:
+                if os.path.exists(path):
+                    return path
+    return None
+
+def get_app_version():
+    """Calculate app version based on git commit count."""
+    try:
+        git_cmd = get_git_command()
+        if not git_cmd:
+            return "0.000"
+        # Use subprocess to get the commit count from git
+        count = subprocess.check_output([git_cmd, 'rev-list', '--count', 'HEAD'], 
+                                       stderr=subprocess.DEVNULL,
+                                       text=True).strip()
+        return f"0.{count.zfill(3)}"
+    except Exception:
+        return "0.000"
+
+# Application global version
+APP_VERSION = get_app_version()
 
 # Gemini configuration is now handled per-client instance
 
@@ -620,6 +655,8 @@ def get_settings():
     """Get current settings."""
     try:
         settings = load_settings()
+        # Add app version
+        settings['app_version'] = APP_VERSION
         # Add available models list
         settings['available_models'] = [
             {'id': 'gemini-3-flash-preview', 'name': 'Gemini 3.0 Flash (Experimental)', 'description': 'Latest experimental model'},
@@ -659,6 +696,63 @@ def update_settings():
             
     except Exception as e:
         logger.error(f"Error updating settings: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/check_update', methods=['GET'])
+@login_required
+def check_update():
+    """Check for updates from GitHub."""
+    try:
+        git_cmd = get_git_command()
+        if not git_cmd:
+            return jsonify({'error': 'Git is not detected. Please install Git and restart the application.'}), 400
+
+        # Fetch current state from remote
+        subprocess.run([git_cmd, 'fetch'], check=True, capture_output=True, text=True)
+        
+        # Get head of local and remote
+        local_res = subprocess.run([git_cmd, 'rev-parse', 'HEAD'], check=True, capture_output=True, text=True)
+        # Handle cases where upstream might not be set
+        try:
+            remote_res = subprocess.run([git_cmd, 'rev-parse', '@{u}'], check=True, capture_output=True, text=True)
+            remote_sha = remote_res.stdout.strip()
+        except subprocess.CalledProcessError:
+            # Fallback: check origin/main if @{u} fails
+            remote_res = subprocess.run([git_cmd, 'rev-parse', 'origin/main'], check=True, capture_output=True, text=True)
+            remote_sha = remote_res.stdout.strip()
+        
+        local_sha = local_res.stdout.strip()
+        
+        return jsonify({
+            'update_available': local_sha != remote_sha,
+            'local_sha': local_sha[:7],
+            'remote_sha': remote_sha[:7]
+        })
+    except Exception as e:
+        logger.error(f"Error checking for updates: {e}")
+        return jsonify({'error': f"Git error: {str(e)}"}), 500
+
+@app.route('/api/perform_update', methods=['POST'])
+@login_required
+def perform_update():
+    """Trigger the update script."""
+    try:
+        if os.name == 'nt':
+            # Windows: Look for a .ps1 or .bat script (to be created)
+            script_path = os.path.join(os.path.dirname(__file__), 'Scripts', 'updateApp.ps1')
+            if not os.path.exists(script_path):
+                return jsonify({'error': 'Windows update script (updateApp.ps1) not found'}), 404
+            subprocess.Popen(['powershell', '-ExecutionPolicy', 'Bypass', '-File', script_path], start_new_session=True)
+        else:
+            # Linux/Mac
+            script_path = os.path.join(os.path.dirname(__file__), 'Scripts', 'updateApp.sh')
+            if not os.path.exists(script_path):
+                return jsonify({'error': 'Update script not found'}), 404
+            subprocess.Popen(['bash', script_path], start_new_session=True)
+        
+        return jsonify({'success': True, 'message': 'Update started'})
+    except Exception as e:
+        logger.error(f"Error performing update: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/ai_insights')
@@ -1730,7 +1824,32 @@ def get_weight_history():
                     'weight_lbs': round(lbs, 1)
                 })
         
-        return jsonify(history)
+        # Calculate summary stats
+        summary = {}
+        if history:
+            latest = history[-1]
+            summary['latest_lbs'] = latest['weight_lbs']
+            summary['latest_kg'] = latest['weight_kg']
+            summary['date'] = latest['date']
+            
+            # True 7-day calendar average (last 7 days from latest weigh-in)
+            latest_dt = date.fromisoformat(latest['date'])
+            seven_days_ago = latest_dt - timedelta(days=7)
+            recent_points = [d['weight_lbs'] for d in history if date.fromisoformat(d['date']) > seven_days_ago]
+            
+            summary['avg_val'] = round(sum(recent_points) / len(recent_points), 1) if recent_points else latest['weight_lbs']
+            summary['avg_count'] = len(recent_points)
+            summary['avg_days'] = 7
+            
+            # Change since start of range
+            if len(history) > 1:
+                change = history[-1]['weight_lbs'] - history[0]['weight_lbs']
+                summary['range_change'] = round(change, 1)
+
+        return jsonify({
+            'history': history,
+            'summary': summary
+        })
     except Exception as e:
         logger.error(f"Error fetching weight history: {e}")
         return jsonify({'error': str(e)}), 500
@@ -1964,9 +2083,11 @@ def get_intensity_minutes_history():
                     'total': w.get('moderateValue', 0) + 2 * w.get('vigorousValue', 0)
                 })
             
+            latest_goal = history[-1]['goal'] if history else 150
             return jsonify({
                 'range': range_val,
-                'history': history
+                'history': history,
+                'goal': latest_goal
             })
 
     except Exception as e:
@@ -2189,8 +2310,13 @@ def add_weight():
 @app.route('/api/nutrition/logs', methods=['GET'])
 @login_required
 def get_food_logs():
-    date_str = request.args.get('date', get_today().isoformat())
+    all_logs = request.args.get('all') == 'true'
     logs = load_json(FOOD_LOGS_FILE, [])
+    
+    if all_logs:
+        return jsonify(logs)
+        
+    date_str = request.args.get('date', get_today().isoformat())
     day_logs = [log for log in logs if log['date'] == date_str]
     return jsonify(day_logs)
 

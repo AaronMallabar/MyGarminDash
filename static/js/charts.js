@@ -4,7 +4,8 @@
  */
 
 // Global chart instances
-const chartInstances = {};
+window.chartInstances = window.chartInstances || {};
+const chartInstances = window.chartInstances;
 
 // Client-side cache for chart data
 const chartDataCache = {
@@ -33,9 +34,9 @@ function setCachedData(metric, range, endDate, data) {
 
 // Disable animations for performance on large datasets (1yr history)
 Chart.defaults.animation = false;
-Chart.defaults.font.family = "'Inter', sans-serif"; // Optional but keeps it consistent
+Chart.defaults.font.family = "'Inter', sans-serif";
 
-function renderYTDChart(canvasId, labels, data) {
+window.renderYTDChart = function (canvasId, labels, data) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -67,103 +68,188 @@ function renderYTDChart(canvasId, labels, data) {
     });
 }
 
-let currentWeightEndDate = new Date();
-let currentWeightRange = '1m';
-async function updateWeightRange(range, btn) {
-    if (range) currentWeightRange = range;
+window.updateWeightRange = async function (range, btn) {
+    if (range) window.currentWeightRange = range;
     if (btn) {
         btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
     try {
         // Check cache first
-        const cached = getCachedData('weight', currentWeightRange, currentWeightEndDate);
+        const cached = getCachedData('weight', window.currentWeightRange, window.currentWeightEndDate);
         if (cached) {
-            renderWeightChart(cached, currentWeightRange);
+            renderWeightChart(cached, window.currentWeightRange);
             return;
         }
 
         // Check preloaded data for 1y
-        if (currentWeightRange === '1y' && isDateToday(currentWeightEndDate) && window.preloadedData['weight']) {
-            setCachedData('weight', currentWeightRange, currentWeightEndDate, window.preloadedData['weight']);
-            renderWeightChart(window.preloadedData['weight'], currentWeightRange);
+        if (window.currentWeightRange === '1y' && isDateToday(window.currentWeightEndDate) && window.preloadedData['weight']) {
+            setCachedData('weight', window.currentWeightRange, window.currentWeightEndDate, window.preloadedData['weight']);
+            renderWeightChart(window.preloadedData['weight'], window.currentWeightRange);
             return;
         }
 
-        const res = await fetch(`/api/weight_history?range=${currentWeightRange}&end_date=${getLocalDateStr(currentWeightEndDate)}`);
+        const res = await fetch(`/api/weight_history?range=${window.currentWeightRange}&end_date=${getLocalDateStr(window.currentWeightEndDate)}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
-                setCachedData('weight', currentWeightRange, currentWeightEndDate, data);
-                renderWeightChart(data, currentWeightRange);
+                setCachedData('weight', window.currentWeightRange, window.currentWeightEndDate, data);
+                renderWeightChart(data, window.currentWeightRange);
             }
         }
     } catch (err) { console.error('Weight history error:', err); }
 }
 
-function renderWeightChart(history, range) {
+window.renderWeightChart = function (data, range) {
     const canvasId = 'weightHistoryChart';
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
-    const weights = history.map(d => d.weight_lbs);
-    const min = Math.floor(Math.min(...weights) - 2);
-    const max = Math.ceil(Math.max(...weights) + 2);
+    const weightData = (data.history || data) || []; // Robust check for older format too
+    const summary = data.summary || {};
 
-    const bWidth = history.length > 365 ? 1 : 2;
+    // Update UI Stats
+    if (summary.latest_lbs) {
+        // Just the number, index.html has the unit
+        safeSetText('weight', summary.latest_lbs.toFixed(1));
+    }
+
+    if (summary.avg_val) {
+        const trendBox = document.getElementById('weight-trend-box');
+        if (trendBox) trendBox.style.display = 'block';
+
+        const labelEl = document.getElementById('weight-trend-label');
+        if (labelEl) {
+            const count = summary.avg_count || 0;
+            labelEl.textContent = count >= 7 ? '7d Avg' : `Avg (Last ${count})`;
+        }
+        safeSetText('weight-7d-avg', summary.avg_val.toFixed(1) + ' lbs');
+    }
+
+    if (summary.range_change !== undefined) {
+        const changeBox = document.getElementById('weight-change-box');
+        if (changeBox) changeBox.style.display = 'block';
+        const sign = summary.range_change > 0 ? '+' : '';
+        const color = summary.range_change > 0 ? '#f87171' : '#4ade80'; // Red for gain, green for loss
+        const changeEl = document.getElementById('weight-range-change');
+        if (changeEl) {
+            changeEl.textContent = `${sign}${summary.range_change.toFixed(1)} lbs`;
+            changeEl.style.color = color;
+        }
+    }
+
+    if (weightData.length === 0) return;
+
+    const weights = weightData.map(d => d.weight_lbs);
+    const min = Math.floor(Math.min(...weights) - 3);
+    const max = Math.ceil(Math.max(...weights) + 3);
+
+    const isLongRange = weightData.length > 90;
+    const pointRadius = isLongRange ? 0 : 4;
+    const borderWidth = isLongRange ? 2 : 3;
+
     chartInstances[canvasId] = new Chart(ctx, {
         type: 'line',
         data: {
-            datasets: [{ label: 'Weight (lbs)', data: history.map(d => ({ x: d.date, y: d.weight_lbs })), borderColor: '#818cf8', backgroundColor: 'rgba(129, 140, 248, 0.1)', borderWidth: bWidth, tension: 0, pointRadius: 0, fill: true }]
+            labels: weightData.map(d => d.date),
+            datasets: [{
+                label: 'Weight (lbs)',
+                data: weightData.map(d => d.weight_lbs),
+                borderColor: '#818cf8',
+                backgroundColor: 'rgba(129, 140, 248, 0.1)',
+                borderWidth: borderWidth,
+                pointRadius: pointRadius,
+                pointBackgroundColor: '#818cf8',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 1,
+                tension: 0.3,
+                fill: true
+            }]
         },
         options: {
             responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Weight: ${ctx.parsed.y.toFixed(1)} lbs` } } },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                    titleColor: '#94a3b8',
+                    bodyColor: '#fff',
+                    padding: 10,
+                    callbacks: {
+                        title: (items) => {
+                            const d = new Date(items[0].label);
+                            return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+                        },
+                        label: (ctx) => `Weight: ${ctx.parsed.y.toFixed(1)} lbs`
+                    }
+                },
+                zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
+            },
             scales: {
-                x: { type: 'time', time: { unit: 'month' }, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
-                y: { min, max, ticks: { color: '#94a3b8', callback: v => v + ' lbs' }, grid: { color: 'rgba(255,255,255,0.1)' } }
+                x: {
+                    type: 'category', // Using labels as strings for better alignment
+                    grid: { display: false },
+                    ticks: {
+                        color: '#94a3b8',
+                        maxTicksLimit: isLongRange ? 8 : 7,
+                        callback: function (val, index) {
+                            const label = this.getLabelForValue(val);
+                            const p = label.split('-');
+                            if (!p[1]) return label;
+                            return p[1] + '/' + p[2];
+                        }
+                    }
+                },
+                y: {
+                    min,
+                    max,
+                    ticks: {
+                        color: '#94a3b8',
+                        stepSize: 2,
+                        callback: v => v + ' lbs'
+                    },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                }
             }
         }
     });
 }
 
-let currentStepsEndDate = new Date();
-let currentStepsRange = '1w';
-async function updateStepsRange(range, btn) {
-    if (range) currentStepsRange = range;
+window.updateStepsRange = async function (range, btn) {
+    if (range) window.currentStepsRange = range;
     if (btn) {
         btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
     try {
         // Check cache first
-        const cached = getCachedData('steps', currentStepsRange, currentStepsEndDate);
+        const cached = getCachedData('steps', window.currentStepsRange, window.currentStepsEndDate);
         if (cached) {
             renderStepsVisual(cached);
             return;
         }
 
         // Check preloaded data for 1y
-        if (currentStepsRange === '1y' && isDateToday(currentStepsEndDate) && window.preloadedData['steps']) {
-            setCachedData('steps', currentStepsRange, currentStepsEndDate, window.preloadedData['steps']);
+        if (window.currentStepsRange === '1y' && isDateToday(window.currentStepsEndDate) && window.preloadedData['steps']) {
+            setCachedData('steps', window.currentStepsRange, window.currentStepsEndDate, window.preloadedData['steps']);
             renderStepsVisual(window.preloadedData['steps']);
             return;
         }
 
-        const res = await fetch(`/api/steps_history?range=${currentStepsRange}&end_date=${getLocalDateStr(currentStepsEndDate)}`);
+        const res = await fetch(`/api/steps_history?range=${window.currentStepsRange}&end_date=${getLocalDateStr(window.currentStepsEndDate)}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
-                setCachedData('steps', currentStepsRange, currentStepsEndDate, data);
+                setCachedData('steps', window.currentStepsRange, window.currentStepsEndDate, data);
                 renderStepsVisual(data);
             }
         }
     } catch (err) { console.error('Steps history error:', err); }
 }
 
-function renderStepsVisual(data) {
+window.renderStepsVisual = function (data) {
     const canvasId = 'stepsHistoryChart';
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -172,20 +258,32 @@ function renderStepsVisual(data) {
     const streakEl = document.getElementById('steps-streak');
     if (streakEl) streakEl.textContent = data.streak || 0;
 
-    if (data.range === '1d') {
+    if (window.currentStepsRange === '1d') {
         if (canvas) canvas.style.display = 'none';
         if (donutContainer) donutContainer.style.display = 'flex';
         const day = data.history[data.history.length - 1] || { totalSteps: 0, stepGoal: 10000 };
         const percent = Math.min(100, Math.round((day.totalSteps / day.stepGoal) * 100));
+
         safeSetText('steps', day.totalSteps.toLocaleString());
+        const goalK = day.stepGoal >= 1000 ? (day.stepGoal / 1000) + 'k' : day.stepGoal;
+        safeSetText('steps-goal-text', '/ ' + goalK);
+
         safeSetText('steps-day-percent', percent + '%');
         const chart = document.getElementById('steps-day-chart');
         if (chart) chart.style.background = `conic-gradient(${percent >= 100 ? 'var(--success-color)' : 'var(--accent-color)'} 0% ${percent}%, rgba(255,255,255,0.1) ${percent}% 100%)`;
     } else {
         if (canvas) canvas.style.display = 'block';
         if (donutContainer) donutContainer.style.display = 'none';
+
+        const validDays = data.history.filter(d => d.totalSteps > 0);
+        const avg = validDays.length > 0 ? Math.round(validDays.reduce((sum, d) => sum + d.totalSteps, 0) / validDays.length) : 0;
+
+        safeSetText('steps', avg.toLocaleString());
+        safeSetText('steps-goal-text', 'Avg/Day');
+
         const barPct = data.history.length > 100 ? 1.0 : (data.history.length > 30 ? 0.8 : 0.6);
         const radius = data.history.length > 100 ? 0 : 4;
+        if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -201,7 +299,11 @@ function renderStepsVisual(data) {
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `Steps: ${ctx.parsed.y.toLocaleString()}` } } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: (ctx) => `Steps: ${ctx.parsed.y.toLocaleString()}` } },
+                    zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
+                },
                 scales: {
                     x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: window.innerWidth < 600 ? 5 : 7 } },
                     y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
@@ -211,49 +313,47 @@ function renderStepsVisual(data) {
     }
 }
 
-let currentHREndDate = new Date();
-let currentHRRange = '1d';
-async function updateHRRange(range, btn) {
-    if (range) currentHRRange = range;
+window.updateHRRange = async function (range, btn) {
+    if (range) window.currentHRRange = range;
     if (btn) {
         btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
     try {
         // Check cache first
-        const cached = getCachedData('hr', currentHRRange, currentHREndDate);
+        const cached = getCachedData('hr', window.currentHRRange, window.currentHREndDate);
         if (cached) {
             renderHRVisual(cached);
             return;
         }
 
         // Check preloaded data for 1y
-        if (currentHRRange === '1y' && isDateToday(currentHREndDate) && window.preloadedData['hr']) {
-            console.log('Cache Hit: HR 1y');
-            setCachedData('hr', currentHRRange, currentHREndDate, window.preloadedData['hr']);
+        if (window.currentHRRange === '1y' && isDateToday(window.currentHREndDate) && window.preloadedData['hr']) {
+
+            setCachedData('hr', window.currentHRRange, window.currentHREndDate, window.preloadedData['hr']);
             renderHRVisual(window.preloadedData['hr']);
             return;
         }
 
-        const res = await fetch(`/api/hr_history?range=${currentHRRange}&end_date=${getLocalDateStr(currentHREndDate)}`);
+        const res = await fetch(`/api/hr_history?range=${window.currentHRRange}&end_date=${getLocalDateStr(window.currentHREndDate)}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
-                setCachedData('hr', currentHRRange, currentHREndDate, data);
+                setCachedData('hr', window.currentHRRange, window.currentHREndDate, data);
                 renderHRVisual(data);
             }
         }
     } catch (err) { console.error('HR history error:', err); }
 }
 
-function renderHRVisual(data) {
+window.renderHRVisual = function (data) {
     const canvasId = 'hrHistoryChart';
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
-    if (data.range === '1d') {
+    if (window.currentHRRange === '1d') {
         const maxHR = data.max_hr || 190;
         const zones = data.zones || [95, 114, 133, 152, 171];
         safeSetText('hr-max-val', data.summary.max || '--');
@@ -295,12 +395,29 @@ function renderHRVisual(data) {
             return p[1] + '/' + p[2];
         });
         chartInstances[canvasId] = new Chart(ctx, {
-            type: 'bar',
+            type: 'line',
             data: {
                 labels: labels,
                 datasets: [
-                    { label: 'Resting HR', data: data.history.map(d => d.rhr), backgroundColor: '#38bdf8', borderRadius: data.history.length > 100 ? 0 : 2, barPercentage: data.history.length > 100 ? 0.7 : (data.history.length > 30 ? 0.4 : 0.5), categoryPercentage: 0.8 },
-                    { label: 'Max HR', data: data.history.map(d => d.max), backgroundColor: '#ef4444', borderRadius: data.history.length > 100 ? 0 : 2, barPercentage: data.history.length > 100 ? 0.7 : (data.history.length > 30 ? 0.4 : 0.5), categoryPercentage: 0.8 }
+                    {
+                        label: 'Resting HR',
+                        data: data.history.map(d => d.rhr),
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                        borderWidth: 3,
+                        pointRadius: data.history.length > 31 ? 0 : 3,
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: 'Max HR',
+                        data: data.history.map(d => d.max),
+                        borderColor: '#ef4444',
+                        borderWidth: 2,
+                        pointRadius: data.history.length > 31 ? 0 : 2,
+                        tension: 0.4,
+                        fill: false
+                    }
                 ]
             },
             options: {
@@ -316,7 +433,8 @@ function renderHRVisual(data) {
                             padding: window.innerWidth < 768 ? 5 : 10,
                             font: { size: window.innerWidth < 768 ? 9 : 11 }
                         }
-                    }
+                    },
+                    zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
                 },
                 scales: {
                     x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: window.innerWidth < 600 ? 5 : 12 } },
@@ -327,49 +445,47 @@ function renderHRVisual(data) {
     }
 }
 
-let currentStressEndDate = new Date();
-let currentStressRange = '1d';
-async function updateStressRange(range, btn) {
-    if (range) currentStressRange = range;
+window.updateStressRange = async function (range, btn) {
+    if (range) window.currentStressRange = range;
     if (btn) {
         btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
     try {
         // Check cache first
-        const cached = getCachedData('stress', currentStressRange, currentStressEndDate);
+        const cached = getCachedData('stress', window.currentStressRange, window.currentStressEndDate);
         if (cached) {
             renderStressVisual(cached);
             return;
         }
 
         // Check preloaded data for 1y
-        if (currentStressRange === '1y' && isDateToday(currentStressEndDate) && window.preloadedData['stress']) {
-            console.log('Cache Hit: Stress 1y');
-            setCachedData('stress', currentStressRange, currentStressEndDate, window.preloadedData['stress']);
+        if (window.currentStressRange === '1y' && isDateToday(window.currentStressEndDate) && window.preloadedData['stress']) {
+
+            setCachedData('stress', window.currentStressRange, window.currentStressEndDate, window.preloadedData['stress']);
             renderStressVisual(window.preloadedData['stress']);
             return;
         }
 
-        const res = await fetch(`/api/stress_history?range=${currentStressRange}&end_date=${getLocalDateStr(currentStressEndDate)}`);
+        const res = await fetch(`/api/stress_history?range=${window.currentStressRange}&end_date=${getLocalDateStr(window.currentStressEndDate)}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
-                setCachedData('stress', currentStressRange, currentStressEndDate, data);
+                setCachedData('stress', window.currentStressRange, window.currentStressEndDate, data);
                 renderStressVisual(data);
             }
         }
     } catch (err) { console.error('Stress history error:', err); }
 }
 
-function renderStressVisual(data) {
+window.renderStressVisual = function (data) {
     const canvasId = 'stressHistoryChart';
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
-    if (data.range === '1d') {
+    if (window.currentStressRange === '1d') {
         safeSetText('stress', data.summary.avg || '--');
         const points = data.samples.map(s => ({ x: s[0], y: s[1] }));
         const getStressColor = (val) => {
@@ -407,12 +523,29 @@ function renderStressVisual(data) {
             return p[1] + '/' + p[2];
         });
         chartInstances[canvasId] = new Chart(ctx, {
-            type: 'bar',
+            type: 'line',
             data: {
                 labels: labels,
                 datasets: [
-                    { label: 'Avg', data: data.history.map(d => d.avg), backgroundColor: '#f97316', borderRadius: data.history.length > 100 ? 0 : 2, barPercentage: data.history.length > 100 ? 0.7 : (data.history.length > 30 ? 0.4 : 0.5), categoryPercentage: 0.8 },
-                    { label: 'Max', data: data.history.map(d => d.max), backgroundColor: '#ef4444', borderRadius: data.history.length > 100 ? 0 : 2, barPercentage: data.history.length > 100 ? 0.7 : (data.history.length > 30 ? 0.4 : 0.5), categoryPercentage: 0.8 }
+                    {
+                        label: 'Avg',
+                        data: data.history.map(d => d.avg),
+                        borderColor: '#f97316',
+                        backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                        borderWidth: 3,
+                        pointRadius: data.history.length > 31 ? 0 : 3,
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: 'Max',
+                        data: data.history.map(d => d.max),
+                        borderColor: '#ef4444',
+                        borderWidth: 2,
+                        pointRadius: data.history.length > 31 ? 0 : 2,
+                        tension: 0.4,
+                        fill: false
+                    }
                 ]
             },
             options: {
@@ -427,7 +560,8 @@ function renderStressVisual(data) {
                             padding: window.innerWidth < 768 ? 5 : 10,
                             font: { size: window.innerWidth < 768 ? 9 : 11 }
                         }
-                    }
+                    },
+                    zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
                 },
                 scales: {
                     x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: window.innerWidth < 600 ? 5 : 12 } },
@@ -438,48 +572,46 @@ function renderStressVisual(data) {
     }
 }
 
-let currentSleepEndDate = new Date();
-let currentSleepRange = '1d';
-async function updateSleepRange(range, btn) {
-    if (range) currentSleepRange = range;
+window.updateSleepRange = async function (range, btn) {
+    if (range) window.currentSleepRange = range;
     if (btn) {
         btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
     try {
         // Check cache first
-        const cached = getCachedData('sleep', currentSleepRange, currentSleepEndDate);
+        const cached = getCachedData('sleep', window.currentSleepRange, window.currentSleepEndDate);
         if (cached) {
             renderSleepVisual(cached);
             return;
         }
 
         // Check preloaded data for 1y
-        if (currentSleepRange === '1y' && isDateToday(currentSleepEndDate) && window.preloadedData['sleep']) {
-            setCachedData('sleep', currentSleepRange, currentSleepEndDate, window.preloadedData['sleep']);
+        if (window.currentSleepRange === '1y' && isDateToday(window.currentSleepEndDate) && window.preloadedData['sleep']) {
+            setCachedData('sleep', window.currentSleepRange, window.currentSleepEndDate, window.preloadedData['sleep']);
             renderSleepVisual(window.preloadedData['sleep']);
             return;
         }
 
-        const res = await fetch(`/api/sleep_history?range=${currentSleepRange}&end_date=${getLocalDateStr(currentSleepEndDate)}`);
+        const res = await fetch(`/api/sleep_history?range=${window.currentSleepRange}&end_date=${getLocalDateStr(window.currentSleepEndDate)}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
-                setCachedData('sleep', currentSleepRange, currentSleepEndDate, data);
+                setCachedData('sleep', window.currentSleepRange, window.currentSleepEndDate, data);
                 renderSleepVisual(data);
             }
         }
     } catch (err) { console.error('Sleep history error:', err); }
 }
 
-function renderSleepVisual(data) {
+window.renderSleepVisual = function (data) {
     const canvasId = 'sleepHistoryChart';
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
-    if (data.range === '1d') {
+    if (window.currentSleepRange === '1d') {
         const s = data.summary;
         safeSetText('sleep', (s.total / 3600).toFixed(1));
         safeSetText('sleep-score-val', s.score || '--');
@@ -519,15 +651,27 @@ function renderSleepVisual(data) {
         const catPct = data.history.length > 100 ? 0.9 : 0.8;
         const radius = data.history.length > 100 ? 0 : 4;
         chartInstances[canvasId] = new Chart(ctx, {
-            type: 'bar',
+            type: 'line',
             data: {
                 labels: labels,
-                datasets: [{ label: 'Score', data: data.history.map(d => d.score), backgroundColor: '#818cf8', borderRadius: radius, barPercentage: barPct, categoryPercentage: catPct }]
+                datasets: [{
+                    label: 'Score',
+                    data: data.history.map(d => d.score),
+                    borderColor: '#818cf8',
+                    backgroundColor: 'rgba(129, 140, 248, 0.1)',
+                    borderWidth: 3,
+                    pointRadius: data.history.length > 31 ? 0 : 4,
+                    tension: 0.4,
+                    fill: true
+                }]
             },
             options: {
                 animation: false,
                 responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: {
+                    legend: { display: false },
+                    zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
+                },
                 scales: {
                     x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: isMobile ? 5 : 12 } },
                     y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
@@ -537,25 +681,23 @@ function renderSleepVisual(data) {
     }
 }
 
-let currentHydrationRange = '1d';
-let currentHydrationEndDate = new Date();
-async function updateHydrationRange(range, btn) {
-    if (range) currentHydrationRange = range;
+window.updateHydrationRange = async function (range, btn) {
+    if (range) window.currentHydrationRange = range;
     if (btn) { btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
     const donut = document.getElementById('hydration-donut-container');
     const hChartCanvas = document.getElementById('hydrationHistoryChart');
-    if (donut) donut.style.display = currentHydrationRange === '1d' ? 'block' : 'none';
-    if (hChartCanvas) hChartCanvas.style.display = currentHydrationRange === '1d' ? 'none' : 'block';
+    if (donut) donut.style.display = window.currentHydrationRange === '1d' ? 'block' : 'none';
+    if (hChartCanvas) hChartCanvas.style.display = window.currentHydrationRange === '1d' ? 'none' : 'block';
     await renderHydrationVisual();
 }
 
 async function renderHydrationVisual() {
     try {
         // Check cache first
-        const cached = getCachedData('hydration', currentHydrationRange, currentHydrationEndDate);
+        const cached = getCachedData('hydration', window.currentHydrationRange, window.currentHydrationEndDate);
         if (cached) {
             const oz = (ml) => (ml * 0.033814).toFixed(1);
-            if (currentHydrationRange === '1d') {
+            if (window.currentHydrationRange === '1d') {
                 const p = Math.min(100, Math.round((cached.summary.intake / cached.summary.goal) * 100));
                 safeSetText('hydration-val', oz(cached.summary.intake) + ' oz');
                 safeSetText('hydration-goal', 'Goal: ' + oz(cached.summary.goal) + ' oz');
@@ -586,8 +728,8 @@ async function renderHydrationVisual() {
         }
 
         // Check preloaded data for 1y
-        if (currentHydrationRange === '1y' && isDateToday(currentHydrationEndDate) && window.preloadedData['hydration']) {
-            setCachedData('hydration', currentHydrationRange, currentHydrationEndDate, window.preloadedData['hydration']);
+        if (window.currentHydrationRange === '1y' && isDateToday(window.currentHydrationEndDate) && window.preloadedData['hydration']) {
+            setCachedData('hydration', window.currentHydrationRange, window.currentHydrationEndDate, window.preloadedData['hydration']);
             const data = window.preloadedData['hydration'];
             const oz = (ml) => (ml * 0.033814).toFixed(1);
             const ctx = document.getElementById('hydrationHistoryChart').getContext('2d');
@@ -599,16 +741,16 @@ async function renderHydrationVisual() {
             });
             return;
         }
-        const res = await fetch(`/api/hydration_history?range=${currentHydrationRange}&end_date=${getLocalDateStr(currentHydrationEndDate)}`);
+        const res = await fetch(`/api/hydration_history?range=${window.currentHydrationRange}&end_date=${getLocalDateStr(window.currentHydrationEndDate)}`);
         if (res.ok) {
             const data = await res.json();
             if (data.error) return;
 
             // Cache the fetched data
-            setCachedData('hydration', currentHydrationRange, currentHydrationEndDate, data);
+            setCachedData('hydration', window.currentHydrationRange, window.currentHydrationEndDate, data);
 
             const oz = (ml) => (ml * 0.033814).toFixed(1);
-            if (currentHydrationRange === '1d') {
+            if (window.currentHydrationRange === '1d') {
                 const p = Math.min(100, Math.round((data.summary.intake / data.summary.goal) * 100));
                 safeSetText('hydration-val', oz(data.summary.intake) + ' oz');
                 safeSetText('hydration-goal', 'Goal: ' + oz(data.summary.goal) + ' oz');
@@ -641,41 +783,39 @@ async function renderHydrationVisual() {
 }
 
 function shiftHydrationDate(dir) {
-    currentHydrationEndDate.setDate(currentHydrationEndDate.getDate() + (dir * (currentHydrationRange === '1d' ? 1 : 7)));
-    if (currentHydrationEndDate > new Date()) currentHydrationEndDate = new Date();
+    window.currentHydrationEndDate.setDate(window.currentHydrationEndDate.getDate() + (dir * (window.currentHydrationRange === '1d' ? 1 : 7)));
+    if (window.currentHydrationEndDate > new Date()) window.currentHydrationEndDate = new Date();
     renderHydrationVisual();
 }
 
-let currentHRVEndDate = new Date();
-let currentHRVRange = '1d';
 
-async function updateHRVRange(range, btn) {
-    if (range) currentHRVRange = range;
+window.updateHRVRange = async function (range, btn) {
+    if (range) window.currentHRVRange = range;
     if (btn) {
         btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
-    await fetchHRV();
+    if (window.fetchHRV) window.fetchHRV();
 }
 
-function shiftHRVDate(dir) {
-    currentHRVEndDate.setDate(currentHRVEndDate.getDate() + (dir * (currentHRVRange === '1d' ? 1 : 7)));
-    if (currentHRVEndDate > new Date()) currentHRVEndDate = new Date();
-    fetchHRV();
+window.shiftHRVDate = function (dir) {
+    window.currentHRVEndDate.setDate(window.currentHRVEndDate.getDate() + (dir * (window.currentHRVRange === '1d' ? 1 : 7)));
+    if (window.currentHRVEndDate > new Date()) window.currentHRVEndDate = new Date();
+    window.fetchHRV();
 }
 
 /**
  * Render HRV Visual Card
  */
-function renderHRVVisual(data) {
+window.renderHRVVisual = function (data) {
     const canvasId = 'hrvHistoryChart';
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const statusContainer = document.getElementById('hrv-status-container');
-    if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+    if (window.chartInstances[canvasId]) window.chartInstances[canvasId].destroy();
 
-    const range = data.range || currentHRVRange;
+    const range = data.range || window.currentHRVRange;
 
     // Daily View
     if (range === '1d') {
@@ -685,9 +825,9 @@ function renderHRVVisual(data) {
         if (!data.hrvSummary) return;
         const summary = data.hrvSummary;
 
-        // Set values
-        safeSetText('hrv-val', summary.lastNightAvg || '--');
-        safeSetText('hrv-weekly-avg', `7d Avg: ${summary.weeklyAvg || '--'} ms`);
+        // Set values: Primary = 7d Avg, Secondary = Overnight
+        safeSetText('hrv-val', summary.weeklyAvg || '--');
+        safeSetText('hrv-weekly-avg', `Overnight: ${summary.lastNightAvg || '--'} ms`);
 
         // Status Badge
         const statusEl = document.getElementById('hrv-status-badge');
@@ -751,8 +891,8 @@ function renderHRVVisual(data) {
         // Current summary for badge/value if available
         const lastSummary = data.history[data.history.length - 1];
         if (lastSummary) {
-            safeSetText('hrv-val', lastSummary.lastNightAvg || '--');
-            safeSetText('hrv-weekly-avg', `7d Avg: ${lastSummary.weeklyAvg || '--'} ms`);
+            safeSetText('hrv-val', lastSummary.weeklyAvg || '--');
+            safeSetText('hrv-weekly-avg', `Overnight: ${lastSummary.lastNightAvg || '--'} ms`);
 
             const statusEl = document.getElementById('hrv-status-badge');
             if (statusEl) {
@@ -766,30 +906,81 @@ function renderHRVVisual(data) {
             }
         }
 
-        const barPct = data.history.length > 100 ? 0.7 : (data.history.length > 30 ? 0.4 : 0.5);
-        const radius = data.history.length > 100 ? 0 : 4;
+        const radius = data.history.length > 100 ? 0 : 5;
+        const weeklyAvgData = data.history.map(d => d.weeklyAvg);
+        const lastNightData = data.history.map(d => d.lastNightAvg);
+        const baselineLow = data.history.map(d => d.baseline ? d.baseline.balancedLow : null);
+        const baselineHigh = data.history.map(d => d.baseline ? d.baseline.balancedUpper : null);
 
-        chartInstances[canvasId] = new Chart(ctx, {
-            type: 'bar',
+        const pointColors = data.history.map(d => {
+            if (d.status === 'BALANCED') return '#4ade80';
+            if (d.status === 'UNBALANCED' || d.status === 'UNBALANCED_LOW') return '#fb923c';
+            if (d.status === 'LOW' || d.status === 'POOR') return '#f87171';
+            return '#94a3b8';
+        });
+
+        const pointShapes = data.history.map(d => {
+            if (d.status === 'BALANCED') return 'circle';
+            if (d.status === 'UNBALANCED' || d.status === 'UNBALANCED_LOW') return 'rect';
+            if (d.status === 'LOW' || d.status === 'POOR') return 'triangle';
+            return 'circle';
+        });
+
+        window.chartInstances[canvasId] = new Chart(ctx, {
+            type: 'line',
             data: {
                 labels: labels,
-                datasets: [{
-                    label: 'HRV (ms)',
-                    data: data.history.map(d => d.lastNightAvg),
-                    backgroundColor: data.history.map(d => {
-                        if (d.status === 'BALANCED') return '#4ade80';
-                        if (d.status === 'UNBALANCED') return '#fb923c';
-                        if (d.status === 'LOW') return '#f87171';
-                        return '#38bdf8';
-                    }),
-                    borderRadius: radius,
-                    barPercentage: barPct,
-                    categoryPercentage: 0.8
-                }]
+                datasets: [
+                    {
+                        label: '7d Avg',
+                        data: weeklyAvgData,
+                        borderColor: 'transparent',
+                        pointBackgroundColor: pointColors,
+                        pointBorderColor: pointColors,
+                        pointStyle: pointShapes,
+                        pointRadius: radius,
+                        pointHoverRadius: radius + 2,
+                        showLine: false,
+                        z: 20
+                    },
+                    {
+                        label: 'Overnight Avg',
+                        data: lastNightData,
+                        borderColor: 'rgba(255, 255, 255, 0.4)',
+                        borderWidth: 1.5,
+                        borderDash: [5, 5],
+                        pointRadius: 0,
+                        tension: 0.4,
+                        z: 10
+                    },
+                    {
+                        label: 'Baseline High',
+                        data: baselineHigh,
+                        borderColor: 'transparent',
+                        backgroundColor: 'rgba(74, 222, 128, 0.12)',
+                        pointRadius: 0,
+                        fill: false,
+                        tension: 0.1,
+                        z: 0
+                    },
+                    {
+                        label: 'Baseline Low',
+                        data: baselineLow,
+                        borderColor: 'transparent',
+                        backgroundColor: 'rgba(74, 222, 128, 0.12)',
+                        pointRadius: 0,
+                        fill: '-1',
+                        tension: 0.1,
+                        z: 0
+                    }
+                ]
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: {
+                    legend: { display: false },
+                    zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
+                },
                 scales: {
                     x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 7 } },
                     y: { beginAtZero: false, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
@@ -799,92 +990,25 @@ function renderHRVVisual(data) {
     }
 }
 
-// --- Activity Modal & Detail Charts ---
+// --- Activity Detail Charts ---
 
-async function openActivityDetail(id, basic) {
-    const modal = document.getElementById('activityModal');
-    if (!modal) return;
-    modal.classList.add('active');
+const activityChartBaseIds = ['activityElevChart', 'activityHrChart', 'activityCadenceChart', 'activityPowerChart', 'activitySpeedChart'];
 
-    const isRun = basic.activityType.typeKey.toLowerCase().includes('run');
-    const isCycle = basic.activityType.typeKey.toLowerCase().includes('cycling') || basic.activityType.typeKey.toLowerCase().includes('ride');
-
-    safeSetText('modal-title', basic.activityName);
-    safeSetText('modal-date', new Date(basic.startTimeLocal).toLocaleString());
-    safeSetText('modal-distance', formatDualDistance(basic.distance / 1609.34));
-    safeSetText('modal-duration', Math.round(basic.duration / 60) + ' min');
-    safeSetText('modal-hr', basic.averageHR ? Math.round(basic.averageHR) + ' bpm' : '--');
-    safeSetText('modal-calories', Math.round(basic.calories) + ' kcal');
-
-    // Immediate population from basic summary data
-    if (basic.elevationGain !== undefined) {
-        const gainFeet = Math.round(basic.elevationGain * 3.28084);
-        const gainMeters = Math.round(basic.elevationGain);
-        safeSetText('modal-elevation', `${gainFeet} ft / ${gainMeters} m`);
-    } else {
-        safeSetText('modal-elevation', '--');
-    }
-
-    const basicCadence = basic.averageBikingCadenceInRevPerMinute || basic.averageRunningCadenceInStepsPerMinute || basic.averageCadence;
-    if (basicCadence) {
-        safeSetText('modal-cadence', Math.round(basicCadence) + (isRun ? ' spm' : ' rpm'));
-    } else {
-        safeSetText('modal-cadence', '--');
-    }
-
-    // Initial pace/speed from basic data
-    if (isCycle) {
-        safeSetText('modal-pace-label', 'Avg Speed');
-        const mph = (basic.averageSpeed * 2.23694).toFixed(1);
-        safeSetText('modal-pace', mph + ' mph');
-    } else {
-        safeSetText('modal-pace-label', 'Overall Pace');
-        safeSetText('modal-pace', '--');
-    }
-
-    try {
-        const res = await fetch(`/api/activity/${id}`);
-        if (res.ok) {
-            const data = await res.json();
-            if (!data.error) {
-                const hasPower = data.charts.power && data.charts.power.length > 0 && data.charts.power.some(p => p > 0);
-                const powerCard = document.getElementById('power-summary-card');
-                const powerChartBox = document.getElementById('power-chart-container');
-                const powerTitle = document.getElementById('power-title');
-
-                if (powerCard) powerCard.style.display = hasPower ? 'block' : 'none';
-                if (powerChartBox) powerChartBox.style.display = hasPower ? 'block' : 'none';
-                if (powerTitle) powerTitle.style.display = hasPower ? 'block' : 'none';
-
-                if (hasPower && data.summary.averagePower) {
-                    safeSetText('modal-power', Math.round(data.summary.averagePower) + ' W');
-                }
-
-                // Update with refined data if available
-                if (data.summary.elevationGain !== undefined) {
-                    const gainFeet = Math.round(data.summary.elevationGain * 3.28084);
-                    const gainMeters = Math.round(data.summary.elevationGain);
-                    safeSetText('modal-elevation', `${gainFeet} ft / ${gainMeters} m`);
-                }
-
-                const avgCadence = data.summary.averageBikeCadence || data.summary.averageRunCadence || data.summary.averageCadence ||
-                    data.summary.averageBikingCadenceInRevPerMinute || data.summary.averageRunningCadenceInStepsPerMinute;
-                if (avgCadence) {
-                    safeSetText('modal-cadence', Math.round(avgCadence) + (isRun ? ' spm' : ' rpm'));
-                }
-
-                // Refined pace/speed if detailed data is available
-                if (!isCycle) {
-                    safeSetText('modal-pace', data.avg_pace_str || '--');
-                }
-
-                renderActivityCharts(data.charts, isRun, isCycle);
-            }
+function syncActivityCharts(source, prefix) {
+    const { min, max } = source.scales.x;
+    // Find all charts in the same stage (same prefix)
+    activityChartBaseIds.forEach(baseId => {
+        const id = prefix ? `${prefix}-${baseId}` : baseId;
+        const chart = chartInstances[id];
+        if (chart && chart !== source) {
+            chart.options.scales.x.min = min;
+            chart.options.scales.x.max = max;
+            chart.update('none');
         }
-    } catch (err) { console.error('Activity detail error:', err); }
+    });
 }
 
-function closeModal() { document.getElementById('activityModal').classList.remove('active'); }
+window.closeModal = function () { document.getElementById('activityModal').classList.remove('active'); }
 
 const activityChartIds = ['activityElevChart', 'activityHrChart', 'activityCadenceChart', 'activityPowerChart', 'activitySpeedChart'];
 function syncActivityCharts(source) {
@@ -895,55 +1019,90 @@ function syncActivityCharts(source) {
     });
 }
 
-function renderActivityCharts(charts, isRun, isCycle) {
-    if (!charts.timestamps) return;
+function renderActivityCharts(charts, isRun, isCycle, prefix = null) {
+    if (!charts.timestamps || charts.timestamps.length === 0) return;
     const start = new Date(charts.timestamps[0]).getTime();
     const elapsed = charts.timestamps.map(t => (new Date(t).getTime() - start) / 1000);
 
-    renderDetailChart('activityElevChart', elapsed, charts.elevation.map(e => e * 3.28084), 'Elevation', '#94a3b8', 'ft');
-    renderDetailChart('activityHrChart', elapsed, charts.heart_rate, 'Heart Rate', '#f87171', 'bpm');
-    renderDetailChart('activityCadenceChart', elapsed, charts.cadence, isRun ? 'spm' : 'rpm', '#4ade80', '');
+    renderDetailChart('activityElevChart', elapsed, charts.elevation.map(e => e * 3.28084), 'Elevation', '#94a3b8', 'ft', false, null, prefix);
+    renderDetailChart('activityHrChart', elapsed, charts.heart_rate, 'Heart Rate', '#f87171', 'bpm', false, null, prefix);
 
-    if (charts.power && charts.power.length > 0) {
-        renderDetailChart('activityPowerChart', elapsed, charts.power, 'Power', '#a855f7', 'W', false, getPowerZoneColor);
+    if (charts.cadence && charts.cadence.length > 0) {
+        renderDetailChart('activityCadenceChart', elapsed, charts.cadence, isRun ? 'Steps' : 'RPM', '#4ade80', '', false, null, prefix);
     }
 
-    if (isRun) renderDetailChart('activitySpeedChart', elapsed, charts.speed.map(s => s > 0.5 ? 26.8224 / s : null), 'Pace', '#38bdf8', '/mi', true);
-    else renderDetailChart('activitySpeedChart', elapsed, charts.speed.map(s => s * 2.23694), 'Speed', '#38bdf8', 'mph');
+    if (charts.power && charts.power.length > 0) {
+        renderDetailChart('activityPowerChart', elapsed, charts.power, 'Power', '#a855f7', 'W', false, getPowerZoneColor, prefix);
+    }
+
+    if (isRun) {
+        // PACE: Convert m/s to min/mi
+        const paceData = charts.speed.map(s => (s > 0.5) ? (26.8224 / s) : null);
+        renderDetailChart('activitySpeedChart', elapsed, paceData, 'Pace', '#38bdf8', '/mi', true, null, prefix);
+    } else {
+        // SPEED: Convert m/s to mph
+        renderDetailChart('activitySpeedChart', elapsed, charts.speed.map(s => s * 2.23694), 'Speed', '#38bdf8', 'mph', false, null, prefix);
+    }
 }
 
-function renderDetailChart(id, x, y, label, color, unit, rev = false, colorFunc = null) {
-    const canvas = document.getElementById(id);
+function renderDetailChart(id, x, y, label, color, unit, rev = false, colorFunc = null, prefix = null) {
+    const finalId = prefix ? `${prefix}-${id}` : id;
+    const canvas = document.getElementById(finalId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (chartInstances[id]) chartInstances[id].destroy();
+    if (chartInstances[finalId]) chartInstances[finalId].destroy();
 
     const dataset = {
         label,
         data: y,
         borderColor: color,
-        backgroundColor: color + '22',
+        backgroundColor: color + '11',
         fill: true,
         pointRadius: 0,
-        tension: 0.4
+        tension: 0.3,
+        borderWidth: 2
     };
 
     if (colorFunc) {
         dataset.segment = {
-            borderColor: ctx => colorFunc(ctx.p1.parsed.y),
-            backgroundColor: ctx => colorFunc(ctx.p1.parsed.y) + '44' // ~25% opacity
+            borderColor: ctx => ctx.p1.parsed.y ? colorFunc(ctx.p1.parsed.y) : color,
+            backgroundColor: ctx => ctx.p1.parsed.y ? colorFunc(ctx.p1.parsed.y) + '33' : color + '11'
         };
     }
 
-    chartInstances[id] = new Chart(ctx, {
+    chartInstances[finalId] = new Chart(ctx, {
         type: 'line',
         data: { labels: x, datasets: [dataset] },
         options: {
             responsive: true, maintainAspectRatio: false,
-            plugins: { legend: { display: false }, zoom: { pan: { enabled: true, mode: 'x', onPan: (c) => syncActivityCharts(c.chart) }, zoom: { wheel: { enabled: true }, mode: 'x', onZoom: (c) => syncActivityCharts(c.chart) } } },
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    enabled: true,
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        title: (items) => formatDuration(items[0].parsed.x),
+                        label: (ctx) => `${label}: ${ctx.parsed.y ? ctx.parsed.y.toFixed(1) : '--'} ${unit}`
+                    }
+                },
+                zoom: {
+                    pan: { enabled: true, mode: 'x', onPan: (c) => syncActivityCharts(c.chart, prefix) },
+                    zoom: { wheel: { enabled: true }, mode: 'x', onZoom: (c) => syncActivityCharts(c.chart, prefix) }
+                }
+            },
             scales: {
-                y: { reverse: rev, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', callback: v => v ? v.toFixed(1) + ' ' + unit : '' } },
-                x: { type: 'linear', ticks: { color: '#94a3b8', callback: v => formatDuration(v) }, grid: { display: false } }
+                y: {
+                    reverse: rev,
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#919191', font: { size: 10 }, maxTicksLimit: 5 }
+                },
+                x: {
+                    type: 'linear',
+                    ticks: { color: '#919191', font: { size: 10 }, maxTicksLimit: 8, callback: v => formatDuration(v) },
+                    grid: { display: false }
+                }
             }
         }
     });

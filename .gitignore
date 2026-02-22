@@ -18,8 +18,12 @@ __pycache__/
 *.pkl
 *.cache
 
-# User Settings
+# User Settings & Data
 settings.json
+food_logs.json
+custom_foods.json
+ai_memory_cache.json
+cookies.txt
 
 # IDEs
 .vscode/

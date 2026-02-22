@@ -3,3 +3,4 @@ garminconnect
 python-dotenv
 gunicorn
 google-genai
+tzdata

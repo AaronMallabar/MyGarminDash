@@ -554,6 +554,23 @@ h1 {
 .small-chart-container {
     height: 200px;
     margin-bottom: 2rem;
+    position: relative;
+}
+
+.chart-label {
+    position: absolute;
+    top: 0;
+    left: 0;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    letter-spacing: 0.05em;
+    z-index: 5;
+    background: var(--bg-color);
+    padding: 2px 6px;
+    border-radius: 4px;
+    opacity: 0.8;
 }
 
 @media (max-width: 768px) {
@@ -1588,4 +1605,44 @@ h1 {
     transform: scale(1.25);
     z-index: 50;
     filter: brightness(1.2) drop-shadow(0 0 5px var(--accent-color));
+}
+
+/* Activity Splits Table */
+.splits-container {
+    margin-top: 2rem;
+    overflow-x: auto;
+    border-radius: 1rem;
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.splits-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.splits-table th {
+    text-align: left;
+    padding: 0.75rem 1rem;
+    background: rgba(30, 41, 59, 0.8);
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+}
+
+.splits-table td {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.splits-table tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.splits-table tr:last-child td {
+    background: rgba(56, 189, 248, 0.03);
+    font-weight: 700;
 }

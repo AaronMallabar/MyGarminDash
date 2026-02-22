@@ -1,0 +1,18 @@
+[Unit]
+Description=MyGarminDash Flask Application
+After=network.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/MyGarminDash
+Environment="PATH=/home/ubuntu/MyGarminDash/venv/bin"
+EnvironmentFile=/home/ubuntu/MyGarminDash/.env
+ExecStart=/home/ubuntu/MyGarminDash/venv/bin/gunicorn --config gunicorn.conf.py app:app
+
+# Restart settings
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
