@@ -30,20 +30,31 @@ def get_today():
     return datetime.now(EST).date()
 
 def get_git_command():
-    """Find the git command, checking common Windows paths as fallback."""
+    """Find the git command, checking common paths as fallback when PATH is minimal."""
     try:
         subprocess.run(['git', '--version'], check=True, capture_output=True)
         return 'git'
     except (subprocess.CalledProcessError, FileNotFoundError):
+        fallback_paths = []
         if os.name == 'nt':
-            common_paths = [
+            fallback_paths = [
                 r"C:\Program Files\Git\cmd\git.exe",
                 r"C:\Program Files\Git\bin\git.exe",
                 r"C:\Users\User\AppData\Local\Programs\Git\cmd\git.exe"
             ]
-            for path in common_paths:
-                if os.path.exists(path):
+        else:
+            # Linux/macOS: services often run with minimal PATH that excludes /usr/bin
+            fallback_paths = [
+                "/usr/bin/git",
+                "/usr/local/bin/git",
+            ]
+        for path in fallback_paths:
+            if os.path.exists(path):
+                try:
+                    subprocess.run([path, '--version'], check=True, capture_output=True)
                     return path
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    continue
     return None
 
 def get_app_version():
