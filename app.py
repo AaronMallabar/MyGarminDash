@@ -1788,6 +1788,104 @@ def get_sleep_history():
         logger.error(f"Error fetching sleep history: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/calorie_history')
+@login_required
+def get_calorie_history():
+    """Fetch calorie, nutrition, and weight history for the trends chart."""
+    try:
+        range_val = request.args.get('range', '1w')
+        end_date_str = request.args.get('end_date')
+        client = get_garmin_client()
+        
+        if end_date_str:
+            end_date = date.fromisoformat(end_date_str)
+        else:
+            end_date = get_today()
+        
+        days = 7
+        if range_val == '1d': days = 1
+        elif range_val == '1w': days = 7
+        elif range_val == '1m': days = 31
+        elif range_val == '1y': days = 365
+        
+        dates_to_fetch = [end_date - timedelta(days=i) for i in range(days)]
+        dates_to_fetch = sorted(dates_to_fetch)
+        
+        logs = load_json(FOOD_LOGS_FILE, [])
+        
+        # Build daily nutrition sums
+        def get_day_nutrition(d_str):
+            day_logs = [l for l in logs if l['date'] == d_str]
+            return {
+                'consumed': sum(l.get('calories', 0) for l in day_logs),
+                'cholesterol_mg': sum(l.get('cholesterol_mg', 0) for l in day_logs),
+                'protein_g': sum(l.get('protein_g', 0) for l in day_logs),
+                'carbs_g': sum(l.get('carbs_g', 0) for l in day_logs),
+                'fat_g': sum(l.get('fat_g', 0) for l in day_logs),
+            }
+        
+        # Get weight history for range
+        weight_by_date = {}
+        try:
+            start_date = dates_to_fetch[0]
+            res = client.get_weigh_ins(start_date.isoformat(), end_date.isoformat())
+            summaries = res if isinstance(res, list) else res.get('dailyWeightSummaries', [])
+            for day in summaries:
+                d_str = day.get('summaryDate')
+                if d_str and 'latestWeight' in day and day['latestWeight'].get('weight'):
+                    kg = day['latestWeight']['weight'] / 1000
+                    weight_by_date[d_str] = round(kg * 2.20462, 1)
+        except Exception as e:
+            logger.warning(f"Weight fetch for calorie history: {e}")
+        
+        from concurrent.futures import ThreadPoolExecutor
+        
+        def fetch_day(d):
+            d_str = d.isoformat()
+            try:
+                cal_data = get_calorie_data(client, d_str)
+                nut = get_day_nutrition(d_str)
+                total_burned = cal_data['total']
+                consumed = nut['consumed']
+                weight = weight_by_date.get(d_str)
+                return {
+                    'date': d_str,
+                    'active_calories': cal_data['active'],
+                    'resting_calories': cal_data['resting'],
+                    'total_calories': total_burned,
+                    'consumed': consumed,
+                    'net_energy': consumed - total_burned,
+                    'cholesterol_mg': nut['cholesterol_mg'],
+                    'protein_g': nut['protein_g'],
+                    'carbs_g': nut['carbs_g'],
+                    'fat_g': nut['fat_g'],
+                    'weight_lbs': weight
+                }
+            except Exception as e:
+                logger.warning(f"Calorie history day {d_str}: {e}")
+                nut = get_day_nutrition(d_str)
+                return {
+                    'date': d_str,
+                    'active_calories': 0,
+                    'resting_calories': 0,
+                    'total_calories': 0,
+                    'consumed': nut['consumed'],
+                    'net_energy': nut['consumed'],
+                    'cholesterol_mg': nut['cholesterol_mg'],
+                    'protein_g': nut['protein_g'],
+                    'carbs_g': nut['carbs_g'],
+                    'fat_g': nut['fat_g'],
+                    'weight_lbs': weight_by_date.get(d_str)
+                }
+        
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            history = list(executor.map(fetch_day, dates_to_fetch))
+        
+        return jsonify({'history': history, 'range': range_val})
+    except Exception as e:
+        logger.error(f"Error fetching calorie history: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/weight_history')
 @login_required
 def get_weight_history():

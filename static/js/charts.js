@@ -15,7 +15,8 @@ const chartDataCache = {
     sleep: {},
     weight: {},
     hydration: {},
-    hrv: {}
+    hrv: {},
+    calorie: {}
 };
 
 function getCacheKey(range, endDate) {
@@ -216,6 +217,268 @@ window.renderWeightChart = function (data, range) {
         }
     });
 }
+
+// --- Calorie History Chart ---
+const CALORIE_METRIC_CONFIG = {
+    active_calories: { label: 'Active', color: '#f59e0b', axis: 'y', unit: 'kcal' },
+    resting_calories: { label: 'Passive', color: '#6366f1', axis: 'y', unit: 'kcal' },
+    total_calories: { label: 'Total Burned', color: '#38bdf8', axis: 'y', unit: 'kcal' },
+    consumed: { label: 'Consumed', color: '#10b981', axis: 'y', unit: 'kcal' },
+    net_energy: { label: 'Net Energy', color: '#a78bfa', axis: 'y', unit: 'kcal' },
+    weight_lbs: { label: 'Weight', color: '#818cf8', axis: 'y1', unit: 'lbs' },
+    cholesterol_mg: { label: 'Cholesterol', color: '#fb923c', axis: 'y1', unit: 'mg' },
+    protein_g: { label: 'Protein', color: '#f472b6', axis: 'y1', unit: 'g' },
+    carbs_g: { label: 'Carbs', color: '#eab308', axis: 'y1', unit: 'g' },
+    fat_g: { label: 'Fat', color: '#f97316', axis: 'y1', unit: 'g' }
+};
+
+window.updateCalorieRange = async function (range, btn) {
+    if (range) window.currentCalorieRange = range;
+    if (btn) {
+        btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    try {
+        const cached = getCachedData('calorie', window.currentCalorieRange, window.currentCalorieEndDate);
+        if (cached) {
+            renderCalorieChart(cached);
+            updateCalorieRangeLabel();
+            return;
+        }
+        const res = await fetch(`/api/calorie_history?range=${window.currentCalorieRange}&end_date=${getLocalDateStr(window.currentCalorieEndDate)}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (!data.error) {
+                setCachedData('calorie', window.currentCalorieRange, window.currentCalorieEndDate, data);
+                renderCalorieChart(data);
+                updateCalorieRangeLabel();
+            }
+        }
+    } catch (err) { console.error('Calorie history error:', err); }
+};
+
+window.onCalorieFilterChange = function () {
+    const cached = getCachedData('calorie', window.currentCalorieRange, window.currentCalorieEndDate);
+    if (cached) renderCalorieChart(cached);
+};
+
+window.updateCalorieRangeLabel = function () {
+    const el = document.getElementById('calorie-range-label');
+    if (!el) return;
+    const end = window.currentCalorieEndDate;
+    const range = window.currentCalorieRange;
+    const start = new Date(end);
+    if (range === '1d') start.setDate(start.getDate());
+    else if (range === '1w') start.setDate(start.getDate() - 6);
+    else if (range === '1m') start.setDate(start.getDate() - 29);
+    else if (range === '1y') start.setDate(start.getDate() - 364);
+    el.textContent = start.toLocaleDateString(undefined, { month: 'short' }) + ' ' + start.getDate() + ' – ' + end.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+function getCalorieFilters() {
+    const checked = [];
+    document.querySelectorAll('.calorie-filter input[data-metric]:checked').forEach(cb => checked.push(cb.getAttribute('data-metric')));
+    return checked;
+}
+
+function renderCalorie1DayView(day) {
+    const consumed = day.consumed || 0;
+    const burned = day.total_calories || 1;
+    const net = consumed - burned;
+    const chol = day.cholesterol_mg ?? '--';
+    const weight = day.weight_lbs != null ? day.weight_lbs : '--';
+
+    const netEl = document.getElementById('calorie-net-value');
+    const netLabel = document.getElementById('calorie-net-label');
+    if (netEl) {
+        netEl.textContent = (net >= 0 ? '+' : '') + net.toLocaleString();
+        netEl.style.color = net <= 0 ? '#10b981' : '#f87171';
+    }
+    if (netLabel) netLabel.textContent = net <= 0 ? 'Deficit' : 'Surplus';
+
+    const donutEl = document.getElementById('calorie-energy-donut');
+    if (donutEl) {
+        const total = Math.max(consumed + burned, 1);
+        const pctConsumed = Math.round((consumed / total) * 100);
+        donutEl.style.background = `conic-gradient(#10b981 0% ${pctConsumed}%, #38bdf8 ${pctConsumed}% 100%)`;
+    }
+
+    const pro = day.protein_g || 0;
+    const carb = day.carbs_g || 0;
+    const fat = day.fat_g || 0;
+    const calFromPro = pro * 4;
+    const calFromCarb = carb * 4;
+    const calFromFat = fat * 9;
+    const totalMacroCal = calFromPro + calFromCarb + calFromFat;
+
+    const macrosCenter = document.getElementById('calorie-macros-total');
+    if (macrosCenter) macrosCenter.textContent = consumed > 0 ? consumed.toLocaleString() : '--';
+
+    const macrosCanvas = document.getElementById('calorie-macros-donut');
+    if (macrosCanvas && chartInstances['calorieMacrosDonut']) {
+        chartInstances['calorieMacrosDonut'].destroy();
+        chartInstances['calorieMacrosDonut'] = null;
+    }
+    if (macrosCanvas && totalMacroCal > 0) {
+        const pPct = (calFromPro / totalMacroCal) * 100;
+        const cPct = (calFromCarb / totalMacroCal) * 100;
+        const fPct = (calFromFat / totalMacroCal) * 100;
+        chartInstances['calorieMacrosDonut'] = new Chart(macrosCanvas.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Protein', 'Carbs', 'Fat'],
+                datasets: [{
+                    data: [pPct, cPct, fPct],
+                    backgroundColor: ['#f472b6', '#eab308', '#f97316'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                cutout: '65%',
+                plugins: { legend: { display: false } }
+            }
+        });
+    } else if (macrosCanvas) {
+        const ctx = macrosCanvas.getContext('2d');
+        chartInstances['calorieMacrosDonut'] = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels: [], datasets: [{ data: [1], backgroundColor: ['rgba(255,255,255,0.05)'], borderWidth: 0 }] },
+            options: { responsive: true, cutout: '65%', plugins: { legend: { display: false } } }
+        });
+    }
+
+    safeSetText('calorie-day-chol', (chol !== '--' && chol != null && chol !== '' ? chol : '--') + ' mg');
+    safeSetText('calorie-day-weight', (weight !== '--' && weight != null && weight !== '' ? weight : '--') + ' lbs');
+}
+
+window.renderCalorieChart = function (data) {
+    const canvasId = 'calorieHistoryChart';
+    const canvas = document.getElementById(canvasId);
+    const oneDayContainer = document.getElementById('calorie-1d-container');
+    const range = data.range || window.currentCalorieRange;
+    const history = data.history || [];
+
+    if (range === '1d' && history.length > 0) {
+        if (chartInstances[canvasId]) {
+            chartInstances[canvasId].destroy();
+            chartInstances[canvasId] = null;
+        }
+        if (chartInstances['calorieMacrosDonut']) {
+            chartInstances['calorieMacrosDonut'].destroy();
+            chartInstances['calorieMacrosDonut'] = null;
+        }
+        renderCalorie1DayView(history[0]);
+        if (canvas) canvas.style.display = 'none';
+        if (oneDayContainer) oneDayContainer.style.display = 'block';
+        const filterBar = document.getElementById('calorie-filters-bar');
+        if (filterBar) filterBar.style.display = 'none';
+        return;
+    }
+
+    if (canvas) canvas.style.display = 'block';
+    if (oneDayContainer) oneDayContainer.style.display = 'none';
+    const filterBar = document.getElementById('calorie-filters-bar');
+    if (filterBar) filterBar.style.display = 'flex';
+    if (chartInstances['calorieMacrosDonut']) {
+        chartInstances['calorieMacrosDonut'].destroy();
+        chartInstances['calorieMacrosDonut'] = null;
+    }
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+
+    const filters = getCalorieFilters();
+    if (history.length === 0 || filters.length === 0) {
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: { labels: [], datasets: [] },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
+        return;
+    }
+
+    const labels = history.map(h => h.date);
+    const datasets = [];
+    const y1Metrics = filters.filter(f => (CALORIE_METRIC_CONFIG[f] || {}).axis === 'y1');
+    const hasWeight = y1Metrics.includes('weight_lbs');
+    const hasNutrients = y1Metrics.some(f => f !== 'weight_lbs');
+    const y1RawVals = [];
+
+    filters.forEach(key => {
+        const cfg = CALORIE_METRIC_CONFIG[key];
+        if (!cfg) return;
+        const vals = history.map(h => {
+            let v = h[key];
+            if (v == null || v === '') return null;
+            const num = Number(v);
+            if (cfg.axis === 'y1') y1RawVals.push(num);
+            return num;
+        });
+        datasets.push({
+            label: cfg.label + (cfg.unit ? ` (${cfg.unit})` : ''),
+            data: vals,
+            _metricKey: key,
+            _unit: cfg.unit,
+            borderColor: cfg.color,
+            backgroundColor: cfg.color + '20',
+            borderWidth: 2,
+            tension: 0.3,
+            pointRadius: history.length <= 31 ? 3 : 0,
+            yAxisID: cfg.axis
+        });
+    });
+
+    const y1Min = y1RawVals.length ? Math.min(...y1RawVals) : 0;
+    const y1Max = y1RawVals.length ? Math.max(...y1RawVals) * 1.1 : 100;
+
+    chartInstances[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { position: 'top', labels: { color: '#94a3b8', boxWidth: 12, font: { size: 10 } } },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                    callbacks: {
+                        title: (items) => {
+                            const d = new Date(items[0].label);
+                            return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#94a3b8', maxTicksLimit: 10, callback: (_, i) => {
+                        const p = labels[i].split('-');
+                        return p[1] + '/' + p[2];
+                    }}
+                },
+                y: {
+                    position: 'left',
+                    title: { display: true, text: 'kcal', color: '#94a3b8' },
+                    min: 0,
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#94a3b8' }
+                },
+                y1: {
+                    position: 'right',
+                    display: y1Metrics.length > 0,
+                    min: Math.max(0, y1Min - (y1Max - y1Min) * 0.1),
+                    max: y1Max,
+                    title: { display: y1Metrics.length > 0, text: hasWeight && hasNutrients ? 'Weight (lbs) / Nutrients' : (hasWeight ? 'lbs' : 'mg / g'), color: '#818cf8' },
+                    grid: { drawOnChartArea: false },
+                    ticks: { color: '#818cf8' }
+                }
+            }
+        }
+    });
+};
 
 window.updateStepsRange = async function (range, btn) {
     if (range) window.currentStepsRange = range;

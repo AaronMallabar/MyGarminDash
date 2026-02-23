@@ -30,6 +30,7 @@ window.fetchDashboardData = async function () {
         window.fetchIMHistory();
         window.fetchCalendarData();
         window.fetchNutritionData();
+        window.fetchCalorieHistory();
 
         // Fetch basic stats
         const statsRes = await fetch('/api/stats');
@@ -230,6 +231,30 @@ window.fetchCalendarData = async function () {
         }
     } catch (e) { console.error("Calendar fetch error", e); }
 }
+
+/**
+ * Fetch calorie history for trends chart
+ */
+window.fetchCalorieHistory = async function () {
+    try {
+        const endDate = window.currentCalorieEndDate || new Date();
+        const range = window.currentCalorieRange || '1w';
+        if (window.updateCalorieRange) {
+            await window.updateCalorieRange(null, null);
+        } else {
+            const res = await fetch(`/api/calorie_history?range=${range}&end_date=${window.getLocalDateStr(endDate)}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (!data.error && window.renderCalorieChart) {
+                    window.renderCalorieChart(data);
+                    if (window.updateCalorieRangeLabel) window.updateCalorieRangeLabel();
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Calorie history error:', err);
+    }
+};
 
 /**
  * Fetch nutrition data

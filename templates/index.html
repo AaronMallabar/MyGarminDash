@@ -1200,6 +1200,103 @@
             </div>
         </div>
 
+        <!-- Calorie & Nutrition Trends Chart -->
+        <div class="card" id="calorie-trends-card"
+            style="margin-bottom: 3rem; background: linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, rgba(5, 150, 105, 0.02) 50%, rgba(56, 189, 248, 0.04) 100%); border: 1px solid rgba(16, 185, 129, 0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem;">
+                <h3 style="font-size: 1.1rem; color: #10b981; font-weight: 700; margin: 0;">Calorie & Nutrition Trends</h3>
+                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
+                        <button class="range-btn" onclick="updateCalorieRange('1d', this)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">1d</button>
+                        <button class="range-btn active" onclick="updateCalorieRange('1w', this)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">1w</button>
+                        <button class="range-btn" onclick="updateCalorieRange('1m', this)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">1m</button>
+                        <button class="range-btn" onclick="updateCalorieRange('1y', this)" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">1y</button>
+                    </div>
+                    <button class="nav-btn" id="calorie-prev" onclick="shiftCalorieDate(-1)" style="width: 28px; height: 28px; padding: 0;">
+                        <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" style="width: 14px;"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    </button>
+                    <button class="nav-btn" id="calorie-next" onclick="shiftCalorieDate(1)" disabled style="width: 28px; height: 28px; padding: 0;">
+                        <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none" style="width: 14px;"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    </button>
+                    <span id="calorie-range-label" style="font-size: 0.8rem; color: var(--text-secondary); min-width: 100px; text-align: center;">This week</span>
+                </div>
+            </div>
+            <div id="calorie-filters-bar" style="display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin-bottom: 1rem; padding: 0.75rem; background: rgba(0,0,0,0.2); border-radius: 0.5rem;">
+                <label class="calorie-filter" style="font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; color: #94a3b8;">
+                    <input type="checkbox" data-metric="active_calories" checked onchange="onCalorieFilterChange()"> <span style="color: #f59e0b;">Active</span>
+                </label>
+                <label class="calorie-filter" style="font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; color: #94a3b8;">
+                    <input type="checkbox" data-metric="resting_calories" checked onchange="onCalorieFilterChange()"> <span style="color: #6366f1;">Passive</span>
+                </label>
+                <label class="calorie-filter" style="font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; color: #94a3b8;">
+                    <input type="checkbox" data-metric="total_calories" checked onchange="onCalorieFilterChange()"> <span style="color: #38bdf8;">Total Burned</span>
+                </label>
+                <label class="calorie-filter" style="font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; color: #94a3b8;">
+                    <input type="checkbox" data-metric="consumed" checked onchange="onCalorieFilterChange()"> <span style="color: #10b981;">Consumed</span>
+                </label>
+                <label class="calorie-filter" style="font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; color: #94a3b8;">
+                    <input type="checkbox" data-metric="net_energy" checked onchange="onCalorieFilterChange()"> <span style="color: #a78bfa;">Net Energy</span>
+                </label>
+                <label class="calorie-filter" style="font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; color: #94a3b8;">
+                    <input type="checkbox" data-metric="weight_lbs" onchange="onCalorieFilterChange()"> <span style="color: #818cf8;">Weight</span>
+                </label>
+                <label class="calorie-filter" style="font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; color: #94a3b8;">
+                    <input type="checkbox" data-metric="cholesterol_mg" onchange="onCalorieFilterChange()"> <span style="color: #fb923c;">Cholesterol</span>
+                </label>
+                <label class="calorie-filter" style="font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; color: #94a3b8;">
+                    <input type="checkbox" data-metric="protein_g" onchange="onCalorieFilterChange()"> <span style="color: #f472b6;">Protein</span>
+                </label>
+                <label class="calorie-filter" style="font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; color: #94a3b8;">
+                    <input type="checkbox" data-metric="carbs_g" onchange="onCalorieFilterChange()"> <span style="color: #eab308;">Carbs</span>
+                </label>
+                <label class="calorie-filter" style="font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; color: #94a3b8;">
+                    <input type="checkbox" data-metric="fat_g" onchange="onCalorieFilterChange()"> <span style="color: #f97316;">Fat</span>
+                </label>
+            </div>
+            <div id="calorie-chart-container" style="height: 280px; position: relative;">
+                <canvas id="calorieHistoryChart"></canvas>
+                <div id="calorie-1d-container" style="display: none; padding: 1rem 0; min-height: 280px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: start;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem; font-weight: 600;">Energy Balance</div>
+                            <div class="donut-chart" id="calorie-energy-donut" style="width: 160px; height: 160px; margin: 0 auto; position: relative;">
+                                <div class="donut-inner" style="position: absolute; inset: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                                    <span id="calorie-net-value" style="font-size: 1.5rem; font-weight: 800; font-family: 'Lexend', sans-serif;">--</span>
+                                    <span id="calorie-net-label" style="font-size: 0.7rem; color: var(--text-secondary);">Net kcal</span>
+                                </div>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                                <span style="color: #10b981;">Consumed</span> vs <span style="color: #38bdf8;">Burned</span>
+                            </div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem; font-weight: 600;">Macros</div>
+                            <div style="width: 160px; height: 160px; margin: 0 auto; position: relative;">
+                                <canvas id="calorie-macros-donut"></canvas>
+                                <div id="calorie-macros-center" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; z-index: 1;">
+                                    <span id="calorie-macros-total" style="font-size: 1.2rem; font-weight: 700;">--</span>
+                                    <span style="font-size: 0.65rem; color: var(--text-secondary);">kcal logged</span>
+                                </div>
+                            </div>
+                            <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                                P <span style="color: #f472b6;">●</span> C <span style="color: #eab308;">●</span> F <span style="color: #f97316;">●</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: center; gap: 2rem; margin-top: 1.5rem; flex-wrap: wrap;">
+                        <div style="background: rgba(251,146,60,0.1); padding: 0.75rem 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(251,146,60,0.2);">
+                            <div style="font-size: 0.7rem; color: #fb923c; font-weight: 600; text-transform: uppercase;">Cholesterol</div>
+                            <div id="calorie-day-chol" style="font-size: 1.25rem; font-weight: 700;">-- mg</div>
+                        </div>
+                        <div style="background: rgba(129,140,248,0.1); padding: 0.75rem 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(129,140,248,0.2);">
+                            <div style="font-size: 0.7rem; color: #818cf8; font-weight: 600; text-transform: uppercase;">Weight</div>
+                            <div id="calorie-day-weight" style="font-size: 1.25rem; font-weight: 700;">-- lbs</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Global Activity Heatmap -->
         <section style="margin-bottom: 3rem;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
@@ -1801,6 +1898,7 @@
             if (window[`fetch${metric}History`]) window[`fetch${metric}History`]();
         }
 
+        window.shiftCalorieDate = function (dir) { shiftDate('Calorie', dir); }
         window.shiftWeightDate = function (dir) { shiftDate('Weight', dir); }
         window.shiftStepsDate = function (dir) { shiftDate('Steps', dir); }
         window.shiftHRDate = function (dir) { shiftDate('HR', dir); }
@@ -1827,6 +1925,8 @@
         }
 
         // Initialize state variables that are shared across modules if needed
+        window.currentCalorieRange = '1w';
+        window.currentCalorieEndDate = new Date();
         window.currentWeightRange = '1d';
         window.currentWeightEndDate = new Date();
         window.currentStepsRange = '1d';
