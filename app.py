@@ -247,7 +247,7 @@ def get_user_max_hr(client):
     return 190 # Default fallback
 
 def get_calorie_data(client, date_str):
-    """Fetch calorie data with robust fallbacks for sync issues."""
+    """Fetch calorie data prioritizing Garmin's direct stats with a safety check for activity lag."""
     cache_key = f"calories_{date_str}"
     if cache_key in calorie_cache: return calorie_cache[cache_key]
 
@@ -257,98 +257,51 @@ def get_calorie_data(client, date_str):
         active_cal = n(stats.get('activeCalories'))
         resting_cal = n(stats.get('bmrCalories') or stats.get('restingCalories'))
         
+        # Fallback BMR calculation only if Garmin returns zero (e.g., brand new day or sync error)
         if total_cal == 0:
-            # Get user profile for accurate BMR calculation (Mifflin-St Jeor equation)
             profile_data = get_user_profile_data(client)
             age = profile_data.get('age')
             height_cm = profile_data.get('height_cm')
             gender = profile_data.get('gender')
-            
-            # Validate we have all required data
-            if not age:
-                raise ValueError(f"Cannot calculate BMR: Age data not available in user profile")
-            if not height_cm:
-                raise ValueError(f"Cannot calculate BMR: Height data not available in user profile")
-            
-            # Get weight - try profile first, then cache, then body composition
             weight_grams = profile_data.get('weight_grams')
-            
-            # If no weight in profile, try cache or fetch from body composition
-            if not weight_grams:
-                global weight_cache
-                weight_grams = weight_cache['value']
+
+            if age and height_cm and weight_grams:
+                weight_kg = weight_grams / 1000
+                bmr_est = (10 * weight_kg) + (6.25 * height_cm) - (5 * age)
+                bmr_est += 5 if gender == 'MALE' else -161
                 
-                # If no cached weight or it's old (1 hour), try to fetch it
-                now = time.time()
-                if not weight_grams or (now - weight_cache['timestamp'] > 3600):
-                    date_obj = date.fromisoformat(date_str)
-                    for i in range(5):
-                        check_date = (date_obj - timedelta(days=i)).isoformat()
-                        try:
-                            body_comp = client.get_body_composition(check_date)
-                            if body_comp and 'totalAverage' in body_comp and body_comp['totalAverage'].get('weight'):
-                                weight_grams = body_comp['totalAverage']['weight']
-                                weight_cache = {'value': weight_grams, 'timestamp': now}
-                                break
-                        except: continue
+                calories_per_step = 0.04 * (weight_kg / 70)
+                step_cal = n(stats.get('totalSteps')) * calories_per_step
+                
+                resting_cal = int(bmr_est)
+                active_cal = int(step_cal + (active_cal or 0))
+                total_cal = resting_cal + active_cal
+                logger.info(f"Zero-stats fallback BMR calculation: {total_cal} kcal")
             
-            if not weight_grams:
-                raise ValueError(f"Cannot calculate BMR: Weight data not available")
-            
-            weight_kg = weight_grams / 1000
-            
-            # Calculate BMR using Mifflin-St Jeor equation
-            # Men: BMR = (10 × weight_kg) + (6.25 × height_cm) - (5 × age) + 5
-            # Women: BMR = (10 × weight_kg) + (6.25 × height_cm) - (5 × age) - 161
-            bmr_est = (10 * weight_kg) + (6.25 * height_cm) - (5 * age)
-            if gender == 'MALE':
-                bmr_est += 5
-            else:  # Default to female formula if not specified or if female
-                bmr_est -= 161
-            logger.info(f"BMR calculated using Mifflin-St Jeor: {bmr_est:.0f} kcal (age={age}, height={height_cm}cm, weight={weight_kg:.1f}kg, gender={gender})")
-            
-            # Calculate step calories based on actual weight
-            # Formula: ~0.04 cal/step for 70kg person, scaled by weight
-            calories_per_step = 0.04 * (weight_kg / 70)
-            step_cal = n(stats.get('totalSteps')) * calories_per_step
-            logger.info(f"Step calories: {step_cal:.0f} kcal ({n(stats.get('totalSteps'))} steps × {calories_per_step:.4f} cal/step)")
-            
-            resting_cal = int(bmr_est)
-            active_cal = int(step_cal + (active_cal or 0))
-            total_cal = resting_cal + active_cal
-            logger.info(f"Calorie calculation: {total_cal} kcal for {date_str}")
-            
-        # --- NEW: Verify against specific activities for the day ---
-        # Sometimes get_stats() lags behind get_activities(), especially for "activeCalories"
+        # --- Activity Verification ---
+        # Garmin's aggregate stats (activeCalories) can lag behind individual activities.
+        # We sum individual activities to ensure they are represented.
         try:
             activities = client.get_activities_by_date(date_str, date_str)
             if activities:
-                act_cals_sum = 0
-                for a in activities:
-                    # Robustly get calories
-                    c = a.get('calories')
-                    if c is None:
-                        c = a.get('summaryDTO', {}).get('calories')
-                    act_cals_sum += n(c)
+                act_cals_sum = sum(n(a.get('calories') or a.get('summaryDTO', {}).get('calories')) for a in activities)
                 
-                # Correction Logic
+                # DISCREPANCY DEBUG: Log exact stats from Garmin for comparison
+                logger.info(f"CALORIE DEBUG {date_str}: Garmin Aggregate Active={active_cal}, Sum of Activities={act_cals_sum}")
+
+                # If active_cal from stats is lower than the sum of recorded activities,
+                # it means Garmin's aggregate total is definitely lagging.
                 if act_cals_sum > 0 and active_cal < act_cals_sum:
-                    logger.info(f"Calorie Correction {date_str}: Stats({active_cal}) < Activities({act_cals_sum}). Adjusting.")
-                    
-                    # If active_cal is very low compared to activity sum (e.g. < 50%), it likely missed the activities entirely
-                    # and only contains step/NEAT calories. So we ADD them.
-                    if active_cal < (act_cals_sum * 0.5):
-                        active_cal += int(act_cals_sum)
-                    else:
-                        # If it's close but under, it might just be a partial sync or small drift. 
-                        # We clamp to the known activity sum to be safe.
-                        active_cal = int(act_cals_sum)
-                        
-                    # Recalculate total
+                    logger.info(f"Correction Triggered: Stats reported {active_cal}, but individual activities total {act_cals_sum}")
+                    # We assume active_cal currently ONLY contains non-activity (step/NEAT) burn.
+                    # Correct active calories = (Step Calories) + (Activity Calories)
+                    active_cal += int(act_cals_sum)
                     total_cal = resting_cal + active_cal
+                    logger.info(f"Final Adjusted Calories: Active={active_cal}, Total={total_cal}")
+                else:
+                    logger.info(f"No correction needed. Final Active={active_cal}")
         except Exception as act_e:
              logger.warning(f"Failed to verify activity calories: {act_e}")
-        # -----------------------------------------------------------
             
         result = {
             'total': total_cal,
