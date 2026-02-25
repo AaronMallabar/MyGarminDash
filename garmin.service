@@ -6,7 +6,7 @@ After=network.target
 User=ubuntu
 Group=www-data
 WorkingDirectory=/home/ubuntu/MyGarminDash
-Environment="PATH=/home/ubuntu/MyGarminDash/venv/bin"
+Environment="PATH=/home/ubuntu/MyGarminDash/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 EnvironmentFile=/home/ubuntu/MyGarminDash/.env
 ExecStart=/home/ubuntu/MyGarminDash/venv/bin/gunicorn --config gunicorn.conf.py app:app
 

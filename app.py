@@ -47,6 +47,7 @@ def get_git_command():
             fallback_paths = [
                 "/usr/bin/git",
                 "/usr/local/bin/git",
+                "/bin/git"
             ]
         for path in fallback_paths:
             if os.path.exists(path):
@@ -55,6 +56,22 @@ def get_git_command():
                     return path
                 except (subprocess.CalledProcessError, FileNotFoundError):
                     continue
+    return None
+
+def get_bash_command():
+    """Find the bash command, checking common paths as fallback when PATH is minimal."""
+    try:
+        subprocess.run(['bash', '--version'], check=True, capture_output=True)
+        return 'bash'
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        fallback_paths = [
+            "/bin/bash",
+            "/usr/bin/bash",
+            "/usr/local/bin/bash"
+        ]
+        for path in fallback_paths:
+            if os.path.exists(path):
+                return path
     return None
 
 def get_app_version():
@@ -709,10 +726,21 @@ def perform_update():
             subprocess.Popen(['powershell', '-ExecutionPolicy', 'Bypass', '-File', script_path], start_new_session=True)
         else:
             # Linux/Mac
+            bash_cmd = get_bash_command()
+            if not bash_cmd:
+                return jsonify({'error': 'bash not found. Please install bash and restart the application.'}), 400
+            
             script_path = os.path.join(os.path.dirname(__file__), 'Scripts', 'updateApp.sh')
             if not os.path.exists(script_path):
                 return jsonify({'error': 'Update script not found'}), 404
-            subprocess.Popen(['bash', script_path], start_new_session=True)
+            
+            # Ensure the script is executable
+            try:
+                os.chmod(script_path, 0o755)
+            except:
+                pass
+
+            subprocess.Popen([bash_cmd, script_path], start_new_session=True)
         
         return jsonify({'success': True, 'message': 'Update started'})
     except Exception as e:

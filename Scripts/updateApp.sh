@@ -1,4 +1,6 @@
 #!/bin/bash
+# Ensure standard paths are available
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 # Move to your app directory
 cd /home/ubuntu/MyGarminDash
 

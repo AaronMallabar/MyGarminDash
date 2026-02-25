@@ -1,4 +1,6 @@
-#!/bash
+#!/bin/bash
+# Ensure standard paths are available
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 # Setup script for MyGarminDash on Oracle Linux (Ubuntu)
 
 echo "🚀 Starting MyGarminDash Setup..."
