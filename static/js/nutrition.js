@@ -19,12 +19,14 @@ window.shiftNutritionDate = function (dir) {
 
     window.updateNutritionDateUI();
     if (window.fetchNutritionData) window.fetchNutritionData();
+    window.updateFoodModalDateLabel();
 }
 
 window.resetNutritionToToday = function () {
     window.activeNutritionDate = new Date();
     window.updateNutritionDateUI();
     if (window.fetchNutritionData) window.fetchNutritionData();
+    window.updateFoodModalDateLabel();
 }
 
 window.updateNutritionDateUI = function () {
@@ -171,13 +173,28 @@ window.openFoodModal = function () {
     const modal = document.getElementById('foodModal');
     if (modal) {
         modal.classList.add('active');
-        const searchInput = document.getElementById('food-search-input');
+        const searchInput = document.getElementById('food-chat-input');
         if (searchInput) searchInput.focus();
 
         const now = new Date();
         const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
         const timeInput = document.getElementById('food-log-time');
         if (timeInput) timeInput.value = timeStr;
+
+        window.updateFoodModalDateLabel();
+    }
+}
+
+window.updateFoodModalDateLabel = function () {
+    const label = document.getElementById('food-modal-date-label');
+    if (label) {
+        const todayStr = window.getLocalDateStr(new Date());
+        const activeStr = window.getLocalDateStr(window.activeNutritionDate);
+        if (todayStr === activeStr) {
+            label.textContent = "Today";
+        } else {
+            label.textContent = window.activeNutritionDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        }
     }
 }
 
@@ -187,10 +204,11 @@ window.closeFoodModal = function () {
 }
 
 window.onFoodSearchInput = function () {
-    const query = document.getElementById('food-search-input').value.toLowerCase();
-    const results = document.getElementById('food-search-results');
+    const input = document.getElementById('food-chat-input');
+    const query = input.value.toLowerCase();
+    const results = document.getElementById('food-chat-search-results');
 
-    if (!query) {
+    if (!query || query.length < 2) {
         results.style.display = 'none';
         return;
     }
@@ -199,12 +217,14 @@ window.onFoodSearchInput = function () {
 
     if (matches.length > 0) {
         results.innerHTML = matches.map(m => `
-            <div style="padding: 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='transparent'">
-                <div onclick="window.selectFood('${m}')" style="flex-grow: 1; cursor: pointer;">
-                    <div style="font-weight: 600;">${m}</div>
-                    <div style="font-size: 0.75rem; color: var(--text-secondary);">${window.customFoods[m].calories} kcal • Saved Recipe</div>
+            <div style="padding: 0.75rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center; transition: background 0.2s; cursor: pointer;" 
+                onmouseover="this.style.background='rgba(56, 189, 248, 0.1)'" onmouseout="this.style.background='transparent'"
+                onclick="window.selectFood('${m.replace(/'/g, "\\'")}')">
+                <div style="flex-grow: 1;">
+                    <div style="font-weight: 600; font-size: 0.9rem;">${m}</div>
+                    <div style="font-size: 0.7rem; color: #10b981;">${window.customFoods[m].calories} kcal • Saved in Library</div>
                 </div>
-                <button onclick="window.editLibraryItem('${m}')" style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.2); color: #38bdf8; padding: 0.4rem 0.8rem; border-radius: 0.4rem; font-size: 0.75rem; cursor: pointer; font-weight: 600;">Edit Recipe</button>
+                <div style="font-size: 0.6rem; color: var(--text-secondary); text-transform: uppercase;">Select</div>
             </div>
         `).join('');
         results.style.display = 'block';
@@ -214,13 +234,13 @@ window.onFoodSearchInput = function () {
 }
 
 window.selectFood = function (name) {
-    document.getElementById('food-search-input').value = name;
-    document.getElementById('food-search-results').style.display = 'none';
+    document.getElementById('food-chat-input').value = name;
+    document.getElementById('food-chat-search-results').style.display = 'none';
 
     if (window.customFoods[name]) {
         window.editLibraryItem(name);
     } else {
-        window.submitFoodLog();
+        window.sendFoodChat();
     }
 }
 
@@ -316,66 +336,237 @@ window.deleteFoodLog = async function (id) {
 
 let ingredientIndex = 0;
 
+// --- Conversational & Image Logic ---
+let currentFoodImageBase64 = null;
+
+window.onFoodImageSelect = function (input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            currentFoodImageBase64 = e.target.result;
+            document.getElementById('food-image-preview').src = currentFoodImageBase64;
+            document.getElementById('image-preview-container').style.display = 'block';
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+window.clearFoodImage = function () {
+    currentFoodImageBase64 = null;
+    document.getElementById('food-image-input').value = '';
+    document.getElementById('image-preview-container').style.display = 'none';
+}
+
+window.addChatMessage = function (role, text) {
+    const history = document.getElementById('food-chat-history');
+    if (!history) return;
+    const div = document.createElement('div');
+    div.className = `chat-bubble ${role}`;
+    div.innerHTML = window.parseMarkdown(text);
+    history.appendChild(div);
+    history.scrollTop = history.scrollHeight;
+}
+
+window.sendFoodChat = async function () {
+    const input = document.getElementById('food-chat-input');
+    const text = input.value.trim();
+    if (!text && !currentFoodImageBase64) return;
+
+    const btn = document.getElementById('btn-send-chat');
+    const originalText = btn.textContent;
+    btn.textContent = '...';
+    btn.disabled = true;
+
+    try {
+        const payload = {
+            text: text,
+            image: currentFoodImageBase64,
+            date: window.getLocalDateStr(window.activeNutritionDate),
+            time: document.getElementById('food-log-time').value
+        };
+
+        const res = await fetch('/api/nutrition/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (data.items && data.items.length > 0) {
+            window.showCustomFoodForm();
+            if (data.meal_name) document.getElementById('custom-name').value = data.meal_name;
+
+            const list = document.getElementById('ingredient-list');
+            list.innerHTML = '';
+            ingredientIndex = 0;
+
+            data.items.forEach(item => {
+                window.addIngredientRow(item);
+            });
+            window.updateNutrientSummary();
+
+            // Update Sidebar
+            window.updateAISidebar(data);
+
+            // Auto-open AI assistant if things are uncertain
+            if (data.confidence_score < 80) {
+                window.toggleAIAssistant(true);
+            }
+        }
+
+        window.clearFoodImage();
+        input.value = '';
+
+    } catch (err) {
+        console.error("Chat error:", err);
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+    }
+}
+
+window.sendClarification = async function () {
+    const input = document.getElementById('clarify-input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    // Add user message to small chat
+    window.addClarifyMessage('user', text);
+    input.value = '';
+
+    // Get current state
+    const rows = document.querySelectorAll('.ingredient-row');
+    const currentItems = Array.from(rows).map(row => ({
+        name: row.querySelector('.ing-name').value,
+        qty: row.querySelector('.ing-qty').value,
+        unit: row.querySelector('.ing-unit').value,
+        calories: row.querySelector('.ing-cal').value,
+        protein_g: row.querySelector('.ing-pro').value,
+        carbs_g: row.querySelector('.ing-carb').value,
+        fat_g: row.querySelector('.ing-fat').value,
+        sugar_g: row.querySelector('.ing-sugar').value,
+        caffeine_mg: row.querySelector('.ing-caffeine').value,
+        cholesterol_mg: row.querySelector('.ing-chol').value
+    }));
+
+    try {
+        const res = await fetch('/api/nutrition/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: text,
+                current_items: currentItems,
+                date: window.getLocalDateStr(window.activeNutritionDate)
+            })
+        });
+
+        const data = await res.json();
+
+        // Update items table
+        if (data.items && data.items.length > 0) {
+            const list = document.getElementById('ingredient-list');
+            list.innerHTML = '';
+            ingredientIndex = 0;
+            data.items.forEach(item => window.addIngredientRow(item));
+            window.updateNutrientSummary();
+        }
+
+        // Update Sidebar
+        window.updateAISidebar(data);
+
+    } catch (err) {
+        console.error("Clarification error:", err);
+    }
+}
+
+window.updateAISidebar = function (data) {
+    // Confidence Score
+    const score = data.confidence_score || 0;
+    const valEl = document.getElementById('confidence-value');
+    const badgeEl = document.getElementById('confidence-badge');
+    const barEl = document.getElementById('confidence-bar-fill');
+
+    if (valEl) valEl.textContent = score + '%';
+    if (badgeEl) badgeEl.textContent = score + '%';
+    if (barEl) barEl.style.width = score + '%';
+
+    // Health Tip
+    const tipEl = document.getElementById('health-tip-content');
+    if (tipEl && data.health_tip) {
+        tipEl.textContent = data.health_tip;
+    }
+
+    // Clarifying Question
+    if (data.clarifying_questions && data.clarifying_questions.length > 0) {
+        data.clarifying_questions.forEach(q => window.addClarifyMessage('ai', q));
+    } else if (data.reply) {
+        window.addClarifyMessage('ai', data.reply);
+    }
+}
+
+window.toggleAIAssistant = function (forceState = null) {
+    const sidebar = document.querySelector('.insight-sidebar');
+    const toggleBtn = document.getElementById('btn-toggle-ai');
+    if (!sidebar) return;
+
+    const isVisible = sidebar.style.display === 'flex';
+    const nextState = forceState !== null ? forceState : !isVisible;
+
+    sidebar.style.display = nextState ? 'flex' : 'none';
+
+    if (toggleBtn) {
+        if (nextState) {
+            toggleBtn.style.background = '#10b981';
+            toggleBtn.style.color = 'white';
+        } else {
+            toggleBtn.style.background = 'rgba(16, 185, 129, 0.1)';
+            toggleBtn.style.color = '#10b981';
+        }
+    }
+}
+
+window.addClarifyMessage = function (role, text) {
+    const history = document.getElementById('clarify-history');
+    if (!history) return;
+    const div = document.createElement('div');
+    div.className = `clarify-bubble ${role}`;
+    div.textContent = text;
+    history.appendChild(div);
+    history.scrollTop = history.scrollHeight;
+}
+
 window.showCustomFoodForm = function () {
-    document.getElementById('food-main-view').style.display = 'none';
-    document.getElementById('custom-food-form').style.display = 'block';
-    document.getElementById('ingredient-list').innerHTML = '';
-    ingredientIndex = 0;
-    window.addIngredientRow();
+    document.getElementById('food-chat-view').style.display = 'none';
+    document.getElementById('custom-food-form').style.display = 'flex';
+
+    // Reset AI Sidebar
+    const history = document.getElementById('clarify-history');
+    if (history) history.innerHTML = '<div class="clarify-bubble ai">Tell me a bit more about the meal to improve the accuracy of my estimation!</div>';
+
+    const confidenceVal = document.getElementById('confidence-value');
+    const confidenceBar = document.getElementById('confidence-bar-fill');
+    const confidenceBadge = document.getElementById('confidence-badge');
+    if (confidenceVal) confidenceVal.textContent = '0%';
+    if (confidenceBar) confidenceBar.style.width = '0%';
+    if (confidenceBadge) confidenceBadge.textContent = '0%';
+
+    const healthTip = document.getElementById('health-tip-content');
+    if (healthTip) healthTip.textContent = 'Waiting for details to provide a personalized health tip...';
+
+    window.toggleAIAssistant(false);
 }
 
 window.hideCustomFoodForm = function () {
-    document.getElementById('food-main-view').style.display = 'block';
+    document.getElementById('food-chat-view').style.display = 'flex';
     document.getElementById('custom-food-form').style.display = 'none';
-}
-
-window.addIngredientRow = function (data = null) {
-    const list = document.getElementById('ingredient-list');
-    const rowId = `ing-row-${ingredientIndex++}`;
-    const div = document.createElement('div');
-    div.id = rowId;
-    div.className = 'ingredient-row';
-    div.style.cssText = 'display: grid; grid-template-columns: 2fr 1fr 1fr 1.2fr auto; gap: 0.5rem; align-items: end; background: rgba(255,255,255,0.02); padding: 0.5rem; border-radius: 0.5rem;';
-
-    div.innerHTML = `
-        <div>
-            <input type="text" class="ing-name" placeholder="Item" value="${data?.name || ''}" 
-                style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.5rem; font-size: 0.85rem;">
-        </div>
-        <div>
-            <input type="number" class="ing-qty" placeholder="Qty" value="${data?.qty || 1}" 
-                oninput="window.onQtyChange(this)"
-                style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.5rem; font-size: 0.85rem;">
-        </div>
-        <div>
-            <select class="ing-unit" style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; font-size: 0.8rem;">
-                <option value="slices" ${data?.unit === 'slices' ? 'selected' : ''}>Slices</option>
-                <option value="oz" ${data?.unit === 'oz' ? 'selected' : ''}>Oz</option>
-                <option value="cups" ${data?.unit === 'cups' ? 'selected' : ''}>Cups</option>
-                <option value="grams" ${data?.unit === 'grams' ? 'selected' : ''}>Grams</option>
-                <option value="tbsp" ${data?.unit === 'tbsp' ? 'selected' : ''}>Tbsp</option>
-                <option value="pieces" ${data?.unit === 'pieces' ? 'selected' : ''}>Pcs</option>
-            </select>
-        </div>
-        <div style="position: relative;">
-            <input type="number" class="ing-cal" placeholder="kcal" value="${data?.calories || 0}" 
-                oninput="window.updateNutrientSummary()"
-                data-pro="${data?.protein_g || 0}" data-carb="${data?.carbs_g || 0}" data-fat="${data?.fat_g || 0}"
-                data-base-qty="${data?.qty || 1}"
-                style="width: 100%; height: 32px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981; border-radius: 0.4rem; padding: 0 0.5rem; font-size: 0.85rem; font-weight: 700;">
-            <input type="hidden" class="ing-chol" value="${data?.cholesterol_mg || 0}">
-        </div>
-        <button onclick="document.getElementById('${rowId}').remove(); window.updateNutrientSummary();" 
-            style="background:none; border:none; color:#f87171; cursor:pointer; padding: 0 0.5rem;">✕</button>
-    `;
-    list.appendChild(div);
 }
 
 window.estimateAllIngredients = async function () {
     const rows = document.querySelectorAll('.ingredient-row');
     if (rows.length === 0) return;
 
-    const btn = document.getElementById('btn-ai-scan');
+    const btn = document.getElementById('btn-ai-scan-detailed');
     const originalText = btn.textContent;
     btn.textContent = 'AI Scanning...';
     btn.disabled = true;
@@ -397,12 +588,13 @@ window.estimateAllIngredients = async function () {
             const estimates = await res.json();
             rows.forEach((row, i) => {
                 if (estimates[i]) {
-                    const calInput = row.querySelector('.ing-cal');
-                    calInput.value = estimates[i].calories;
+                    row.querySelector('.ing-cal').value = estimates[i].calories || 0;
                     row.querySelector('.ing-chol').value = estimates[i].cholesterol_mg || 0;
-                    calInput.setAttribute('data-pro', estimates[i].protein_g || 0);
-                    calInput.setAttribute('data-carb', estimates[i].carbs_g || 0);
-                    calInput.setAttribute('data-fat', estimates[i].fat_g || 0);
+                    row.querySelector('.ing-pro').value = estimates[i].protein_g || 0;
+                    row.querySelector('.ing-carb').value = estimates[i].carbs_g || 0;
+                    row.querySelector('.ing-sugar').value = estimates[i].sugar_g || 0;
+                    row.querySelector('.ing-fat').value = estimates[i].fat_g || 0;
+                    row.querySelector('.ing-caffeine').value = estimates[i].caffeine_mg || 0;
                 }
             });
             window.updateNutrientSummary();
@@ -415,6 +607,68 @@ window.estimateAllIngredients = async function () {
     }
 }
 
+window.addIngredientRow = function (data = null) {
+    const list = document.getElementById('ingredient-list');
+    const rowId = `ing-row-${ingredientIndex++}`;
+    const div = document.createElement('div');
+    div.id = rowId;
+    div.className = 'ingredient-row ingredient-grid';
+    div.style.cssText = 'background: rgba(255,255,255,0.02); padding: 0.5rem; border-radius: 0.5rem;';
+
+    const units = ['serving', 'package', 'container', 'oz', 'grams', 'cups', 'tbsp', 'slices', 'piece', 'bowl', 'plate'];
+    const unitOptions = units.map(u => `<option value="${u}" ${data?.unit === u ? 'selected' : ''}>${u.charAt(0).toUpperCase() + u.slice(1)}</option>`).join('');
+
+    div.innerHTML = `
+        <div style="min-width: 0;">
+            <input type="text" class="ing-name" placeholder="Item" value="${data?.name || ''}" 
+                style="width: 100%; height: 30px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.4rem; font-size: 0.8rem;">
+        </div>
+        <div>
+            <input type="number" class="ing-qty" placeholder="Qty" value="${data?.qty || 1}" 
+                oninput="window.onQtyChange(this)"
+                style="width: 100%; height: 30px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.4rem; font-size: 0.8rem;">
+        </div>
+        <div>
+            <select class="ing-unit" onchange="window.updateNutrientSummary()" style="width: 100%; height: 30px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; font-size: 0.75rem;">
+                ${unitOptions}
+            </select>
+        </div>
+        <div>
+            <input type="number" class="ing-pro" placeholder="P" value="${data?.protein_g || 0}" oninput="window.updateNutrientSummary()"
+                style="width: 100%; height: 30px; background: rgba(244, 114, 182, 0.05); border: 1px solid rgba(244, 114, 182, 0.2); color: #f472b6; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.75rem; font-weight: 700;">
+        </div>
+        <div>
+            <input type="number" class="ing-carb" placeholder="C" value="${data?.carbs_g || 0}" oninput="window.updateNutrientSummary()"
+                style="width: 100%; height: 30px; background: rgba(234, 179, 8, 0.05); border: 1px solid rgba(234, 179, 8, 0.2); color: #eab308; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.75rem; font-weight: 700;">
+        </div>
+        <div>
+            <input type="number" class="ing-fat" placeholder="F" value="${data?.fat_g || 0}" oninput="window.updateNutrientSummary()"
+                style="width: 100%; height: 30px; background: rgba(249, 115, 22, 0.05); border: 1px solid rgba(249, 115, 22, 0.2); color: #f97316; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.75rem; font-weight: 700;">
+        </div>
+        <div>
+            <input type="number" class="ing-sugar" placeholder="S" value="${data?.sugar_g || 0}" oninput="window.updateNutrientSummary()"
+                style="width: 100%; height: 30px; background: rgba(96, 165, 250, 0.05); border: 1px solid rgba(96, 165, 250, 0.2); color: #60a5fa; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.75rem; font-weight: 700;">
+        </div>
+        <div>
+            <input type="number" class="ing-caffeine" placeholder="Caf" value="${data?.caffeine_mg || 0}" oninput="window.updateNutrientSummary()"
+                style="width: 100%; height: 30px; background: rgba(167, 139, 250, 0.05); border: 1px solid rgba(167, 139, 250, 0.2); color: #a78bfa; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.75rem; font-weight: 700;">
+        </div>
+        <div>
+            <input type="number" class="ing-chol" placeholder="Chol" value="${data?.cholesterol_mg || 0}" oninput="window.updateNutrientSummary()"
+                style="width: 100%; height: 30px; background: rgba(251, 146, 60, 0.05); border: 1px solid rgba(251, 146, 60, 0.2); color: #fb923c; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.75rem; font-weight: 700;">
+        </div>
+        <div>
+            <input type="number" class="ing-cal" placeholder="kcal" value="${data?.calories || 0}" 
+                oninput="window.updateNutrientSummary()"
+                data-base-qty="${data?.qty || 1}"
+                style="width: 100%; height: 30px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #10b981; border-radius: 0.4rem; padding: 0 0.4rem; font-size: 0.75rem; font-weight: 800;">
+        </div>
+        <button onclick="document.getElementById('${rowId}').remove(); window.updateNutrientSummary();" 
+            style="background:none; border:none; color:#f87171; cursor:pointer; padding: 0 0.2rem;">✕</button>
+    `;
+    list.appendChild(div);
+}
+
 window.onQtyChange = function (input) {
     const row = input.closest('.ingredient-row');
     const calInput = row.querySelector('.ing-cal');
@@ -423,31 +677,46 @@ window.onQtyChange = function (input) {
 
     if (newQty > 0 && baseQty > 0) {
         const ratio = newQty / baseQty;
-        const currentCal = parseFloat(calInput.value) || 0;
-        calInput.value = Math.round(currentCal * ratio);
 
-        const macros = ['pro', 'carb', 'fat'];
-        macros.forEach(m => {
-            const val = parseFloat(calInput.getAttribute(`data-${m}`)) || 0;
-            calInput.setAttribute(`data-${m}`, Math.round(val * ratio));
+        const inputs = [
+            { cls: '.ing-cal', precision: 0 },
+            { cls: '.ing-pro', precision: 0 },
+            { cls: '.ing-carb', precision: 0 },
+            { cls: '.ing-fat', precision: 0 },
+            { cls: '.ing-sugar', precision: 0 },
+            { cls: '.ing-chol', precision: 0 },
+            { cls: '.ing-caffeine', precision: 0 }
+        ];
+
+        inputs.forEach(item => {
+            const inputEl = row.querySelector(item.cls);
+            if (inputEl) {
+                const val = parseFloat(inputEl.value) || 0;
+                inputEl.value = Math.round(val * ratio);
+            }
         });
 
-        const chol = row.querySelector('.ing-chol');
-        chol.value = Math.round((parseInt(chol.value) || 0) * ratio);
         calInput.setAttribute('data-base-qty', newQty);
     }
     window.updateNutrientSummary();
 }
 
 window.updateNutrientSummary = function () {
-    let totalCal = 0;
-    let totalChol = 0;
+    let totals = { cal: 0, chol: 0, pro: 0, carb: 0, sugar: 0, fat: 0, caffeine: 0 };
     document.querySelectorAll('.ingredient-row').forEach(row => {
-        totalCal += parseInt(row.querySelector('.ing-cal').value) || 0;
-        totalChol += parseInt(row.querySelector('.ing-chol').value) || 0;
+        totals.cal += parseInt(row.querySelector('.ing-cal').value) || 0;
+        totals.chol += parseInt(row.querySelector('.ing-chol').value) || 0;
+        totals.pro += parseInt(row.querySelector('.ing-pro').value) || 0;
+        totals.carb += parseInt(row.querySelector('.ing-carb').value) || 0;
+        totals.sugar += parseInt(row.querySelector('.ing-sugar').value) || 0;
+        totals.fat += parseInt(row.querySelector('.ing-fat').value) || 0;
+        totals.caffeine += parseInt(row.querySelector('.ing-caffeine').value) || 0;
     });
-    window.safeSetText('summary-cal', totalCal);
-    window.safeSetText('summary-chol', totalChol + 'mg');
+
+    window.safeSetText('summary-cal', totals.cal);
+    window.safeSetText('summary-chol', totals.chol + 'mg');
+    window.safeSetText('summary-sugar', totals.sugar + 'g');
+    window.safeSetText('summary-caffeine', totals.caffeine + 'mg');
 }
 
 window.saveCustomFood = async function (alsoLog = true) {
@@ -455,18 +724,14 @@ window.saveCustomFood = async function (alsoLog = true) {
     const category = document.getElementById('custom-category').value;
     if (!name) return alert("Please name your recipe.");
 
-    const ingredients = [];
-    let totalCal = 0;
-    let totalChol = 0;
-    let totalPro = 0, totalCarb = 0, totalFat = 0;
-
     document.querySelectorAll('.ingredient-row').forEach(row => {
-        const calInput = row.querySelector('.ing-cal');
-        const cal = parseInt(calInput.value) || 0;
+        const cal = parseInt(row.querySelector('.ing-cal').value) || 0;
         const cholVal = parseInt(row.querySelector('.ing-chol').value) || 0;
-        const pro = parseInt(calInput.getAttribute('data-pro')) || 0;
-        const carb = parseInt(calInput.getAttribute('data-carb')) || 0;
-        const fat = parseInt(calInput.getAttribute('data-fat')) || 0;
+        const pro = parseInt(row.querySelector('.ing-pro').value) || 0;
+        const carb = parseInt(row.querySelector('.ing-carb').value) || 0;
+        const sugar = parseInt(row.querySelector('.ing-sugar').value) || 0;
+        const fat = parseInt(row.querySelector('.ing-fat').value) || 0;
+        const caffeine = parseInt(row.querySelector('.ing-caffeine').value) || 0;
 
         ingredients.push({
             name: row.querySelector('.ing-name').value,
@@ -476,13 +741,17 @@ window.saveCustomFood = async function (alsoLog = true) {
             cholesterol_mg: cholVal,
             protein_g: pro,
             carbs_g: carb,
-            fat_g: fat
+            sugar_g: sugar,
+            fat_g: fat,
+            caffeine_mg: caffeine
         });
         totalCal += cal;
         totalChol += cholVal;
         totalPro += pro;
         totalCarb += carb;
+        totalSugar += sugar;
         totalFat += fat;
+        totalCaffeine += caffeine;
     });
 
     try {
@@ -492,7 +761,8 @@ window.saveCustomFood = async function (alsoLog = true) {
             body: JSON.stringify({
                 name, category, ingredients,
                 calories: totalCal, cholesterol_mg: totalChol,
-                protein_g: totalPro, carbs_g: totalCarb, fat_g: totalFat
+                protein_g: totalPro, carbs_g: totalCarb,
+                sugar_g: totalSugar, fat_g: totalFat, caffeine_mg: totalCaffeine
             })
         });
 

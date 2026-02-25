@@ -1802,7 +1802,9 @@ def get_calorie_history():
                 'cholesterol_mg': sum(l.get('cholesterol_mg', 0) for l in day_logs),
                 'protein_g': sum(l.get('protein_g', 0) for l in day_logs),
                 'carbs_g': sum(l.get('carbs_g', 0) for l in day_logs),
+                'sugar_g': sum(l.get('sugar_g', 0) for l in day_logs),
                 'fat_g': sum(l.get('fat_g', 0) for l in day_logs),
+                'caffeine_mg': sum(l.get('caffeine_mg', 0) for l in day_logs),
             }
         
         # Get weight history for range
@@ -1839,7 +1841,9 @@ def get_calorie_history():
                     'cholesterol_mg': nut['cholesterol_mg'],
                     'protein_g': nut['protein_g'],
                     'carbs_g': nut['carbs_g'],
+                    'sugar_g': nut['sugar_g'],
                     'fat_g': nut['fat_g'],
+                    'caffeine_mg': nut['caffeine_mg'],
                     'weight_lbs': weight
                 }
             except Exception as e:
@@ -2451,7 +2455,7 @@ def log_food():
             Analyze these food items: {", ".join(ai_items)}
             My Goals: Weight loss, low cholesterol.
             Return ONLY a JSON array of objects, one for each item, with:
-            name (string), calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), fat_g (int), ai_note (str).
+            name (string), calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), sugar_g (int), fat_g (int), caffeine_mg (int), ai_note (str).
             """
             
             response = ai_client.models.generate_content(model=model_name, contents=prompt)
@@ -2472,7 +2476,7 @@ def log_food():
                 logged_entries.append({
                     'id': int(time.time() * 1000) + len(logged_entries),
                     'date': date_str, 'time': time_str, 'name': name,
-                    'calories': 0, 'cholesterol_mg': 0, 'protein_g': 0, 'carbs_g': 0, 'fat_g': 0, 'ai_note': 'Failed'
+                    'calories': 0, 'cholesterol_mg': 0, 'protein_g': 0, 'carbs_g': 0, 'sugar_g': 0, 'fat_g': 0, 'caffeine_mg': 0, 'ai_note': 'Failed'
                 })
 
     dry_run = request.args.get('dry_run') == 'true'
@@ -2498,7 +2502,7 @@ def log_food():
             Estimate nutritional values for: "{name}"
             Aaron's Goals: Weight loss, low cholesterol.
             Return ONLY a JSON object with: 
-            calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), fat_g (int), ai_note (str).
+            calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), sugar_g (int), fat_g (int), caffeine_mg (int), ai_note (str).
             """
             
             response = ai_client.models.generate_content(model=model_name, contents=prompt)
@@ -2507,7 +2511,7 @@ def log_food():
             logger.info(f"Nutrition: AI estimated '{name}' at {nutrition.get('calories')} kcal")
         except Exception as e:
             logger.error(f"AI Nutrition estimation failed: {e}")
-            nutrition = {'calories': 0, 'cholesterol_mg': 0, 'protein_g': 0, 'carbs_g': 0, 'fat_g': 0, 'ai_note': 'Estimation failed.'}
+            nutrition = {'calories': 0, 'cholesterol_mg': 0, 'protein_g': 0, 'carbs_g': 0, 'sugar_g': 0, 'fat_g': 0, 'caffeine_mg': 0, 'ai_note': 'Estimation failed.'}
 
     log_entry = {
         'id': int(time.time() * 1000),
@@ -2549,12 +2553,70 @@ def handle_custom_foods():
         'cholesterol_mg': data.get('cholesterol_mg', 0),
         'protein_g': data.get('protein_g', 0),
         'carbs_g': data.get('carbs_g', 0),
+        'sugar_g': data.get('sugar_g', 0),
         'fat_g': data.get('fat_g', 0),
+        'caffeine_mg': data.get('caffeine_mg', 0),
         'category': data.get('category', 'Meal'),
-        'ingredients': data.get('ingredients', []) # List of {name, qty, unit, cals}
+        'ingredients': data.get('ingredients', [])
     }
     save_json(CUSTOM_FOODS_FILE, custom_foods)
     return jsonify({'status': 'success'})
+
+@app.route('/api/nutrition/chat', methods=['POST'])
+@login_required
+def nutrition_chat():
+    try:
+        data = request.json
+        text = data.get('text', '')
+        image_b64 = data.get('image')
+        current_items = data.get('current_items', [])
+        
+        ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        settings = load_settings()
+        model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
+        
+        # Provide context on recent meals for 'treat frequency' tips
+        logs = load_json(FOOD_LOGS_FILE, [])
+        recent_meals = [l.get('name') for l in logs[-15:]] # last 15 items
+        
+        prompt = f"""
+        Analyze this food log request for Aaron.
+        Goal: Weight loss and low cholesterol.
+        
+        If current_items is provided, use the INPUT to refine those items (update quantities, brands, etc).
+        
+        Return a JSON object:
+        1. "reply": A friendly response (brief).
+        2. "confidence_score": 0-100 (accuracy of calorie estimation).
+        3. "health_tip": A supportive tip based on goals and recent history. 
+           (e.g. "Add a side salad", "You've had a few treats lately, maybe skip the soda").
+        4. "clarifying_questions": 1-2 specific questions to increase confidence.
+        5. "meal_name": Title of the meal.
+        6. "items": Updated list of {{"name", "qty", "unit", "calories", "cholesterol_mg", "protein_g", "carbs_g", "sugar_g", "fat_g", "caffeine_mg"}}.
+        
+        Context:
+        INPUT: "{text}"
+        CURRENT_ITEMS: {json.dumps(current_items)}
+        RECENT_MEALS: {", ".join(recent_meals)}
+        
+        Return ONLY valid JSON.
+        """
+        
+        contents = [prompt]
+        if image_b64:
+            import base64
+            header, encoded = image_b64.split(",", 1)
+            img_data = base64.b64decode(encoded)
+            contents.append(genai.Part.from_bytes(data=img_data, mime_type="image/jpeg"))
+
+        response = ai_client.models.generate_content(model=model_name, contents=contents)
+        clean_text = response.text.replace('```json', '').replace('```', '').strip()
+        result = json.loads(clean_text)
+        
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Nutrition chat failed: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/nutrition/delete_library_item', methods=['POST'])
 @login_required
@@ -2587,7 +2649,7 @@ def estimate_ingredients():
         {ing_list_str}
         
         Return ONLY a JSON array where each object corresponds to an ingredient and has:
-        calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), fat_g (int).
+        calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), sugar_g (int), fat_g (int), caffeine_mg (int).
         """
         
         response = ai_client.models.generate_content(model=model_name, contents=prompt)
@@ -2608,7 +2670,7 @@ def export_library_csv():
     library = load_json(CUSTOM_FOODS_FILE, {})
     si = io.StringIO()
     cw = csv.writer(si)
-    cw.writerow(['Name', 'Category', 'Calories', 'Cholesterol (mg)', 'Protein (g)', 'Carbs (g)', 'Fat (g)', 'Ingredients'])
+    cw.writerow(['Name', 'Category', 'Calories', 'Cholesterol (mg)', 'Protein (g)', 'Carbs (g)', 'Sugar (g)', 'Fat (g)', 'Caffeine (mg)', 'Ingredients'])
     
     for name, data in library.items():
         ings = data.get('ingredients') or []
@@ -2620,7 +2682,9 @@ def export_library_csv():
             data.get('cholesterol_mg'),
             data.get('protein_g'),
             data.get('carbs_g'),
+            data.get('sugar_g'),
             data.get('fat_g'),
+            data.get('caffeine_mg'),
             ing_list
         ])
     
@@ -2641,7 +2705,7 @@ def export_logs_csv():
     si = io.StringIO()
     cw = csv.writer(si)
     # Header matching the user's request for "exact same format" for re-import
-    cw.writerow(['Date', 'Time', 'Name', 'Calories', 'Cholesterol (mg)', 'Protein (g)', 'Carbs (g)', 'Fat (g)', 'Category', 'Ingredients', 'AI Note'])
+    cw.writerow(['Date', 'Time', 'Name', 'Calories', 'Cholesterol (mg)', 'Protein (g)', 'Carbs (g)', 'Sugar (g)', 'Fat (g)', 'Caffeine (mg)', 'Category', 'Ingredients', 'AI Note'])
     
     for log in logs:
         # Flatten ingredients if present
@@ -2656,7 +2720,9 @@ def export_logs_csv():
             log.get('cholesterol_mg', 0),
             log.get('protein_g', 0),
             log.get('carbs_g', 0),
+            log.get('sugar_g', 0),
             log.get('fat_g', 0),
+            log.get('caffeine_mg', 0),
             log.get('category', ''),
             ing_str,
             log.get('ai_note', '')
@@ -2703,43 +2769,35 @@ def import_logs_csv():
                 date_val = row[0]
                 time_val = row[1]
                 name_val = row[2]
+                calories = int(row[3]) if len(row) > 3 else 0
+                chol = int(row[4]) if len(row) > 4 else 0
+                pro = int(row[5]) if len(row) > 5 else 0
+                carb = int(row[6]) if len(row) > 6 else 0
+                sugar = int(row[7]) if len(row) > 7 else 0
+                fat = int(row[8]) if len(row) > 8 else 0
+                caf = int(row[9]) if len(row) > 9 else 0
+                category = row[10] if len(row) > 10 else "Meal"
+                ing_str = row[11] if len(row) > 11 else ""
+                ai_note = row[12] if len(row) > 12 else ""
                 
-                # Parse ingredients string back to list if possible
-                ing_str = row[9] if len(row) > 9 else ""
-                ingredients = []
-                if ing_str:
-                    # Simple parse: "1 unit Item; 2 oz Meat"
-                    # This is lossy but better than nothing. 
-                    # Actually, the export format created above uses "; " delimiter.
-                    parts = ing_str.split(';')
-                    for p in parts:
-                        p = p.strip()
-                        if p:
-                            # Try to split by spaces? "qty unit name"
-                            # This is hard to perfect without a strict format.
-                            # We will store it as a raw string or try to parse locally?
-                            # For simplicity, we might just leave ingredients empty or try a best effort.
-                            # Current UI doesn't heavily rely on ingredients for *logs*, mainly for *library*.
-                            # Logs just have nutrient totals.
-                            pass
-                
-                log_entry = {
+                new_logs.append({
                     'id': base_id + i,
                     'date': date_val,
                     'time': time_val,
                     'name': name_val,
-                    'calories': int(row[3]) if row[3] else 0,
-                    'cholesterol_mg': int(row[4]) if len(row)>4 and row[4] else 0,
-                    'protein_g': int(row[5]) if len(row)>5 and row[5] else 0,
-                    'carbs_g': int(row[6]) if len(row)>6 and row[6] else 0,
-                    'fat_g': int(row[7]) if len(row)>7 and row[7] else 0,
-                    'category': row[8] if len(row)>8 else '',
-                    'ai_note': row[10] if len(row)>10 else '',
-                    # We skip rebuilding detailed ingredients list for logs as it's complex and totals are what matters for the dashboard
-                }
-                new_logs.append(log_entry)
+                    'calories': calories,
+                    'cholesterol_mg': chol,
+                    'protein_g': pro,
+                    'carbs_g': carb,
+                    'sugar_g': sugar,
+                    'fat_g': fat,
+                    'caffeine_mg': caf,
+                    'category': category,
+                    'ai_note': ai_note
+                })
             except Exception as e:
-                logger.warning(f"Skipping malformed row {i}: {e}")
+                logger.warning(f"Error parsing CSV row {i}: {e}")
+                continue
                 
         current_logs.extend(new_logs)
         save_json(FOOD_LOGS_FILE, current_logs)

@@ -180,7 +180,7 @@ window.renderWeightChart = function (data, range) {
                     padding: 10,
                     callbacks: {
                         title: (items) => {
-                            const d = new Date(items[0].label);
+                            const d = parseLocalDate(items[0].label);
                             return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
                         },
                         label: (ctx) => `Weight: ${ctx.parsed.y.toFixed(1)} lbs`
@@ -229,7 +229,9 @@ const CALORIE_METRIC_CONFIG = {
     cholesterol_mg: { label: 'Cholesterol', color: '#fb923c', axis: 'y1', unit: 'mg' },
     protein_g: { label: 'Protein', color: '#f472b6', axis: 'y1', unit: 'g' },
     carbs_g: { label: 'Carbs', color: '#eab308', axis: 'y1', unit: 'g' },
-    fat_g: { label: 'Fat', color: '#f97316', axis: 'y1', unit: 'g' }
+    fat_g: { label: 'Fat', color: '#f97316', axis: 'y1', unit: 'g' },
+    sugar_g: { label: 'Sugar', color: '#60a5fa', axis: 'y1', unit: 'g' },
+    caffeine_mg: { label: 'Caffeine', color: '#a78bfa', axis: 'y1', unit: 'mg' }
 };
 
 window.updateCalorieRange = async function (range, btn) {
@@ -350,6 +352,8 @@ function renderCalorie1DayView(day) {
 
     safeSetText('calorie-day-chol', (chol !== '--' && chol != null && chol !== '' ? chol : '--') + ' mg');
     safeSetText('calorie-day-weight', (weight !== '--' && weight != null && weight !== '' ? weight : '--') + ' lbs');
+    safeSetText('calorie-day-sugar', (day.sugar_g != null ? day.sugar_g : '--') + ' g');
+    safeSetText('calorie-day-caffeine', (day.caffeine_mg != null ? day.caffeine_mg : '--') + ' mg');
 }
 
 window.renderCalorieChart = function (data) {
@@ -446,7 +450,7 @@ window.renderCalorieChart = function (data) {
                     backgroundColor: 'rgba(15, 23, 42, 0.9)',
                     callbacks: {
                         title: (items) => {
-                            const d = new Date(items[0].label);
+                            const d = parseLocalDate(items[0].label);
                             return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
                         }
                     }
