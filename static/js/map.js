@@ -50,13 +50,42 @@ window.handleHeatmapZoom = function () {
     });
 }
 
+/**
+ * Show the loading indicator at the bottom of the heatmap
+ */
+function showHeatmapLoading(message) {
+    const loadingEl = document.getElementById('heatmap-loading');
+    const statusEl = document.getElementById('heatmap-status');
+    const dot = document.getElementById('heatmap-dot');
+    if (loadingEl) loadingEl.style.display = 'flex';
+    if (statusEl) statusEl.textContent = message || 'Loading...';
+    if (dot) dot.style.display = 'block';
+}
+
+/**
+ * Hide the loading indicator or show a final status
+ */
+function hideHeatmapLoading(message) {
+    const loadingEl = document.getElementById('heatmap-loading');
+    const statusEl = document.getElementById('heatmap-status');
+    const dot = document.getElementById('heatmap-dot');
+    if (dot) dot.style.display = 'none';
+    if (message) {
+        if (statusEl) statusEl.textContent = message;
+        // Fade out after 3 seconds
+        setTimeout(() => {
+            if (loadingEl) loadingEl.style.display = 'none';
+        }, 3000);
+    } else {
+        if (loadingEl) loadingEl.style.display = 'none';
+    }
+}
+
 window.updateGlobalHeatmap = async function () {
     const rangeEl = document.getElementById('heatmap-range');
     const range = rangeEl ? rangeEl.value : 'all';
-    const statusEl = document.getElementById('heatmap-status');
-    const dot = document.getElementById('heatmap-dot');
 
-    if (statusEl) statusEl.textContent = 'Fetching routes...';
+    showHeatmapLoading('Fetching routes...');
 
     try {
         const res = await fetch(`/api/heatmap_data?range=${range}`);
@@ -65,15 +94,17 @@ window.updateGlobalHeatmap = async function () {
             window.heatmapData = data.data || [];
             window.renderGlobalHeatmap();
 
-            if (data.missing_count > 0) {
-                if (statusEl) statusEl.textContent = `Syncing ${data.missing_count} routes...`;
-                if (dot) dot.style.display = 'block';
+            const loaded = data.count || 0;
+            const total = data.total_activities || 0;
+            const missing = data.missing_count || 0;
+
+            if (missing > 0) {
+                showHeatmapLoading(`Syncing ${missing} routes... (${loaded}/${total} loaded)`);
                 if (!window.heatmapPollInterval) {
-                    window.heatmapPollInterval = setInterval(window.updateGlobalHeatmapSilent, 5000);
+                    window.heatmapPollInterval = setInterval(window.updateGlobalHeatmapSilent, 3000);
                 }
             } else {
-                if (statusEl) statusEl.textContent = 'All activities loaded';
-                if (dot) dot.style.display = 'none';
+                hideHeatmapLoading(`${loaded} routes loaded`);
                 if (window.heatmapPollInterval) {
                     clearInterval(window.heatmapPollInterval);
                     window.heatmapPollInterval = null;
@@ -82,6 +113,7 @@ window.updateGlobalHeatmap = async function () {
         }
     } catch (err) {
         console.error('Heatmap error:', err);
+        hideHeatmapLoading('Error loading routes');
     }
 }
 
@@ -92,18 +124,61 @@ window.updateGlobalHeatmapSilent = async function () {
         const res = await fetch(`/api/heatmap_data?range=${range}`);
         if (res.ok) {
             const data = await res.json();
+            const loaded = data.count || 0;
+            const total = data.total_activities || 0;
+            const missing = data.missing_count || 0;
+
             if (data.data.length > window.heatmapData.length) {
                 window.heatmapData = data.data;
                 window.renderGlobalHeatmap(false);
             }
-            if (data.missing_count === 0 && window.heatmapPollInterval) {
-                clearInterval(window.heatmapPollInterval);
-                window.heatmapPollInterval = null;
-                const dot = document.getElementById('heatmap-dot');
-                if (dot) dot.style.display = 'none';
+
+            // Update status text live during syncing
+            const statusEl = document.getElementById('heatmap-status');
+            if (missing > 0) {
+                if (statusEl) statusEl.textContent = `Syncing ${missing} routes... (${loaded}/${total} loaded)`;
+            }
+
+            if (missing === 0) {
+                if (window.heatmapPollInterval) {
+                    clearInterval(window.heatmapPollInterval);
+                    window.heatmapPollInterval = null;
+                }
+                // Final update with all data
+                window.heatmapData = data.data;
+                window.renderGlobalHeatmap(false);
+                hideHeatmapLoading(`${loaded} routes loaded`);
             }
         }
     } catch (e) { console.error(e); }
+}
+
+/**
+ * Classify an activity type string into a category.
+ * Returns { category: 'run'|'cycle'|'walk'|'virtual'|'other', color: string }
+ */
+function classifyActivityType(typeStr) {
+    if (!typeStr) return { category: 'other', color: '#94a3b8' };
+    const t = typeStr.toLowerCase();
+
+    // Virtual / indoor first (before cycling check, since 'indoor_cycling' contains 'cycling')
+    if (t.includes('virtual') || t.includes('indoor')) {
+        return { category: 'virtual', color: '#a855f7' };
+    }
+    // Running
+    if (t.includes('run')) {
+        return { category: 'run', color: '#f97316' };
+    }
+    // Cycling — check all Garmin variants: cycling, road_biking, mountain_biking, gravel_cycling, etc.
+    if (t.includes('cycl') || t.includes('ride') || t.includes('bik')) {
+        return { category: 'cycle', color: '#3b82f6' };
+    }
+    // Walking / Hiking
+    if (t.includes('walk') || t.includes('hik')) {
+        return { category: 'walk', color: '#22c55e' };
+    }
+    // Fallback — still show it as a generic activity
+    return { category: 'other', color: '#94a3b8' };
 }
 
 window.renderGlobalHeatmap = function (resetView = true) {
@@ -120,25 +195,18 @@ window.renderGlobalHeatmap = function (resetView = true) {
 
     const boundsArr = [];
     const renderer = L.canvas({ padding: 0.5 });
+    let routeCount = 0;
 
     window.heatmapData.forEach(item => {
-        const type = item.type.toLowerCase();
-        let include = false;
-        let color = '#38bdf8';
+        const { category, color } = classifyActivityType(item.type);
 
-        if (type.includes('run')) {
-            if (showRun) include = true;
-            color = '#f97316';
-        } else if (type.includes('virtual') || type.includes('indoor')) {
-            if (showVirtual) include = true;
-            color = '#a855f7';
-        } else if (type.includes('cycle') || type.includes('ride') || type.includes('bike')) {
-            if (showCycle) include = true;
-            color = '#3b82f6';
-        } else if (type.includes('walk') || type.includes('hike')) {
-            if (showWalk) include = true;
-            color = '#22c55e';
-        }
+        // Filter based on checkbox state
+        let include = false;
+        if (category === 'run' && showRun) include = true;
+        else if (category === 'cycle' && showCycle) include = true;
+        else if (category === 'walk' && showWalk) include = true;
+        else if (category === 'virtual' && showVirtual) include = true;
+        else if (category === 'other') include = true; // Always show uncategorized
 
         if (include && item.poly && item.poly.length > 1) {
             const latlngs = Array.isArray(item.poly[0]) ? item.poly : item.poly.map(p => [p.lat, p.lon]);
@@ -155,6 +223,8 @@ window.renderGlobalHeatmap = function (resetView = true) {
                 renderer: renderer,
                 interactive: false
             }).addTo(window.globalLayerGroup);
+
+            routeCount++;
 
             if (resetView) {
                 boundsArr.push(latlngs[0]);

@@ -482,7 +482,8 @@ heatmap_cache = {
     'timestamp': None,
     'range': None
 }
-HEATMAP_CACHE_EXPIRY = 120  # 2 minute cache duration
+HEATMAP_CACHE_EXPIRY = 120  # 2 minute cache duration (used when all routes loaded)
+HEATMAP_CACHE_EXPIRY_SYNCING = 10  # 10 second cache during active syncing
 
 # Activity Heatmap Cache (GitHub style contribution map)
 activity_heatmap_cache = {
@@ -589,8 +590,8 @@ def background_polyline_fetcher(client, activity_ids, generation_id):
             return None
 
     try:
-        # Use 1 worker for background polylines on Render to prevent OOM/CPU starvation
-        with ThreadPoolExecutor(max_workers=1) as executor:
+        # Use 3 workers for faster polyline fetching
+        with ThreadPoolExecutor(max_workers=3) as executor:
             # Filter IDs that need fetching
             to_fetch = [aid for aid in activity_ids if not poly_cache.has(aid)]
             
@@ -3052,7 +3053,9 @@ def get_heatmap_data():
     now = time.time()
     
     if heatmap_cache['data'] and heatmap_cache['range'] == range_val:
-        if now - heatmap_cache['timestamp'] < HEATMAP_CACHE_EXPIRY:
+        # Use shorter cache when actively syncing routes
+        cache_ttl = HEATMAP_CACHE_EXPIRY_SYNCING if (heatmap_cache['data'] or {}).get('missing_count', 0) > 0 else HEATMAP_CACHE_EXPIRY
+        if now - heatmap_cache['timestamp'] < cache_ttl:
             return jsonify(heatmap_cache['data'])
 
     try:
@@ -3071,7 +3074,7 @@ def get_heatmap_data():
             start_date = date(today.year - 1, 1, 1)
             end_date = date(today.year - 1, 12, 31) # Correctly set end date
         elif range_val == 'all':
-            start_date = date(2020, 1, 1) # Arbitrary reasonable start
+            start_date = date(2010, 1, 1) # Start from 2010 per user request
         else:
             start_date = today - timedelta(days=90)
             
@@ -3088,40 +3091,31 @@ def get_heatmap_data():
         # 2. Identify missing Cached Polylines
         missing_ids = []
         result_points = []
+        type_counter = {}  # Debug: count activity types
         
         for act in activities:
             aid = act.get('activityId')
-            # Check basic filters here if we want server side filtering
-            # For now send all data, let frontend filter types
+            type_key = act.get('activityType', {}).get('typeKey', 'unknown') or 'unknown'
+            
+            # Debug: track type distribution
+            type_counter[type_key] = type_counter.get(type_key, 0) + 1
             
             if poly_cache.has(aid):
                 # Retrieve from cache
                 poly = poly_cache.get(aid)
-                # Optimize: We interpret the polyline here to flatten it? 
-                # Or send struct. Sending raw struct {lat, lon} array is fine.
                 if poly:
                     result_points.append({
                         'id': aid,
-                        'type': act.get('activityType', {}).get('typeKey'),
-                        'poly': poly # List of {lat, lon, ...}
+                        'type': type_key,
+                        'poly': poly
                     })
             else:
-                # Identification logic:
-                # 1. Activities with real GPS usually have startLatitude != 0 and not None
-                # 2. Virtual rides (Zwift) often have startLatitude = 0.0 but CONTAIN valid Polyline data
-                # 3. We want to fetch if we haven't checked yet
-                
-                lat = act.get('startLatitude')
-                type_key = act.get('activityType', {}).get('typeKey', 'unknown')
-                is_virtual = 'virtual' in type_key.lower() or 'indoor_cycling' in type_key.lower()
-                
-                # Check for cached emptiness?
-                # If we visited it before and saved [], it will start in poly_cache.has(aid) -> True
-                # So here we only care about candidates we have NEVER checked.
-                
-                # Condition: Has latitude (even 0.0 for virtual) OR is explicitly virtual
-                if lat is not None or is_virtual:
-                    missing_ids.append(aid)
+                # Try to fetch polyline for ANY activity we haven't checked yet.
+                # The polyline fetcher will cache [] for activities with no GPS data,
+                # so they won't be re-fetched on subsequent requests.
+                missing_ids.append(aid)
+        
+        logger.info(f"Heatmap types: {type_counter}")
 
         # 3. Trigger Background Fill if needed
         if missing_ids:

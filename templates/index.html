@@ -1566,20 +1566,21 @@
                     <div
                         style="display: flex; gap: 0.5rem; background: rgba(255,255,255,0.05); padding: 0.2rem 0.5rem; border-radius: 0.5rem;">
                         <label
-                            style="font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.2rem; color: #94a3b8;">
-                            <input type="checkbox" id="heatmap-run" checked onchange="updateGlobalHeatmap()"> Run
+                            style="font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.2rem; color: #f97316;">
+                            <input type="checkbox" id="heatmap-run" checked onchange="renderGlobalHeatmap(false)"> Run
                         </label>
                         <label
-                            style="font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.2rem; color: #94a3b8;">
-                            <input type="checkbox" id="heatmap-cycle" checked onchange="updateGlobalHeatmap()"> Cycle
+                            style="font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.2rem; color: #3b82f6;">
+                            <input type="checkbox" id="heatmap-cycle" checked onchange="renderGlobalHeatmap(false)">
+                            Cycle
                         </label>
                         <label
-                            style="font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.2rem; color: #94a3b8;">
-                            <input type="checkbox" id="heatmap-walk" checked onchange="updateGlobalHeatmap()"> Walk
+                            style="font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.2rem; color: #22c55e;">
+                            <input type="checkbox" id="heatmap-walk" checked onchange="renderGlobalHeatmap(false)"> Walk
                         </label>
                         <label
-                            style="font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.2rem; color: #94a3b8;">
-                            <input type="checkbox" id="heatmap-virtual" checked onchange="updateGlobalHeatmap()">
+                            style="font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 0.2rem; color: #a855f7;">
+                            <input type="checkbox" id="heatmap-virtual" checked onchange="renderGlobalHeatmap(false)">
                             Virtual
                         </label>
                     </div>
