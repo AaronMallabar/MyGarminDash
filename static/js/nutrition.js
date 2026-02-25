@@ -724,6 +724,9 @@ window.saveCustomFood = async function (alsoLog = true) {
     const category = document.getElementById('custom-category').value;
     if (!name) return alert("Please name your recipe.");
 
+    const ingredients = [];
+    let totalCal = 0, totalChol = 0, totalPro = 0, totalCarb = 0, totalSugar = 0, totalFat = 0, totalCaffeine = 0;
+
     document.querySelectorAll('.ingredient-row').forEach(row => {
         const cal = parseInt(row.querySelector('.ing-cal').value) || 0;
         const cholVal = parseInt(row.querySelector('.ing-chol').value) || 0;

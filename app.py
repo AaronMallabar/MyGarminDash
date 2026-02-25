@@ -2486,46 +2486,6 @@ def log_food():
         save_json(FOOD_LOGS_FILE, logs)
     
     return jsonify(logged_entries)
-    
-    nutrition = None
-    if name in custom_foods:
-        nutrition = custom_foods[name]
-        logger.info(f"Nutrition: Found custom food '{name}'")
-    else:
-        # Use AI to estimate
-        try:
-            ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-            settings = load_settings()
-            model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
-            
-            prompt = f"""
-            Estimate nutritional values for: "{name}"
-            Aaron's Goals: Weight loss, low cholesterol.
-            Return ONLY a JSON object with: 
-            calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), sugar_g (int), fat_g (int), caffeine_mg (int), ai_note (str).
-            """
-            
-            response = ai_client.models.generate_content(model=model_name, contents=prompt)
-            clean_text = response.text.replace('```json', '').replace('```', '').strip()
-            nutrition = json.loads(clean_text)
-            logger.info(f"Nutrition: AI estimated '{name}' at {nutrition.get('calories')} kcal")
-        except Exception as e:
-            logger.error(f"AI Nutrition estimation failed: {e}")
-            nutrition = {'calories': 0, 'cholesterol_mg': 0, 'protein_g': 0, 'carbs_g': 0, 'sugar_g': 0, 'fat_g': 0, 'caffeine_mg': 0, 'ai_note': 'Estimation failed.'}
-
-    log_entry = {
-        'id': int(time.time() * 1000),
-        'date': date_str,
-        'time': time_str,
-        'name': name,
-        **nutrition
-    }
-    
-    logs = load_json(FOOD_LOGS_FILE, [])
-    logs.append(log_entry)
-    save_json(FOOD_LOGS_FILE, logs)
-    
-    return jsonify(log_entry)
 
 @app.route('/api/nutrition/delete', methods=['POST'])
 @login_required
