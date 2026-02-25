@@ -421,11 +421,12 @@ window.renderCalorieChart = function (data) {
             _metricKey: key,
             _unit: cfg.unit,
             borderColor: cfg.color,
-            backgroundColor: cfg.color + '20',
-            borderWidth: 2,
+            backgroundColor: key === 'net_energy' ? cfg.color + '10' : cfg.color + '20',
+            borderWidth: key === 'net_energy' ? 4 : 2,
             tension: 0.3,
             pointRadius: history.length <= 31 ? 3 : 0,
-            yAxisID: cfg.axis
+            yAxisID: cfg.axis,
+            fill: key === 'net_energy' ? 'origin' : false
         });
     });
 
@@ -454,16 +455,20 @@ window.renderCalorieChart = function (data) {
             scales: {
                 x: {
                     grid: { color: 'rgba(255,255,255,0.05)' },
-                    ticks: { color: '#94a3b8', maxTicksLimit: 10, callback: (_, i) => {
-                        const p = labels[i].split('-');
-                        return p[1] + '/' + p[2];
-                    }}
+                    ticks: {
+                        color: '#94a3b8', maxTicksLimit: 10, callback: (_, i) => {
+                            const p = labels[i].split('-');
+                            return p[1] + '/' + p[2];
+                        }
+                    }
                 },
                 y: {
                     position: 'left',
                     title: { display: true, text: 'kcal', color: '#94a3b8' },
-                    min: 0,
-                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    grid: {
+                        color: (ctx) => (ctx.tick && ctx.tick.value === 0) ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.05)',
+                        lineWidth: (ctx) => (ctx.tick && ctx.tick.value === 0) ? 2 : 1
+                    },
                     ticks: { color: '#94a3b8' }
                 },
                 y1: {
