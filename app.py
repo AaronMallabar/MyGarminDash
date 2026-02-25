@@ -449,12 +449,32 @@ active_fetch_range = None
 is_fetching = False
 fetch_lock = threading.Lock()
 
-# AI Insights Cache
-ai_insights_cache = {
-    'data': None,
-    'timestamp': None
-}
-AI_CACHE_EXPIRY = 60  # Reduced to 60s temporarily to force refresh for USER
+# AI Insights Cache (persisted to disk)
+AI_INSIGHTS_CACHE_FILE = 'ai_insights_cache.json'
+AI_CACHE_EXPIRY = 21600  # 6 hours
+
+def load_ai_insights_cache():
+    """Load AI insights from disk cache."""
+    try:
+        if os.path.exists(AI_INSIGHTS_CACHE_FILE):
+            with open(AI_INSIGHTS_CACHE_FILE, 'r') as f:
+                cached = json.load(f)
+                if cached.get('data') and cached.get('timestamp'):
+                    return cached
+    except Exception as e:
+        logger.warning(f"Failed to load AI insights cache: {e}")
+    return {'data': None, 'timestamp': None}
+
+def save_ai_insights_cache(data, timestamp):
+    """Persist AI insights cache to disk."""
+    try:
+        with open(AI_INSIGHTS_CACHE_FILE, 'w') as f:
+            json.dump({'data': data, 'timestamp': timestamp}, f)
+    except Exception as e:
+        logger.warning(f"Failed to save AI insights cache: {e}")
+
+# Load from disk on startup
+ai_insights_cache = load_ai_insights_cache()
 
 # Heatmap Cache
 heatmap_cache = {
@@ -507,11 +527,15 @@ def server_warmup():
             activity_heatmap_cache['data'] = heatmap
             activity_heatmap_cache['timestamp'] = time.time()
 
-        # Trigger AI Insight Generation in background
-        if not ai_insights_cache['data']:
-            logger.info("Server Warmup: Generating AI Insights in advance...")
-            # We call the internal function to avoid route handling overhead
-            # This will populate ai_insights_cache and ai_memory
+        # Trigger AI Insight Generation in background only if no fresh cache exists
+        now = time.time()
+        if ai_insights_cache['data'] and ai_insights_cache['timestamp'] and (now - ai_insights_cache['timestamp'] < AI_CACHE_EXPIRY):
+            logger.info(f"Server Warmup: AI Insights cache is still fresh ({round((now - ai_insights_cache['timestamp']) / 60)}min old). Skipping regeneration.")
+        elif not ai_insights_cache['data']:
+            logger.info("Server Warmup: No cached AI Insights found. Generating in advance...")
+            generate_insights_logic()
+        else:
+            logger.info("Server Warmup: AI Insights cache expired. Regenerating...")
             generate_insights_logic()
             
         logger.info("Server Warmup: Completed.")
@@ -666,9 +690,10 @@ def update_settings():
             current_settings['ai_model'] = data['ai_model']
             logger.info(f"AI model updated to: {data['ai_model']}")
             
-            # Clear AI insights cache when model changes
+            # Clear AI insights cache when model changes (memory + disk)
             global ai_insights_cache
             ai_insights_cache = {'timestamp': 0, 'data': None}
+            save_ai_insights_cache(None, 0)
         
         if save_settings(current_settings):
             return jsonify({'success': True, 'settings': current_settings})
@@ -752,18 +777,29 @@ def perform_update():
 def get_ai_insights():
     global ai_insights_cache
     
-    # Check cache first
+    force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+    
+    # Check cache first (unless force refresh requested)
     now = time.time()
-    if ai_insights_cache['data'] and ai_insights_cache['timestamp']:
+    if not force_refresh and ai_insights_cache['data'] and ai_insights_cache['timestamp']:
         if now - ai_insights_cache['timestamp'] < AI_CACHE_EXPIRY:
-            logger.info("AI Insights: Returning cached response")
-            return jsonify(ai_insights_cache['data'])
+            cache_age_min = round((now - ai_insights_cache['timestamp']) / 60)
+            logger.info(f"AI Insights: Returning cached response ({cache_age_min}min old)")
+            result = ai_insights_cache['data'].copy()
+            result['cached_at'] = ai_insights_cache['timestamp']
+            result['cache_age_seconds'] = now - ai_insights_cache['timestamp']
+            return jsonify(result)
+    
+    if force_refresh:
+        logger.info("AI Insights: Force refresh requested by user")
 
     try:
         result = generate_insights_logic()
         if result and 'error' in result:
-            return jsonify(result), 503 # Service Unavailable or specific error
+            return jsonify(result), 503
         if result:
+            result['cached_at'] = ai_insights_cache.get('timestamp', now)
+            result['cache_age_seconds'] = 0
             return jsonify(result)
         return jsonify({'error': 'Failed to generate insights'}), 500
     except Exception as e:
@@ -1187,8 +1223,10 @@ def generate_insights_logic():
             'model_name': model_name
         }
         
+        now = time.time()
         ai_insights_cache['data'] = result
-        ai_insights_cache['timestamp'] = time.time()
+        ai_insights_cache['timestamp'] = now
+        save_ai_insights_cache(result, now)
         return result
 
     except Exception as e:

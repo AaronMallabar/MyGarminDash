@@ -23,6 +23,7 @@ settings.json
 food_logs.json
 custom_foods.json
 ai_memory_cache.json
+ai_insights_cache.json
 cookies.txt
 
 # IDEs
