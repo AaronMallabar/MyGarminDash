@@ -13,24 +13,20 @@ window.cachedActivityInsights = {};
 
 window.fetchDashboardData = async function () {
     try {
-        // Delay AI Insights and background preload slightly to ensure primary fetches fire instantly
-        setTimeout(() => {
-            if (window.fetchAIInsights) window.fetchAIInsights();
-            if (typeof preloadYearlyData === 'function') preloadYearlyData();
-        }, 50);
-
-        // Fetch history data with current ranges concurrently right away
-        window.fetchWeightHistory();
-        window.fetchStepsHistory();
-        window.fetchHRHistory();
-        window.fetchStressHistory();
-        window.fetchSleepHistory();
-        window.fetchHydrationHistory();
-        window.fetchHRVHistory();
-        window.fetchIMHistory();
-        window.fetchCalendarData();
-        window.fetchNutritionData();
-        window.fetchCalorieHistory();
+        // Fire all non-AI data fetches concurrently right away
+        const dataPromises = [
+            window.fetchWeightHistory(),
+            window.fetchStepsHistory(),
+            window.fetchHRHistory(),
+            window.fetchStressHistory(),
+            window.fetchSleepHistory(),
+            window.fetchHydrationHistory(),
+            window.fetchHRVHistory(),
+            window.fetchIMHistory(),
+            window.fetchCalendarData(),
+            window.fetchNutritionData(),
+            window.fetchCalorieHistory()
+        ];
 
         // Fetch basic stats
         const statsRes = await fetch('/api/stats');
@@ -77,6 +73,16 @@ window.fetchDashboardData = async function () {
             }
         }
 
+        if (window.safeSetText) window.safeSetText('last-sync', `Last synced: ${new Date().toLocaleTimeString()}`);
+
+        // Wait for all primary data to finish loading before touching AI
+        await Promise.allSettled(dataPromises);
+
+        // Now load AI insights (lowest priority — won't block anything)
+        if (window.fetchAIInsights) window.fetchAIInsights(false);
+
+        // Preload yearly data in background
+        if (typeof preloadYearlyData === 'function') preloadYearlyData();
 
         // Heavy Route Overlays (LOWEST PRIORITY)
         setTimeout(() => {
@@ -84,7 +90,6 @@ window.fetchDashboardData = async function () {
             if (window.updateGlobalHeatmap) window.updateGlobalHeatmap();
         }, 1500);
 
-        if (window.safeSetText) window.safeSetText('last-sync', `Last synced: ${new Date().toLocaleTimeString()}`);
     } catch (error) {
         console.error('Error fetching data:', error);
         if (window.showError) window.showError('Failed to load dashboard data');
@@ -92,22 +97,95 @@ window.fetchDashboardData = async function () {
 }
 
 /**
- * Fetch and render AI Insights
+ * Format a cache age into a human-readable string
  */
-window.fetchAIInsights = async function () {
+function formatCacheAge(seconds) {
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.round((seconds % 3600) / 60);
+    return mins > 0 ? `${hours}h ${mins}m ago` : `${hours}h ago`;
+}
+
+/**
+ * Update the cache age badge in the AI header
+ */
+function updateCacheAgeBadge(data) {
+    let badge = document.getElementById('ai-cache-age');
+    if (!badge) {
+        const header = document.querySelector('.ai-header');
+        if (header) {
+            badge = document.createElement('div');
+            badge.id = 'ai-cache-age';
+            badge.style.cssText = 'font-size: 0.7rem; color: var(--text-secondary); opacity: 0.7; margin-left: 0.5rem;';
+            header.appendChild(badge);
+        }
+    }
+    if (badge && data.cache_age_seconds !== undefined) {
+        badge.textContent = `Updated ${formatCacheAge(data.cache_age_seconds)}`;
+        badge.title = data.cached_at ? `Cached at: ${new Date(data.cached_at * 1000).toLocaleString()}` : '';
+    }
+}
+
+/**
+ * Ensure the refresh button exists in the AI header
+ */
+function ensureRefreshButton() {
+    if (document.getElementById('ai-refresh-btn')) return;
+    const header = document.querySelector('.ai-header');
+    if (!header) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'ai-refresh-btn';
+    btn.innerHTML = '🔄 Refresh';
+    btn.title = 'Force refresh AI insights (fetches new analysis from AI)';
+    btn.style.cssText = `
+        background: rgba(56, 189, 248, 0.1);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        color: #38bdf8;
+        padding: 0.3rem 0.7rem;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        font-size: 0.75rem;
+        font-weight: 600;
+        transition: all 0.2s;
+        margin-left: auto;
+    `;
+    btn.onmouseover = () => { btn.style.background = 'rgba(56, 189, 248, 0.25)'; };
+    btn.onmouseout = () => { btn.style.background = 'rgba(56, 189, 248, 0.1)'; };
+    btn.onclick = () => {
+        if (window.fetchAIInsights) window.fetchAIInsights(true);
+    };
+    header.appendChild(btn);
+}
+
+/**
+ * Fetch and render AI Insights
+ * @param {boolean} forceRefresh - If true, bypass cache and regenerate from AI
+ */
+window.fetchAIInsights = async function (forceRefresh = false) {
     const thinking = document.getElementById('ai-thinking');
     const grid = document.getElementById('ai-content-grid');
     const error = document.getElementById('ai-error');
     const modelLabel = document.getElementById('ai-model-name');
     const section = document.getElementById('ai-insights-section');
+    const refreshBtn = document.getElementById('ai-refresh-btn');
 
     if (section) section.style.display = 'block';
+    ensureRefreshButton();
     if (thinking) thinking.style.display = 'flex';
     if (grid) grid.style.display = 'none';
     if (error) error.style.display = 'none';
+    if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.style.opacity = '0.5'; }
 
     // Creative thinking messages
-    const messages = [
+    const messages = forceRefresh ? [
+        "Connecting to AI analyst...",
+        "Regenerating fresh insights...",
+        "Recalculating performance metrics...",
+        "Building new training analysis...",
+        "Synthesizing updated coach report..."
+    ] : [
         "Scanning metabolic history...",
         "Calculating power-to-weight trends...",
         "Analyzing recovery efficiency...",
@@ -130,7 +208,8 @@ window.fetchAIInsights = async function () {
     }, 3000);
 
     try {
-        const res = await fetch('/api/ai_insights');
+        const url = forceRefresh ? '/api/ai_insights?force_refresh=true' : '/api/ai_insights';
+        const res = await fetch(url);
         clearInterval(interval);
 
         if (res.ok) {
@@ -151,6 +230,7 @@ window.fetchAIInsights = async function () {
                         if (titleEl) titleEl.textContent = "Model Capacity Reached";
                     }
                 }
+                if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.style.opacity = '1'; }
                 return;
             }
 
@@ -178,6 +258,9 @@ window.fetchAIInsights = async function () {
                     if (insight.activity_id) window.cachedActivityInsights[insight.activity_id] = insight;
                 });
             }
+
+            // Show cache freshness info
+            updateCacheAgeBadge(data);
         } else {
             throw new Error(`Server responded with ${res.status}`);
         }
@@ -193,6 +276,8 @@ window.fetchAIInsights = async function () {
             if (titleEl) titleEl.textContent = "Connection Terminated";
             if (detailsEl) detailsEl.textContent = err.message || "The analyst core is currently offline.";
         }
+    } finally {
+        if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.style.opacity = '1'; }
     }
 }
 

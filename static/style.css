@@ -1646,3 +1646,29 @@ h1 {
     background: rgba(56, 189, 248, 0.03);
     font-weight: 700;
 }
+
+/* Global Heatmap Loading Status Styles */
+#heatmap-loading {
+    backdrop-filter: blur(12px);
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+#heatmap-dot.pulse-dot {
+    width: 8px;
+    height: 8px;
+    background-color: #3b82f6; /* Cycling blue color */
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
+    animation: heatmap-sync-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes heatmap-sync-pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.5;
+        transform: scale(0.8);
+    }
+}

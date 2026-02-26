@@ -675,20 +675,27 @@ is_fetching = False
 fetch_lock = threading.Lock()
 
 # AI Insights Cache (Persistent & In-Memory)
-AI_CACHE_EXPIRY = 7200 # 2 Hours
+AI_CACHE_EXPIRY = 21600 # 6 Hours
 _cached_ai = GarminPersistence.get_singleton("ai_insights")
 ai_insights_cache = _cached_ai if _cached_ai else {
     'data': None,
     'timestamp': None
 }
 
+def save_ai_insights_cache(data, timestamp):
+    """Persist AI insights cache to storage."""
+    global ai_insights_cache
+    ai_insights_cache = {'data': data, 'timestamp': timestamp}
+    GarminPersistence.save_singleton("ai_insights", ai_insights_cache)
+
 # Heatmap Cache
-HEATMAP_CACHE_EXPIRY = 600 # 10 Minutes
 heatmap_cache = {
     'data': None,
     'timestamp': None,
     'range': None
 }
+HEATMAP_CACHE_EXPIRY = 120  # 2 minute cache duration (used when all routes loaded)
+HEATMAP_CACHE_EXPIRY_SYNCING = 10  # 10 second cache during active syncing
 
 # Activity Heatmap Cache
 ACT_HEATMAP_CACHE_EXPIRY = 86400 # 24 Hours
@@ -732,11 +739,15 @@ def server_warmup():
             activity_heatmap_cache['data'] = heatmap
             activity_heatmap_cache['timestamp'] = time.time()
 
-        # Trigger AI Insight Generation in background
-        if not ai_insights_cache['data']:
-            logger.info("Server Warmup: Generating AI Insights in advance...")
-            # We call the internal function to avoid route handling overhead
-            # This will populate ai_insights_cache and ai_memory
+        # Trigger AI Insight Generation in background only if no fresh cache exists
+        now = time.time()
+        if ai_insights_cache['data'] and ai_insights_cache['timestamp'] and (now - ai_insights_cache['timestamp'] < AI_CACHE_EXPIRY):
+            logger.info(f"Server Warmup: AI Insights cache is still fresh ({round((now - ai_insights_cache['timestamp']) / 60)}min old). Skipping regeneration.")
+        elif not ai_insights_cache['data']:
+            logger.info("Server Warmup: No cached AI Insights found. Generating in advance...")
+            generate_insights_logic()
+        else:
+            logger.info("Server Warmup: AI Insights cache expired. Regenerating...")
             generate_insights_logic()
             
         logger.info("Server Warmup: Completed.")
@@ -790,8 +801,8 @@ def background_polyline_fetcher(client, activity_ids, generation_id):
             return None
 
     try:
-        # Use 1 worker for background polylines on Render to prevent OOM/CPU starvation
-        with ThreadPoolExecutor(max_workers=1) as executor:
+        # Use 3 workers for faster polyline fetching
+        with ThreadPoolExecutor(max_workers=3) as executor:
             # Filter IDs that need fetching
             to_fetch = [aid for aid in activity_ids if not poly_cache.has(aid)]
             
@@ -891,9 +902,10 @@ def update_settings():
             current_settings['ai_model'] = data['ai_model']
             logger.info(f"AI model updated to: {data['ai_model']}")
             
-            # Clear AI insights cache when model changes
+            # Clear AI insights cache when model changes (memory + disk)
             global ai_insights_cache
             ai_insights_cache = {'timestamp': 0, 'data': None}
+            save_ai_insights_cache(None, 0)
         
         if save_settings(current_settings):
             return jsonify({'success': True, 'settings': current_settings})
@@ -977,24 +989,37 @@ def perform_update():
 def get_ai_insights():
     global ai_insights_cache
     
-    # Check cache first
+    force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+    
+    # Check cache first (unless force refresh requested)
     now = time.time()
-    if ai_insights_cache['data'] and ai_insights_cache['timestamp']:
+    if not force_refresh and ai_insights_cache['data'] and ai_insights_cache['timestamp']:
         if now - ai_insights_cache['timestamp'] < AI_CACHE_EXPIRY:
-            logger.info("AI Insights: Returning cached response")
-            return jsonify(ai_insights_cache['data'])
+            cache_age_min = round((now - ai_insights_cache['timestamp']) / 60)
+            logger.info(f"AI Insights: Returning cached response ({cache_age_min}min old)")
+            result = ai_insights_cache['data'].copy()
+            result['cached_at'] = ai_insights_cache['timestamp']
+            result['cache_age_seconds'] = now - ai_insights_cache['timestamp']
+            return jsonify(result)
+    
+    if force_refresh:
+        logger.info("AI Insights: Force refresh requested by user")
 
     try:
         result = generate_insights_logic()
         if result and 'error' in result:
-            return jsonify(result), 503 # Service Unavailable or specific error
+            return jsonify(result), 503
         if result:
             # Update cache and PERSIST
+            now = time.time()
             ai_insights_cache = {
                 'data': result,
                 'timestamp': now
             }
             GarminPersistence.save_singleton("ai_insights", ai_insights_cache)
+            
+            result['cached_at'] = now
+            result['cache_age_seconds'] = 0
             return jsonify(result)
         return jsonify({'error': 'Failed to generate insights'}), 500
     except Exception as e:
@@ -1405,8 +1430,10 @@ def generate_insights_logic():
             'model_name': model_name
         }
         
+        now = time.time()
         ai_insights_cache['data'] = result
-        ai_insights_cache['timestamp'] = time.time()
+        ai_insights_cache['timestamp'] = now
+        save_ai_insights_cache(result, now)
         return result
 
     except Exception as e:
@@ -2567,46 +2594,6 @@ def log_food():
         save_json(FOOD_LOGS_FILE, logs)
     
     return jsonify(logged_entries)
-    
-    nutrition = None
-    if name in custom_foods:
-        nutrition = custom_foods[name]
-        logger.info(f"Nutrition: Found custom food '{name}'")
-    else:
-        # Use AI to estimate
-        try:
-            ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-            settings = load_settings()
-            model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
-            
-            prompt = f"""
-            Estimate nutritional values for: "{name}"
-            Aaron's Goals: Weight loss, low cholesterol.
-            Return ONLY a JSON object with: 
-            calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), sugar_g (int), fat_g (int), caffeine_mg (int), ai_note (str).
-            """
-            
-            response = ai_client.models.generate_content(model=model_name, contents=prompt)
-            clean_text = response.text.replace('```json', '').replace('```', '').strip()
-            nutrition = json.loads(clean_text)
-            logger.info(f"Nutrition: AI estimated '{name}' at {nutrition.get('calories')} kcal")
-        except Exception as e:
-            logger.error(f"AI Nutrition estimation failed: {e}")
-            nutrition = {'calories': 0, 'cholesterol_mg': 0, 'protein_g': 0, 'carbs_g': 0, 'sugar_g': 0, 'fat_g': 0, 'caffeine_mg': 0, 'ai_note': 'Estimation failed.'}
-
-    log_entry = {
-        'id': int(time.time() * 1000),
-        'date': date_str,
-        'time': time_str,
-        'name': name,
-        **nutrition
-    }
-    
-    logs = load_json(FOOD_LOGS_FILE, [])
-    logs.append(log_entry)
-    save_json(FOOD_LOGS_FILE, logs)
-    
-    return jsonify(log_entry)
 
 @app.route('/api/nutrition/delete', methods=['POST'])
 @login_required
@@ -3135,7 +3122,9 @@ def get_heatmap_data():
     now = time.time()
     
     if heatmap_cache['data'] and heatmap_cache['range'] == range_val:
-        if now - heatmap_cache['timestamp'] < HEATMAP_CACHE_EXPIRY:
+        # Use shorter cache when actively syncing routes
+        cache_ttl = HEATMAP_CACHE_EXPIRY_SYNCING if (heatmap_cache['data'] or {}).get('missing_count', 0) > 0 else HEATMAP_CACHE_EXPIRY
+        if now - heatmap_cache['timestamp'] < cache_ttl:
             return jsonify(heatmap_cache['data'])
 
     try:
@@ -3154,7 +3143,7 @@ def get_heatmap_data():
             start_date = date(today.year - 1, 1, 1)
             end_date = date(today.year - 1, 12, 31) # Correctly set end date
         elif range_val == 'all':
-            start_date = date(2020, 1, 1) # Arbitrary reasonable start
+            start_date = date(2010, 1, 1) # Start from 2010 per user request
         else:
             start_date = today - timedelta(days=90)
             
@@ -3171,40 +3160,31 @@ def get_heatmap_data():
         # 2. Identify missing Cached Polylines
         missing_ids = []
         result_points = []
+        type_counter = {}  # Debug: count activity types
         
         for act in activities:
             aid = act.get('activityId')
-            # Check basic filters here if we want server side filtering
-            # For now send all data, let frontend filter types
+            type_key = act.get('activityType', {}).get('typeKey', 'unknown') or 'unknown'
+            
+            # Debug: track type distribution
+            type_counter[type_key] = type_counter.get(type_key, 0) + 1
             
             if poly_cache.has(aid):
                 # Retrieve from cache
                 poly = poly_cache.get(aid)
-                # Optimize: We interpret the polyline here to flatten it? 
-                # Or send struct. Sending raw struct {lat, lon} array is fine.
                 if poly:
                     result_points.append({
                         'id': aid,
-                        'type': act.get('activityType', {}).get('typeKey'),
-                        'poly': poly # List of {lat, lon, ...}
+                        'type': type_key,
+                        'poly': poly
                     })
             else:
-                # Identification logic:
-                # 1. Activities with real GPS usually have startLatitude != 0 and not None
-                # 2. Virtual rides (Zwift) often have startLatitude = 0.0 but CONTAIN valid Polyline data
-                # 3. We want to fetch if we haven't checked yet
-                
-                lat = act.get('startLatitude')
-                type_key = act.get('activityType', {}).get('typeKey', 'unknown')
-                is_virtual = 'virtual' in type_key.lower() or 'indoor_cycling' in type_key.lower()
-                
-                # Check for cached emptiness?
-                # If we visited it before and saved [], it will start in poly_cache.has(aid) -> True
-                # So here we only care about candidates we have NEVER checked.
-                
-                # Condition: Has latitude (even 0.0 for virtual) OR is explicitly virtual
-                if lat is not None or is_virtual:
-                    missing_ids.append(aid)
+                # Try to fetch polyline for ANY activity we haven't checked yet.
+                # The polyline fetcher will cache [] for activities with no GPS data,
+                # so they won't be re-fetched on subsequent requests.
+                missing_ids.append(aid)
+        
+        logger.info(f"Heatmap types: {type_counter}")
 
         # 3. Trigger Background Fill if needed
         if missing_ids:
