@@ -264,16 +264,19 @@ def get_user_max_hr(client):
     return 190 # Default fallback
 
 def get_calorie_data(client, date_str):
-    """Fetch calorie data prioritizing Garmin's direct stats with a safety check for activity lag."""
+    """Fetch calorie data prioritizing Garmin's direct stats. Trust Garmin's aggregate numbers to match Connect."""
     cache_key = f"calories_{date_str}"
     if cache_key in calorie_cache: return calorie_cache[cache_key]
 
     try:
         stats = client.get_stats(date_str)
-        total_cal = n(stats.get('totalCalories'))
-        active_cal = n(stats.get('activeCalories'))
-        resting_cal = n(stats.get('bmrCalories') or stats.get('restingCalories'))
+        total_cal = n(stats.get('totalKilocalories') or stats.get('totalCalories'))
+        active_cal = n(stats.get('activeKilocalories') or stats.get('activeCalories'))
+        resting_cal = n(stats.get('bmrKilocalories') or stats.get('bmrCalories') or stats.get('restingCalories'))
         
+        # Log raw stats for debugging discrepancies
+        logger.info(f"GARMIN STATS {date_str}: Total={total_cal}, Active={active_cal}, Resting={resting_cal}")
+
         # Fallback BMR calculation only if Garmin returns zero (e.g., brand new day or sync error)
         if total_cal == 0:
             profile_data = get_user_profile_data(client)
@@ -293,32 +296,7 @@ def get_calorie_data(client, date_str):
                 resting_cal = int(bmr_est)
                 active_cal = int(step_cal + (active_cal or 0))
                 total_cal = resting_cal + active_cal
-                logger.info(f"Zero-stats fallback BMR calculation: {total_cal} kcal")
-            
-        # --- Activity Verification ---
-        # Garmin's aggregate stats (activeCalories) can lag behind individual activities.
-        # We sum individual activities to ensure they are represented.
-        try:
-            activities = client.get_activities_by_date(date_str, date_str)
-            if activities:
-                act_cals_sum = sum(n(a.get('calories') or a.get('summaryDTO', {}).get('calories')) for a in activities)
-                
-                # DISCREPANCY DEBUG: Log exact stats from Garmin for comparison
-                logger.info(f"CALORIE DEBUG {date_str}: Garmin Aggregate Active={active_cal}, Sum of Activities={act_cals_sum}")
-
-                # If active_cal from stats is lower than the sum of recorded activities,
-                # it means Garmin's aggregate total is definitely lagging.
-                if act_cals_sum > 0 and active_cal < act_cals_sum:
-                    logger.info(f"Correction Triggered: Stats reported {active_cal}, but individual activities total {act_cals_sum}")
-                    # We assume active_cal currently ONLY contains non-activity (step/NEAT) burn.
-                    # Correct active calories = (Step Calories) + (Activity Calories)
-                    active_cal += int(act_cals_sum)
-                    total_cal = resting_cal + active_cal
-                    logger.info(f"Final Adjusted Calories: Active={active_cal}, Total={total_cal}")
-                else:
-                    logger.info(f"No correction needed. Final Active={active_cal}")
-        except Exception as act_e:
-             logger.warning(f"Failed to verify activity calories: {act_e}")
+                logger.info(f"Zero-stats fallback BMR calculation used: {total_cal} kcal")
             
         result = {
             'total': total_cal,
@@ -332,7 +310,7 @@ def get_calorie_data(client, date_str):
         calorie_cache[cache_key] = result
         return result
     except Exception as e:
-        logger.error(f"Error calculating calories: {e}")
+        logger.error(f"Error fetching calorie data: {e}")
         return {'total': 0, 'active': 0, 'resting': 0, 'steps': 0}
 
 # ==============================================================================
@@ -1241,6 +1219,8 @@ def get_stats():
                 # Grouped activity session
                 total_dist = sum(n(a.get('distance', 0)) for a in s)
                 total_dur = sum(n(a.get('duration', 0)) for a in s)
+                total_cals = sum(n(a.get('calories') or a.get('summaryDTO', {}).get('calories')) for a in s)
+                
                 # Use the primary activity (usually the longest or last) for the title
                 # Filtering s to ensure we have a valid key for max
                 primary = max(s, key=lambda x: n(x.get('distance', 0))) if s else s[0]
@@ -1248,6 +1228,7 @@ def get_stats():
                 grouped = primary.copy()
                 grouped['distance'] = total_dist
                 grouped['duration'] = total_dur
+                grouped['calories'] = total_cals
                 grouped['activityName'] = f"Grouped Session: {len(s)} Stages"
                 grouped['is_grouped'] = True
                 grouped['grouped_ids'] = [str(a.get('activityId')) for a in s]
