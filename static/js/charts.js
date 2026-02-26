@@ -626,9 +626,10 @@ window.renderHRVisual = function (data) {
     if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
     if (window.currentHRRange === '1d') {
-        const maxHR = data.max_hr || 190;
+        const dailyMax = parseInt(data.summary.max) || 0;
+        const profileMax = data.max_hr || 190;
         const zones = data.zones || [95, 114, 133, 152, 171];
-        safeSetText('hr-max-val', data.summary.max || '--');
+        safeSetText('hr-max-val', dailyMax || '--');
 
         const points = data.samples.map(s => ({ x: s[0], y: s[1] }));
         const getZoneColor = (hr) => {
@@ -640,24 +641,46 @@ window.renderHRVisual = function (data) {
             return '#94a3b8';
         };
 
+        const datasets = [{
+            label: 'Heart Rate',
+            data: points,
+            borderWidth: 2,
+            pointRadius: 0,
+            segment: { borderColor: ctx => getZoneColor(ctx.p1.parsed.y) },
+            tension: 0.4
+        }];
+
+        // Add daily max line as a dataset if it's higher than the samples
+        if (dailyMax > 0) {
+            datasets.push({
+                label: 'Daily Max',
+                data: points.map(p => ({ x: p.x, y: dailyMax })),
+                borderColor: 'rgba(239, 68, 68, 0.4)',
+                borderWidth: 1,
+                borderDash: [5, 5],
+                pointRadius: 0,
+                fill: false,
+                order: 1
+            });
+        }
+
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
-            data: {
-                datasets: [{
-                    label: 'Heart Rate',
-                    data: points,
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    segment: { borderColor: ctx => getZoneColor(ctx.p1.parsed.y) },
-                    tension: 0.4
-                }]
-            },
+            data: { datasets: datasets },
             options: {
                 responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false }, zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } } },
+                plugins: {
+                    legend: { display: false },
+                    zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
+                },
                 scales: {
                     x: { type: 'time', time: { displayFormats: { hour: 'HH:mm', minute: 'HH:mm' } }, grid: { display: false }, ticks: { color: '#94a3b8' } },
-                    y: { min: 40, max: Math.max(200, maxHR + 5), grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                    y: {
+                        min: 40,
+                        max: Math.max(dailyMax + 10, 180),
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#94a3b8' }
+                    }
                 }
             }
         });
@@ -673,7 +696,7 @@ window.renderHRVisual = function (data) {
                 datasets: [
                     {
                         label: 'Resting HR',
-                        data: data.history.map(d => d.rhr),
+                        data: data.history.map(d => d.rhr || null),
                         borderColor: '#38bdf8',
                         backgroundColor: 'rgba(56, 189, 248, 0.1)',
                         borderWidth: 3,
@@ -683,7 +706,7 @@ window.renderHRVisual = function (data) {
                     },
                     {
                         label: 'Max HR',
-                        data: data.history.map(d => d.max),
+                        data: data.history.map(d => d.max > 0 ? d.max : null),
                         borderColor: '#ef4444',
                         borderWidth: 2,
                         pointRadius: data.history.length > 31 ? 0 : 2,
@@ -963,95 +986,91 @@ window.updateHydrationRange = async function (range, btn) {
     await renderHydrationVisual();
 }
 
-async function renderHydrationVisual() {
+window.renderHydrationVisual = async function (data) {
     try {
+        const donut = document.getElementById('hydration-donut-container');
+        const hChartCanvas = document.getElementById('hydrationHistoryChart');
+        if (donut) donut.style.display = window.currentHydrationRange === '1d' ? 'block' : 'none';
+        if (hChartCanvas) hChartCanvas.style.display = window.currentHydrationRange === '1d' ? 'none' : 'block';
+
+        const oz = (ml) => (ml * 0.033814).toFixed(1);
+
+        // If data is provided directly, use it
+        if (data) {
+            renderHydrationContent(data, oz);
+            return;
+        }
+
         // Check cache first
         const cached = getCachedData('hydration', window.currentHydrationRange, window.currentHydrationEndDate);
         if (cached) {
-            const oz = (ml) => (ml * 0.033814).toFixed(1);
-            if (window.currentHydrationRange === '1d') {
-                const p = Math.min(100, Math.round((cached.summary.intake / cached.summary.goal) * 100));
-                safeSetText('hydration-val', oz(cached.summary.intake) + ' oz');
-                safeSetText('hydration-goal', 'Goal: ' + oz(cached.summary.goal) + ' oz');
-                safeSetText('hydration-percent', p + '%');
-                const hChart = document.getElementById('hydration-chart');
-                if (hChart) hChart.style.background = `conic-gradient(${p >= 100 ? '#22c55e' : '#38bdf8'} ${p}%, rgba(255,255,255,0.05) ${p}% 100%)`;
-            } else {
-                const ctx = document.getElementById('hydrationHistoryChart').getContext('2d');
-                if (chartInstances['hydrationHistoryChart']) chartInstances['hydrationHistoryChart'].destroy();
-                const fastLabels = cached.history.map(d => {
-                    const parts = d.date.split('-');
-                    return parts[1] + '/' + parts[2];
-                });
-                chartInstances['hydrationHistoryChart'] = new Chart(ctx, {
-                    type: 'bar',
-                    data: { labels: fastLabels, datasets: [{ label: 'oz', data: cached.history.map(d => parseFloat(oz(d.intake))), backgroundColor: cached.history.map(d => d.intake >= d.goal ? '#22c55e' : '#38bdf8'), borderRadius: cached.history.length > 100 ? 0 : 6, barPercentage: cached.history.length > 100 ? 1.0 : (cached.history.length > 30 ? 0.8 : 0.6) }] },
-                    options: {
-                        animation: false,
-                        responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
-                        scales: {
-                            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
-                            x: { grid: { display: false }, ticks: { maxTicksLimit: 12 } }
-                        }
-                    }
-                });
-            }
+            renderHydrationContent(cached, oz);
             return;
         }
 
         // Check preloaded data for 1y
         if (window.currentHydrationRange === '1y' && isDateToday(window.currentHydrationEndDate) && window.preloadedData['hydration']) {
-            setCachedData('hydration', window.currentHydrationRange, window.currentHydrationEndDate, window.preloadedData['hydration']);
-            const data = window.preloadedData['hydration'];
-            const oz = (ml) => (ml * 0.033814).toFixed(1);
-            const ctx = document.getElementById('hydrationHistoryChart').getContext('2d');
-            if (chartInstances['hydrationHistoryChart']) chartInstances['hydrationHistoryChart'].destroy();
-            chartInstances['hydrationHistoryChart'] = new Chart(ctx, {
-                type: 'bar',
-                data: { labels: data.history.map(d => parseLocalDate(d.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })), datasets: [{ label: 'oz', data: data.history.map(d => parseFloat(oz(d.intake))), backgroundColor: data.history.map(d => d.intake >= d.goal ? '#22c55e' : '#38bdf8'), borderRadius: 6 }] },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } }, x: { grid: { display: false } } } }
-            });
+            const preloaded = window.preloadedData['hydration'];
+            setCachedData('hydration', window.currentHydrationRange, window.currentHydrationEndDate, preloaded);
+            renderHydrationContent(preloaded, oz);
             return;
         }
+
         const res = await fetch(`/api/hydration_history?range=${window.currentHydrationRange}&end_date=${getLocalDateStr(window.currentHydrationEndDate)}`);
         if (res.ok) {
-            const data = await res.json();
-            if (data.error) return;
-
-            // Cache the fetched data
-            setCachedData('hydration', window.currentHydrationRange, window.currentHydrationEndDate, data);
-
-            const oz = (ml) => (ml * 0.033814).toFixed(1);
-            if (window.currentHydrationRange === '1d') {
-                const p = Math.min(100, Math.round((data.summary.intake / data.summary.goal) * 100));
-                safeSetText('hydration-val', oz(data.summary.intake) + ' oz');
-                safeSetText('hydration-goal', 'Goal: ' + oz(data.summary.goal) + ' oz');
-                safeSetText('hydration-percent', p + '%');
-                const hChart = document.getElementById('hydration-chart');
-                if (hChart) hChart.style.background = `conic-gradient(${p >= 100 ? '#22c55e' : '#38bdf8'} ${p}%, rgba(255,255,255,0.05) ${p}% 100%)`;
-            } else {
-                const ctx = document.getElementById('hydrationHistoryChart').getContext('2d');
-                if (chartInstances['hydrationHistoryChart']) chartInstances['hydrationHistoryChart'].destroy();
-                // Optimization: Fast date labels
-                const fastLabels = data.history.map(d => {
-                    const parts = d.date.split('-');
-                    return parts[1] + '/' + parts[2];
-                });
-                chartInstances['hydrationHistoryChart'] = new Chart(ctx, {
-                    type: 'bar',
-                    data: { labels: fastLabels, datasets: [{ label: 'oz', data: data.history.map(d => parseFloat(oz(d.intake))), backgroundColor: data.history.map(d => d.intake >= d.goal ? '#22c55e' : '#38bdf8'), borderRadius: data.history.length > 100 ? 0 : 6, barPercentage: data.history.length > 100 ? 1.0 : (data.history.length > 30 ? 0.8 : 0.6) }] },
-                    options: {
-                        animation: false,
-                        responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
-                        scales: {
-                            y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
-                            x: { grid: { display: false }, ticks: { maxTicksLimit: 12 } }
-                        }
-                    }
-                });
-            }
+            const fetched = await res.json();
+            if (fetched.error) return;
+            setCachedData('hydration', window.currentHydrationRange, window.currentHydrationEndDate, fetched);
+            renderHydrationContent(fetched, oz);
         }
     } catch (err) { console.error('Hydration error:', err); }
+}
+
+function renderHydrationContent(data, oz) {
+    if (window.currentHydrationRange === '1d') {
+        const intake = data.summary ? data.summary.intake : (data.intake || 0);
+        const goal = data.summary ? data.summary.goal : (data.goal || 2000);
+        const p = Math.min(100, Math.round((intake / goal) * 100));
+
+        safeSetText('hydration-val', oz(intake) + ' oz');
+        safeSetText('hydration-goal', 'Goal: ' + oz(goal) + ' oz');
+        safeSetText('hydration-percent', p + '%');
+        const hChart = document.getElementById('hydration-chart');
+        if (hChart) hChart.style.background = `conic-gradient(${p >= 100 ? '#22c55e' : '#38bdf8'} ${p}%, rgba(255,255,255,0.05) ${p}% 100%)`;
+    } else {
+        const ctx = document.getElementById('hydrationHistoryChart').getContext('2d');
+        if (chartInstances['hydrationHistoryChart']) chartInstances['hydrationHistoryChart'].destroy();
+
+        // Ensure data.history exists
+        const history = data.history || [];
+        const fastLabels = history.map(d => {
+            const parts = d.date.split('-');
+            return parts[1] + '/' + parts[2];
+        });
+
+        chartInstances['hydrationHistoryChart'] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: fastLabels,
+                datasets: [{
+                    label: 'oz',
+                    data: history.map(d => parseFloat(oz(d.intake))),
+                    backgroundColor: history.map(d => d.intake >= d.goal ? '#22c55e' : '#38bdf8'),
+                    borderRadius: history.length > 100 ? 0 : 6,
+                    barPercentage: history.length > 100 ? 1.0 : (history.length > 30 ? 0.8 : 0.6)
+                }]
+            },
+            options: {
+                animation: false,
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    x: { grid: { display: false }, ticks: { maxTicksLimit: 12 } }
+                }
+            }
+        });
+    }
 }
 
 function shiftHydrationDate(dir) {

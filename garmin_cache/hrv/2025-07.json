@@ -1,0 +1,498 @@
+{
+  "2025-07-01": {
+    "calendarDate": "2025-07-01",
+    "weeklyAvg": 83,
+    "lastNightAvg": 87,
+    "lastNight5MinHigh": 146,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 74,
+      "balancedUpper": 99,
+      "markerValue": 0.42999268
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-01T10:13:52.167",
+    "timestamp": 1772070745.8429346
+  },
+  "2025-07-02": {
+    "calendarDate": "2025-07-02",
+    "weeklyAvg": 82,
+    "lastNightAvg": 93,
+    "lastNight5MinHigh": 138,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 74,
+      "balancedUpper": 99,
+      "markerValue": 0.4099884
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-02T10:03:21.65",
+    "timestamp": 1772070745.9985135
+  },
+  "2025-07-03": {
+    "calendarDate": "2025-07-03",
+    "weeklyAvg": 83,
+    "lastNightAvg": 89,
+    "lastNight5MinHigh": 126,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 74,
+      "balancedUpper": 99,
+      "markerValue": 0.42999268
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-03T09:31:48.500",
+    "timestamp": 1772070746.110785
+  },
+  "2025-07-04": {
+    "calendarDate": "2025-07-04",
+    "weeklyAvg": 88,
+    "lastNightAvg": 102,
+    "lastNight5MinHigh": 133,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 74,
+      "balancedUpper": 99,
+      "markerValue": 0.5299988
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-04T10:52:32.428",
+    "timestamp": 1772070746.350038
+  },
+  "2025-07-05": {
+    "calendarDate": "2025-07-05",
+    "weeklyAvg": 89,
+    "lastNightAvg": 87,
+    "lastNight5MinHigh": 117,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 74,
+      "balancedUpper": 99,
+      "markerValue": 0.5499878
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-05T11:01:52.632",
+    "timestamp": 1772070746.4577916
+  },
+  "2025-07-06": {
+    "calendarDate": "2025-07-06",
+    "weeklyAvg": 92,
+    "lastNightAvg": 88,
+    "lastNight5MinHigh": 115,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 74,
+      "balancedUpper": 98,
+      "markerValue": 0.625
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-06T11:08:36.249",
+    "timestamp": 1772070746.582336
+  },
+  "2025-07-07": {
+    "calendarDate": "2025-07-07",
+    "weeklyAvg": 90,
+    "lastNightAvg": 86,
+    "lastNight5MinHigh": 142,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 74,
+      "balancedUpper": 99,
+      "markerValue": 0.56999207
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_5",
+    "createTimeStamp": "2025-07-07T09:19:14.3",
+    "timestamp": 1772070746.7403944
+  },
+  "2025-07-08": {
+    "calendarDate": "2025-07-08",
+    "weeklyAvg": 87,
+    "lastNightAvg": 65,
+    "lastNight5MinHigh": 115,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 75,
+      "balancedUpper": 99,
+      "markerValue": 0.5
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-08T10:06:39.201",
+    "timestamp": 1772070746.8783565
+  },
+  "2025-07-09": {
+    "calendarDate": "2025-07-09",
+    "weeklyAvg": 86,
+    "lastNightAvg": 91,
+    "lastNight5MinHigh": 131,
+    "baseline": {
+      "lowUpper": 70,
+      "balancedLow": 75,
+      "balancedUpper": 99,
+      "markerValue": 0.4791565
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_7",
+    "createTimeStamp": "2025-07-09T09:47:48.776",
+    "timestamp": 1772070746.9977617
+  },
+  "2025-07-10": {
+    "calendarDate": "2025-07-10",
+    "weeklyAvg": 85,
+    "lastNightAvg": 78,
+    "lastNight5MinHigh": 112,
+    "baseline": {
+      "lowUpper": 70,
+      "balancedLow": 75,
+      "balancedUpper": 100,
+      "markerValue": 0.44999695
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-10T10:27:01.144",
+    "timestamp": 1772070747.1198661
+  },
+  "2025-07-11": {
+    "calendarDate": "2025-07-11",
+    "weeklyAvg": 83,
+    "lastNightAvg": 86,
+    "lastNight5MinHigh": 115,
+    "baseline": {
+      "lowUpper": 70,
+      "balancedLow": 75,
+      "balancedUpper": 100,
+      "markerValue": 0.4099884
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_5",
+    "createTimeStamp": "2025-07-11T09:14:07.716",
+    "timestamp": 1772070747.2357981
+  },
+  "2025-07-12": {
+    "calendarDate": "2025-07-12",
+    "weeklyAvg": 81,
+    "lastNightAvg": 77,
+    "lastNight5MinHigh": 117,
+    "baseline": {
+      "lowUpper": 70,
+      "balancedLow": 76,
+      "balancedUpper": 100,
+      "markerValue": 0.3541565
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-12T12:46:46.182",
+    "timestamp": 1772070747.3384356
+  },
+  "2025-07-13": {
+    "calendarDate": "2025-07-13",
+    "weeklyAvg": 80,
+    "lastNightAvg": 79,
+    "lastNight5MinHigh": 109,
+    "baseline": {
+      "lowUpper": 71,
+      "balancedLow": 76,
+      "balancedUpper": 100,
+      "markerValue": 0.33332825
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-13T12:41:38.204",
+    "timestamp": 1772070747.452796
+  },
+  "2025-07-14": {
+    "calendarDate": "2025-07-14",
+    "weeklyAvg": 80,
+    "lastNightAvg": 84,
+    "lastNight5MinHigh": 118,
+    "baseline": {
+      "lowUpper": 71,
+      "balancedLow": 76,
+      "balancedUpper": 100,
+      "markerValue": 0.33332825
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-14T11:34:45.559",
+    "timestamp": 1772070747.6654348
+  },
+  "2025-07-15": {
+    "calendarDate": "2025-07-15",
+    "weeklyAvg": 83,
+    "lastNightAvg": 89,
+    "lastNight5MinHigh": 113,
+    "baseline": {
+      "lowUpper": 71,
+      "balancedLow": 76,
+      "balancedUpper": 100,
+      "markerValue": 0.39582825
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-15T10:34:13.393",
+    "timestamp": 1772070747.8351018
+  },
+  "2025-07-16": {
+    "calendarDate": "2025-07-16",
+    "weeklyAvg": 85,
+    "lastNightAvg": 105,
+    "lastNight5MinHigh": 133,
+    "baseline": {
+      "lowUpper": 71,
+      "balancedLow": 76,
+      "balancedUpper": 100,
+      "markerValue": 0.4375
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-16T09:17:21.586",
+    "timestamp": 1772070748.0716648
+  },
+  "2025-07-17": {
+    "calendarDate": "2025-07-17",
+    "weeklyAvg": 88,
+    "lastNightAvg": 97,
+    "lastNight5MinHigh": 132,
+    "baseline": {
+      "lowUpper": 71,
+      "balancedLow": 76,
+      "balancedUpper": 100,
+      "markerValue": 0.5
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-17T10:05:17.786",
+    "timestamp": 1772070748.225024
+  },
+  "2025-07-18": {
+    "calendarDate": "2025-07-18",
+    "weeklyAvg": 88,
+    "lastNightAvg": 89,
+    "lastNight5MinHigh": 133,
+    "baseline": {
+      "lowUpper": 71,
+      "balancedLow": 76,
+      "balancedUpper": 100,
+      "markerValue": 0.5
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_8",
+    "createTimeStamp": "2025-07-18T10:58:55.200",
+    "timestamp": 1772070748.3626983
+  },
+  "2025-07-19": {
+    "calendarDate": "2025-07-19",
+    "weeklyAvg": 92,
+    "lastNightAvg": 108,
+    "lastNight5MinHigh": 133,
+    "baseline": {
+      "lowUpper": 71,
+      "balancedLow": 76,
+      "balancedUpper": 99,
+      "markerValue": 0.5978241
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_5",
+    "createTimeStamp": "2025-07-19T11:19:17.0",
+    "timestamp": 1772070748.5061724
+  },
+  "2025-07-20": {
+    "calendarDate": "2025-07-20",
+    "weeklyAvg": 95,
+    "lastNightAvg": 98,
+    "lastNight5MinHigh": 120,
+    "baseline": {
+      "lowUpper": 72,
+      "balancedLow": 76,
+      "balancedUpper": 99,
+      "markerValue": 0.66304016
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_6",
+    "createTimeStamp": "2025-07-20T09:46:55.36",
+    "timestamp": 1772070748.6448443
+  },
+  "2025-07-21": {
+    "calendarDate": "2025-07-21",
+    "weeklyAvg": 95,
+    "lastNightAvg": 79,
+    "lastNight5MinHigh": 115,
+    "baseline": {
+      "lowUpper": 72,
+      "balancedLow": 77,
+      "balancedUpper": 99,
+      "markerValue": 0.65908813
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_7",
+    "createTimeStamp": "2025-07-21T10:13:06.956",
+    "timestamp": 1772070748.761067
+  },
+  "2025-07-22": {
+    "calendarDate": "2025-07-22",
+    "weeklyAvg": 95,
+    "lastNightAvg": 93,
+    "lastNight5MinHigh": 148,
+    "baseline": {
+      "lowUpper": 72,
+      "balancedLow": 77,
+      "balancedUpper": 99,
+      "markerValue": 0.65908813
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_8",
+    "createTimeStamp": "2025-07-22T10:22:10.566",
+    "timestamp": 1772070748.8765996
+  },
+  "2025-07-23": {
+    "calendarDate": "2025-07-23",
+    "weeklyAvg": 93,
+    "lastNightAvg": 87,
+    "lastNight5MinHigh": 124,
+    "baseline": {
+      "lowUpper": 72,
+      "balancedLow": 77,
+      "balancedUpper": 100,
+      "markerValue": 0.5978241
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_5",
+    "createTimeStamp": "2025-07-23T10:05:37.211",
+    "timestamp": 1772070749.0080323
+  },
+  "2025-07-24": {
+    "calendarDate": "2025-07-24",
+    "weeklyAvg": 92,
+    "lastNightAvg": 90,
+    "lastNight5MinHigh": 122,
+    "baseline": {
+      "lowUpper": 72,
+      "balancedLow": 77,
+      "balancedUpper": 100,
+      "markerValue": 0.5760803
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_6",
+    "createTimeStamp": "2025-07-24T10:06:06.871",
+    "timestamp": 1772070749.132598
+  },
+  "2025-07-25": {
+    "calendarDate": "2025-07-25",
+    "weeklyAvg": 88,
+    "lastNightAvg": 67,
+    "lastNight5MinHigh": 105,
+    "baseline": {
+      "lowUpper": 73,
+      "balancedLow": 77,
+      "balancedUpper": 101,
+      "markerValue": 0.4791565
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_3",
+    "createTimeStamp": "2025-07-25T10:13:49.285",
+    "timestamp": 1772070749.243138
+  },
+  "2025-07-26": {
+    "calendarDate": "2025-07-26",
+    "weeklyAvg": 87,
+    "lastNightAvg": 96,
+    "lastNight5MinHigh": 129,
+    "baseline": {
+      "lowUpper": 73,
+      "balancedLow": 78,
+      "balancedUpper": 101,
+      "markerValue": 0.4456482
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_8",
+    "createTimeStamp": "2025-07-26T10:37:33.190",
+    "timestamp": 1772070749.379655
+  },
+  "2025-07-27": {
+    "calendarDate": "2025-07-27",
+    "weeklyAvg": 86,
+    "lastNightAvg": 95,
+    "lastNight5MinHigh": 136,
+    "baseline": {
+      "lowUpper": 73,
+      "balancedLow": 78,
+      "balancedUpper": 102,
+      "markerValue": 0.4166565
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_5",
+    "createTimeStamp": "2025-07-27T11:10:27.911",
+    "timestamp": 1772070749.524747
+  },
+  "2025-07-28": {
+    "calendarDate": "2025-07-28",
+    "weeklyAvg": 88,
+    "lastNightAvg": 93,
+    "lastNight5MinHigh": 137,
+    "baseline": {
+      "lowUpper": 74,
+      "balancedLow": 78,
+      "balancedUpper": 101,
+      "markerValue": 0.4673767
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_6",
+    "createTimeStamp": "2025-07-28T10:31:01.683",
+    "timestamp": 1772070749.673214
+  },
+  "2025-07-29": {
+    "calendarDate": "2025-07-29",
+    "weeklyAvg": 86,
+    "lastNightAvg": 76,
+    "lastNight5MinHigh": 109,
+    "baseline": {
+      "lowUpper": 74,
+      "balancedLow": 79,
+      "balancedUpper": 101,
+      "markerValue": 0.40908813
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_3",
+    "createTimeStamp": "2025-07-29T09:31:32.71",
+    "timestamp": 1772070749.818337
+  },
+  "2025-07-30": {
+    "calendarDate": "2025-07-30",
+    "weeklyAvg": 82,
+    "lastNightAvg": 66,
+    "lastNight5MinHigh": 93,
+    "baseline": {
+      "lowUpper": 74,
+      "balancedLow": 79,
+      "balancedUpper": 101,
+      "markerValue": 0.31817627
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-30T09:37:54.83",
+    "timestamp": 1772070749.9506338
+  },
+  "2025-07-31": {
+    "calendarDate": "2025-07-31",
+    "weeklyAvg": 81,
+    "lastNightAvg": 81,
+    "lastNight5MinHigh": 111,
+    "baseline": {
+      "lowUpper": 74,
+      "balancedLow": 79,
+      "balancedUpper": 102,
+      "markerValue": 0.2934723
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2025-07-31T10:01:05.661",
+    "timestamp": 1772070750.1521273
+  }
+}

@@ -1,0 +1,498 @@
+{
+  "2026-01-01": {
+    "calendarDate": "2026-01-01",
+    "weeklyAvg": 70,
+    "lastNightAvg": 68,
+    "lastNight5MinHigh": 106,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 74,
+      "balancedUpper": 92,
+      "markerValue": 0.14099121
+    },
+    "status": "UNBALANCED",
+    "feedbackPhrase": "HRV_UNBALANCED_12",
+    "createTimeStamp": "2026-01-01T12:56:02.183",
+    "timestamp": 1772070773.7671838
+  },
+  "2026-01-02": {
+    "calendarDate": "2026-01-02",
+    "weeklyAvg": 70,
+    "lastNightAvg": 71,
+    "lastNight5MinHigh": 108,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 74,
+      "balancedUpper": 92,
+      "markerValue": 0.13726807
+    },
+    "status": "UNBALANCED",
+    "feedbackPhrase": "HRV_UNBALANCED_12",
+    "createTimeStamp": "2026-01-02T10:45:53.221",
+    "timestamp": 1772070773.8958
+  },
+  "2026-01-03": {
+    "calendarDate": "2026-01-03",
+    "weeklyAvg": 71,
+    "lastNightAvg": 69,
+    "lastNight5MinHigh": 104,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.16648865
+    },
+    "status": "UNBALANCED",
+    "feedbackPhrase": "HRV_UNBALANCED_10",
+    "createTimeStamp": "2026-01-03T13:27:10.417",
+    "timestamp": 1772070774.0651898
+  },
+  "2026-01-04": {
+    "calendarDate": "2026-01-04",
+    "weeklyAvg": 71,
+    "lastNightAvg": 74,
+    "lastNight5MinHigh": 112,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.19178772
+    },
+    "status": "UNBALANCED",
+    "feedbackPhrase": "HRV_UNBALANCED_11",
+    "createTimeStamp": "2026-01-04T14:06:41.670",
+    "timestamp": 1772070774.4680026
+  },
+  "2026-01-05": {
+    "calendarDate": "2026-01-05",
+    "weeklyAvg": 74,
+    "lastNightAvg": 77,
+    "lastNight5MinHigh": 109,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.27630615
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_4",
+    "createTimeStamp": "2026-01-05T11:29:34.319",
+    "timestamp": 1772070774.5883713
+  },
+  "2026-01-06": {
+    "calendarDate": "2026-01-06",
+    "weeklyAvg": 73,
+    "lastNightAvg": 80,
+    "lastNight5MinHigh": 107,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.25
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2026-01-06T11:19:49.96",
+    "timestamp": 1772070775.0952516
+  },
+  "2026-01-07": {
+    "calendarDate": "2026-01-07",
+    "weeklyAvg": 73,
+    "lastNightAvg": 76,
+    "lastNight5MinHigh": 105,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.25
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2026-01-07T10:20:28.43",
+    "timestamp": 1772070775.28171
+  },
+  "2026-01-08": {
+    "calendarDate": "2026-01-08",
+    "weeklyAvg": 72,
+    "lastNightAvg": 61,
+    "lastNight5MinHigh": 91,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.23327637
+    },
+    "status": "UNBALANCED",
+    "feedbackPhrase": "HRV_UNBALANCED_7",
+    "createTimeStamp": "2026-01-08T10:55:17.491",
+    "timestamp": 1772070775.4030833
+  },
+  "2026-01-09": {
+    "calendarDate": "2026-01-09",
+    "weeklyAvg": 73,
+    "lastNightAvg": 77,
+    "lastNight5MinHigh": 110,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.25
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_1",
+    "createTimeStamp": "2026-01-09T11:08:07.522",
+    "timestamp": 1772070775.5322828
+  },
+  "2026-01-10": {
+    "calendarDate": "2026-01-10",
+    "weeklyAvg": 76,
+    "lastNightAvg": 89,
+    "lastNight5MinHigh": 119,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.32893372
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2026-01-10T13:30:28.43",
+    "timestamp": 1772070775.9017577
+  },
+  "2026-01-11": {
+    "calendarDate": "2026-01-11",
+    "weeklyAvg": 78,
+    "lastNightAvg": 85,
+    "lastNight5MinHigh": 121,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.38157654
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2026-01-11T13:58:48.310",
+    "timestamp": 1772070776.006204
+  },
+  "2026-01-12": {
+    "calendarDate": "2026-01-12",
+    "weeklyAvg": 78,
+    "lastNightAvg": 77,
+    "lastNight5MinHigh": 103,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.38157654
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2026-01-12T11:53:52.457",
+    "timestamp": 1772070776.1062636
+  },
+  "2026-01-13": {
+    "calendarDate": "2026-01-13",
+    "weeklyAvg": 78,
+    "lastNightAvg": 82,
+    "lastNight5MinHigh": 125,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.38157654
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_7",
+    "createTimeStamp": "2026-01-13T10:52:32.621",
+    "timestamp": 1772070776.3145216
+  },
+  "2026-01-14": {
+    "calendarDate": "2026-01-14",
+    "weeklyAvg": 74,
+    "lastNightAvg": 55,
+    "lastNight5MinHigh": 89,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.27630615
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2026-01-14T10:43:26.266",
+    "timestamp": 1772070776.7272708
+  },
+  "2026-01-15": {
+    "calendarDate": "2026-01-15",
+    "weeklyAvg": 75,
+    "lastNightAvg": 65,
+    "lastNight5MinHigh": 97,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.30262756
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2026-01-15T10:53:18.738",
+    "timestamp": 1772070776.8987894
+  },
+  "2026-01-16": {
+    "calendarDate": "2026-01-16",
+    "weeklyAvg": 74,
+    "lastNightAvg": 72,
+    "lastNight5MinHigh": 106,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.27630615
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_2",
+    "createTimeStamp": "2026-01-16T11:47:07.373",
+    "timestamp": 1772070777.0662997
+  },
+  "2026-01-17": {
+    "calendarDate": "2026-01-17",
+    "weeklyAvg": 71,
+    "lastNightAvg": 66,
+    "lastNight5MinHigh": 89,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.19256592
+    },
+    "status": "UNBALANCED",
+    "feedbackPhrase": "HRV_UNBALANCED_7",
+    "createTimeStamp": "2026-01-17T14:08:21.674",
+    "timestamp": 1772070777.240732
+  },
+  "2026-01-18": {
+    "calendarDate": "2026-01-18",
+    "weeklyAvg": 68,
+    "lastNightAvg": 62,
+    "lastNight5MinHigh": 103,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.08666992
+    },
+    "status": "LOW",
+    "feedbackPhrase": "HRV_LOW_2",
+    "createTimeStamp": "2026-01-18T13:47:41.448",
+    "timestamp": 1772070777.3610852
+  },
+  "2026-01-19": {
+    "calendarDate": "2026-01-19",
+    "weeklyAvg": 68,
+    "lastNightAvg": 78,
+    "lastNight5MinHigh": 105,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.09007263
+    },
+    "status": "LOW",
+    "feedbackPhrase": "HRV_LOW_4",
+    "createTimeStamp": "2026-01-19T13:40:51.200",
+    "timestamp": 1772070777.7445261
+  },
+  "2026-01-20": {
+    "calendarDate": "2026-01-20",
+    "weeklyAvg": 68,
+    "lastNightAvg": 81,
+    "lastNight5MinHigh": 113,
+    "baseline": {
+      "lowUpper": 69,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.08291626
+    },
+    "status": "LOW",
+    "feedbackPhrase": "HRV_LOW_5",
+    "createTimeStamp": "2026-01-20T10:32:47.677",
+    "timestamp": 1772070777.8542774
+  },
+  "2026-01-21": {
+    "calendarDate": "2026-01-21",
+    "weeklyAvg": 72,
+    "lastNightAvg": 84,
+    "lastNight5MinHigh": 117,
+    "baseline": {
+      "lowUpper": 68,
+      "balancedLow": 73,
+      "balancedUpper": 92,
+      "markerValue": 0.23802185
+    },
+    "status": "UNBALANCED",
+    "feedbackPhrase": "HRV_UNBALANCED_10",
+    "createTimeStamp": "2026-01-21T11:46:08.51",
+    "timestamp": 1772070777.9732916
+  },
+  "2026-01-22": {
+    "calendarDate": "2026-01-22",
+    "weeklyAvg": 73,
+    "lastNightAvg": 67,
+    "lastNight5MinHigh": 93,
+    "baseline": {
+      "lowUpper": 68,
+      "balancedLow": 72,
+      "balancedUpper": 92,
+      "markerValue": 0.2749939
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_3",
+    "createTimeStamp": "2026-01-22T10:56:49.680",
+    "timestamp": 1772070778.1281645
+  },
+  "2026-01-23": {
+    "calendarDate": "2026-01-23",
+    "weeklyAvg": 71,
+    "lastNightAvg": 62,
+    "lastNight5MinHigh": 94,
+    "baseline": {
+      "lowUpper": 68,
+      "balancedLow": 72,
+      "balancedUpper": 92,
+      "markerValue": 0.20973206
+    },
+    "status": "UNBALANCED",
+    "feedbackPhrase": "HRV_UNBALANCED_7",
+    "createTimeStamp": "2026-01-23T11:51:53.724",
+    "timestamp": 1772070778.3103209
+  },
+  "2026-01-24": {
+    "calendarDate": "2026-01-24",
+    "weeklyAvg": 71,
+    "lastNightAvg": 70,
+    "lastNight5MinHigh": 93,
+    "baseline": {
+      "lowUpper": 68,
+      "balancedLow": 72,
+      "balancedUpper": 92,
+      "markerValue": 0.23205566
+    },
+    "status": "UNBALANCED",
+    "feedbackPhrase": "HRV_UNBALANCED_10",
+    "createTimeStamp": "2026-01-24T14:01:19.985",
+    "timestamp": 1772070778.4813101
+  },
+  "2026-01-25": {
+    "calendarDate": "2026-01-25",
+    "weeklyAvg": 73,
+    "lastNightAvg": 71,
+    "lastNight5MinHigh": 100,
+    "baseline": {
+      "lowUpper": 67,
+      "balancedLow": 72,
+      "balancedUpper": 92,
+      "markerValue": 0.2749939
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_3",
+    "createTimeStamp": "2026-01-25T13:55:04.987",
+    "timestamp": 1772070778.6751451
+  },
+  "2026-01-26": {
+    "calendarDate": "2026-01-26",
+    "weeklyAvg": 73,
+    "lastNightAvg": 80,
+    "lastNight5MinHigh": 116,
+    "baseline": {
+      "lowUpper": 67,
+      "balancedLow": 72,
+      "balancedUpper": 92,
+      "markerValue": 0.2749939
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_8",
+    "createTimeStamp": "2026-01-26T11:55:59.31",
+    "timestamp": 1772070778.9035013
+  },
+  "2026-01-27": {
+    "calendarDate": "2026-01-27",
+    "weeklyAvg": 73,
+    "lastNightAvg": 79,
+    "lastNight5MinHigh": 113,
+    "baseline": {
+      "lowUpper": 67,
+      "balancedLow": 72,
+      "balancedUpper": 92,
+      "markerValue": 0.2749939
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_5",
+    "createTimeStamp": "2026-01-27T11:27:59.516",
+    "timestamp": 1772070779.0182176
+  },
+  "2026-01-28": {
+    "calendarDate": "2026-01-28",
+    "weeklyAvg": 74,
+    "lastNightAvg": 90,
+    "lastNight5MinHigh": 124,
+    "baseline": {
+      "lowUpper": 68,
+      "balancedLow": 72,
+      "balancedUpper": 92,
+      "markerValue": 0.2999878
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_6",
+    "createTimeStamp": "2026-01-28T11:32:29.546",
+    "timestamp": 1772070779.152794
+  },
+  "2026-01-29": {
+    "calendarDate": "2026-01-29",
+    "weeklyAvg": 76,
+    "lastNightAvg": 83,
+    "lastNight5MinHigh": 110,
+    "baseline": {
+      "lowUpper": 67,
+      "balancedLow": 72,
+      "balancedUpper": 92,
+      "markerValue": 0.34999084
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_7",
+    "createTimeStamp": "2026-01-29T10:45:23.55",
+    "timestamp": 1772070779.2748291
+  },
+  "2026-01-30": {
+    "calendarDate": "2026-01-30",
+    "weeklyAvg": 79,
+    "lastNightAvg": 83,
+    "lastNight5MinHigh": 108,
+    "baseline": {
+      "lowUpper": 67,
+      "balancedLow": 71,
+      "balancedUpper": 92,
+      "markerValue": 0.44047546
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_8",
+    "createTimeStamp": "2026-01-30T11:19:33.569",
+    "timestamp": 1772070779.386606
+  },
+  "2026-01-31": {
+    "calendarDate": "2026-01-31",
+    "weeklyAvg": 80,
+    "lastNightAvg": 74,
+    "lastNight5MinHigh": 112,
+    "baseline": {
+      "lowUpper": 67,
+      "balancedLow": 71,
+      "balancedUpper": 91,
+      "markerValue": 0.47499084
+    },
+    "status": "BALANCED",
+    "feedbackPhrase": "HRV_BALANCED_5",
+    "createTimeStamp": "2026-01-31T13:50:34.635",
+    "timestamp": 1772070779.5116982
+  }
+}

@@ -475,17 +475,23 @@ window.fetchSleepHistory = async function () {
  */
 window.fetchHydrationHistory = async function () {
     try {
-        const date = window.currentHydrationDate || new Date();
-        const res = await fetch(`/api/hydration?date=${window.getLocalDateStr(date)}`);
+        const endDate = window.currentHydrationEndDate || new Date();
+        const range = window.currentHydrationRange || '1d';
+
+        if (range === '1y' && window.isDateToday(endDate) && window.preloadedData['hydration']) {
+            if (window.renderHydrationVisual) await window.renderHydrationVisual(window.preloadedData['hydration']);
+            return;
+        }
+
+        const res = await fetch(`/api/hydration_history?end_date=${window.getLocalDateStr(endDate)}&range=${range}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
-                window.currentHydrationData = data;
-                if (window.renderHydrationVisual) window.renderHydrationVisual();
+                if (window.renderHydrationVisual) await window.renderHydrationVisual(data);
             }
         }
     } catch (err) {
-        console.error('Hydration error:', err);
+        console.error('Hydration history error:', err);
     }
 }
 

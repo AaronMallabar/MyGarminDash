@@ -5,6 +5,7 @@
 window.updateDashboard = function (data) {
     window.safeSetText('steps', data.steps ? data.steps.toLocaleString() : '0');
     window.safeSetText('rhr', data.resting_hr || '--');
+    window.safeSetText('hr-max-val', data.max_hr || '--');
     window.safeSetText('stress', data.stress_avg || '--');
 
     if (data.weight_grams) {

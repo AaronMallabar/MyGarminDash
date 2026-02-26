@@ -1,0 +1,42 @@
+{
+  "2025-02-25": {
+    "total": 3633.0,
+    "active": 1375.0,
+    "resting": 2258.0,
+    "steps": 14991,
+    "steps_goal": 0,
+    "resting_hr": 47,
+    "stress_avg": 33,
+    "timestamp": 1772070660.3938375
+  },
+  "2025-02-26": {
+    "total": 2680.0,
+    "active": 422.0,
+    "resting": 2258.0,
+    "steps": 10062,
+    "steps_goal": 0,
+    "resting_hr": 48,
+    "stress_avg": 30,
+    "timestamp": 1772070660.6767874
+  },
+  "2025-02-27": {
+    "total": 2555.0,
+    "active": 297.0,
+    "resting": 2258.0,
+    "steps": 7868,
+    "steps_goal": 0,
+    "resting_hr": 47,
+    "stress_avg": 21,
+    "timestamp": 1772070661.32555
+  },
+  "2025-02-28": {
+    "total": 3228.0,
+    "active": 954.0,
+    "resting": 2274.0,
+    "steps": 6675,
+    "steps_goal": 0,
+    "resting_hr": 47,
+    "stress_avg": 36,
+    "timestamp": 1772070661.6015306
+  }
+}
