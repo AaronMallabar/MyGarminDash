@@ -357,6 +357,7 @@ class GarminSyncManager:
     
     def __init__(self, client):
         self.client = client
+        self.sync_times = {}
 
     def get_metric_for_date(self, metric, date_str, force_refresh=False):
         """Get metric for a specific day, syncing if missing."""
@@ -383,7 +384,9 @@ class GarminSyncManager:
                     if time.time() - cached.get('timestamp', 0) < 600:
                         return cached
                 else:
-                    return cached
+                    last_sync = self.sync_times.get(f"{metric}_{date_str}", 0)
+                    if time.time() - last_sync < 600:
+                        return cached
         
         # Sync required
         logger.info(f"Syncing {metric} for {date_str}...")
@@ -464,6 +467,7 @@ class GarminSyncManager:
 
             month_data[date_str] = data
             GarminPersistence.save_month(metric, date_str, month_data)
+            self.sync_times[f"{metric}_{date_str}"] = time.time()
             return data
         except Exception as e:
             logger.error(f"Sync failed for {metric} on {date_str}: {e}")
@@ -489,6 +493,7 @@ class GarminSyncManager:
                 month_data = GarminPersistence.load_month('activities', d_str)
                 month_data[d_str] = data
                 GarminPersistence.save_month('activities', d_str, month_data)
+                self.sync_times[f"activities_{d_str}"] = time.time()
                 current += timedelta(days=1)
         except Exception as e:
             logger.error(f"Batch sync activities failed: {e}")
@@ -542,9 +547,9 @@ class GarminSyncManager:
                     if time.time() - cached.get('timestamp', 0) > 600:
                         is_missing = True
                 else:
-                    # For non-dict (activities), force refresh only if empty?
-                    # For now, if we have data for today, don't force-sync in range
-                    pass
+                    last_sync = self.sync_times.get(f"{metric}_{d_str}", 0)
+                    if time.time() - last_sync > 600:
+                        is_missing = True
             
             if is_missing:
                 if range_start is None:
