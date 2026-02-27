@@ -417,7 +417,15 @@ class GarminSyncManager:
                     'timestamp': time.time()
                 }
             elif metric == 'activities':
-                data = self.client.get_activities_by_date(date_str, date_str)
+                dt = datetime.strptime(date_str, '%Y-%m-%d').date()
+                s_api = (dt - timedelta(days=1)).isoformat()
+                e_api = (dt + timedelta(days=1)).isoformat()
+                raw_acts = self.client.get_activities_by_date(s_api, e_api)
+                data = []
+                for a in raw_acts:
+                    sl = a.get('startTimeLocal')
+                    if sl and sl.startswith(date_str):
+                        data.append(a)
             elif metric == 'steps':
                 # get_daily_steps returns a list of days, we pick the one matching date_str
                 res = self.client.get_daily_steps(date_str, date_str)
@@ -476,7 +484,9 @@ class GarminSyncManager:
     def _sync_activities_range(self, start_date, end_date):
         logger.info(f"Batch syncing activities from {start_date} to {end_date}...")
         try:
-            activities = self.client.get_activities_by_date(start_date.isoformat(), end_date.isoformat())
+            api_start = (start_date - timedelta(days=1)).isoformat()
+            api_end = (end_date + timedelta(days=1)).isoformat()
+            activities = self.client.get_activities_by_date(api_start, api_end)
             by_date = {}
             for act in activities:
                 start_local = act.get('startTimeLocal')
