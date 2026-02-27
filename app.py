@@ -550,15 +550,23 @@ class GarminSyncManager:
             
             is_today = (d_str == get_today().isoformat())
             is_missing = d_str not in month_data
-            if is_today and d_str in month_data:
+            if d_str in month_data:
                 cached = month_data[d_str]
                 # Safe check for dict vs list
                 if isinstance(cached, dict):
-                    if time.time() - cached.get('timestamp', 0) > 600:
+                    if is_today and time.time() - cached.get('timestamp', 0) > 600:
                         is_missing = True
                 else:
                     last_sync = self.sync_times.get(f"{metric}_{d_str}", 0)
-                    if time.time() - last_sync > 600:
+                    # Auto-repair cached [] lists that might be corrupt or incomplete,
+                    # specifically for activities in the last 7 days window.
+                    if metric == 'activities':
+                        age = (get_today() - current).days
+                        if age <= 7 and not cached:
+                            is_missing = True
+                        elif is_today and time.time() - last_sync > 600:
+                            is_missing = True
+                    elif is_today and time.time() - last_sync > 600:
                         is_missing = True
             
             if is_missing:
