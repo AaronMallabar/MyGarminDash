@@ -1,0 +1,226 @@
+{
+    "ABS": {
+        "primary": [
+            "Abs"
+        ],
+        "secondary": []
+    },
+    "CRUNCH": {
+        "primary": [
+            "Abs"
+        ],
+        "secondary": []
+    },
+    "PLANK": {
+        "primary": [
+            "Abs"
+        ],
+        "secondary": []
+    },
+    "DEAD_BUG": {
+        "primary": [
+            "Abs"
+        ],
+        "secondary": []
+    },
+    "V_UP": {
+        "primary": [
+            "Abs"
+        ],
+        "secondary": []
+    },
+    "BENT_V_UP": {
+        "primary": [
+            "Abs",
+            "Hip Flexors"
+        ],
+        "secondary": []
+    },
+    "BENT_KNEE_V_UP": {
+        "primary": [
+            "Abs",
+            "Hip Flexors"
+        ],
+        "secondary": []
+    },
+    "SUPERMAN": {
+        "primary": [
+            "Lower Back"
+        ],
+        "secondary": []
+    },
+    "LEG_RAISE": {
+        "primary": [
+            "Abs",
+            "Hip Flexors"
+        ],
+        "secondary": []
+    },
+    "SQUAT": {
+        "primary": [
+            "Quads",
+            "Glutes"
+        ],
+        "secondary": []
+    },
+    "LUNGE": {
+        "primary": [
+            "Quads",
+            "Glutes"
+        ],
+        "secondary": []
+    },
+    "LEG_PRESS": {
+        "primary": [
+            "Quads"
+        ],
+        "secondary": []
+    },
+    "LEG_EXTENSION": {
+        "primary": [
+            "Quads"
+        ],
+        "secondary": []
+    },
+    "LEG_CURL": {
+        "primary": [
+            "Hamstrings"
+        ],
+        "secondary": []
+    },
+    "DEADLIFT": {
+        "primary": [
+            "Hamstrings",
+            "Lower Back",
+            "Glutes"
+        ],
+        "secondary": []
+    },
+    "BENCH_PRESS": {
+        "primary": [
+            "Chest"
+        ],
+        "secondary": []
+    },
+    "CHEST_FLY": {
+        "primary": [
+            "Chest"
+        ],
+        "secondary": []
+    },
+    "PUSH_UP": {
+        "primary": [
+            "Chest",
+            "Triceps"
+        ],
+        "secondary": []
+    },
+    "SHOULDER_PRESS": {
+        "primary": [
+            "Shoulders"
+        ],
+        "secondary": []
+    },
+    "LATERAL_RAISE": {
+        "primary": [
+            "Shoulders"
+        ],
+        "secondary": []
+    },
+    "FRONT_RAISE": {
+        "primary": [
+            "Shoulders"
+        ],
+        "secondary": []
+    },
+    "LAT_PULLDOWN": {
+        "primary": [
+            "Lats",
+            "Back"
+        ],
+        "secondary": []
+    },
+    "ROW": {
+        "primary": [
+            "Back",
+            "Lats"
+        ],
+        "secondary": []
+    },
+    "PULL_UP": {
+        "primary": [
+            "Lats",
+            "Back"
+        ],
+        "secondary": []
+    },
+    "BICEP_CURL": {
+        "primary": [
+            "Biceps"
+        ],
+        "secondary": []
+    },
+    "TRICEP_EXTENSION": {
+        "primary": [
+            "Triceps"
+        ],
+        "secondary": []
+    },
+    "DIP": {
+        "primary": [
+            "Triceps",
+            "Chest"
+        ],
+        "secondary": []
+    },
+    "CALF_RAISE": {
+        "primary": [
+            "Calves"
+        ],
+        "secondary": []
+    },
+    "SHRUG": {
+        "primary": [
+            "Traps"
+        ],
+        "secondary": []
+    },
+    "HYPEREXTENSION": {
+        "primary": [
+            "Lower Back"
+        ],
+        "secondary": []
+    },
+    "CORE": {
+        "primary": [
+            "Core",
+            "Abs"
+        ],
+        "secondary": []
+    },
+    "BACK": {
+        "primary": [
+            "Back",
+            "Lats"
+        ],
+        "secondary": []
+    },
+    "BICEP": {
+        "primary": [
+            "Biceps"
+        ],
+        "secondary": []
+    },
+    "TRICEP": {
+        "primary": [
+            "Triceps"
+        ],
+        "secondary": []
+    },
+    "NECK": {
+        "primary": [
+            "Neck"
+        ],
+        "secondary": []
+    }
+}

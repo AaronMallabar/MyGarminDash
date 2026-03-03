@@ -67,9 +67,13 @@ window.openSettings = async function () {
     document.getElementById('refresh-end').value = today;
 
     try {
-        const res = await fetch('/api/settings');
-        if (res.ok) {
-            const settings = await res.json();
+        const [settingsRes, mappingRes] = await Promise.all([
+            fetch('/api/settings'),
+            fetch('/api/settings/muscle_mapping')
+        ]);
+
+        if (settingsRes.ok) {
+            const settings = await settingsRes.json();
             window.currentSettings = settings;
             window.selectedModel = settings.ai_model;
 
@@ -80,8 +84,17 @@ window.openSettings = async function () {
             }
 
             window.renderModelOptions(settings);
-            modal.classList.add('active');
         }
+
+        if (mappingRes.ok) {
+            const mapping = await mappingRes.json();
+            const editor = document.getElementById('muscle-mapping-editor');
+            if (editor) {
+                editor.value = JSON.stringify(mapping, null, 2);
+            }
+        }
+
+        modal.classList.add('active');
     } catch (err) {
         console.error('Failed to load settings:', err);
         window.showSettingsStatus('Failed to load settings', 'error');
@@ -138,6 +151,35 @@ window.refreshCacheRange = async function () {
     } finally {
         btn.disabled = false;
         btn.textContent = 'Refresh Range';
+    }
+}
+
+window.saveMuscleMapping = async function () {
+    const editor = document.getElementById('muscle-mapping-editor');
+    const btn = document.getElementById('btn-save-mapping');
+    if (!editor || !btn) return;
+
+    try {
+        const mapping = JSON.parse(editor.value);
+        btn.disabled = true;
+        btn.textContent = 'Saving Mapping...';
+
+        const res = await fetch('/api/settings/muscle_mapping', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(mapping)
+        });
+
+        if (res.ok) {
+            window.showSettingsStatus('Muscle mapping saved successfully!', 'success');
+        } else {
+            window.showSettingsStatus('Failed to save mapping', 'error');
+        }
+    } catch (err) {
+        window.showSettingsStatus('Invalid JSON format: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Mapping Configuration';
     }
 }
 
