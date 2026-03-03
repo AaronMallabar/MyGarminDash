@@ -59,6 +59,13 @@ window.openSettings = async function () {
     const modal = document.getElementById('settingsModal');
     if (!modal) return;
 
+    // Initialize refresh dates (yesterday and today)
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    document.getElementById('refresh-start').value = yesterday;
+    document.getElementById('refresh-end').value = today;
+
     try {
         const res = await fetch('/api/settings');
         if (res.ok) {
@@ -78,6 +85,59 @@ window.openSettings = async function () {
     } catch (err) {
         console.error('Failed to load settings:', err);
         window.showSettingsStatus('Failed to load settings', 'error');
+    }
+}
+
+window.refreshCacheRange = async function () {
+    const start = document.getElementById('refresh-start').value;
+    const end = document.getElementById('refresh-end').value;
+    const btn = document.getElementById('btn-refresh-cache');
+    const progressBar = document.getElementById('refresh-progress');
+    const progressBarFill = document.getElementById('refresh-progress-bar');
+
+    if (!start || !end) {
+        window.showSettingsStatus('Please select both start and end dates', 'error');
+        return;
+    }
+
+    if (new Date(start) > new Date(end)) {
+        window.showSettingsStatus('Start date must be before end date', 'error');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Syncing...';
+    progressBar.style.display = 'block';
+    progressBarFill.style.width = '20%';
+
+    try {
+        const res = await fetch('/api/cache/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start_date: start, end_date: end })
+        });
+
+        progressBarFill.style.width = '80%';
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            progressBarFill.style.width = '100%';
+            window.showSettingsStatus(data.message || 'Cache refreshed successfully!', 'success');
+            setTimeout(() => {
+                progressBar.style.display = 'none';
+                progressBarFill.style.width = '0%';
+                // Reload dashboard data to show new numbers
+                if (window.fetchDashboardData) window.fetchDashboardData();
+            }, 2000);
+        } else {
+            window.showSettingsStatus(data.error || 'Failed to refresh cache', 'error');
+        }
+    } catch (err) {
+        console.error('Cache refresh failed:', err);
+        window.showSettingsStatus('Error connecting to server', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Refresh Range';
     }
 }
 

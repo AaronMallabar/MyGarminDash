@@ -1915,6 +1915,33 @@
                 </div>
             </div>
 
+            <!-- Cache Management Section -->
+            <div style="margin-bottom: 2.5rem; padding: 1.25rem; background: rgba(56, 189, 248, 0.05); border-radius: 1rem; border: 1px solid rgba(56, 189, 248, 0.15);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                    <h3 style="color: var(--accent-color); margin: 0; font-size: 1.1rem; font-family: 'Lexend', sans-serif;">Cache Management</h3>
+                    <span style="font-size: 0.7rem; color: var(--accent-color); font-weight: 700; opacity: 0.8; text-transform: uppercase;">Repair History</span>
+                </div>
+                <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem; line-height: 1.5;">
+                    If data for a specific day seems inaccurate, you can force a re-fetch from Garmin Connect.
+                </p>
+                <div style="display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1rem;">
+                    <div style="flex-grow: 1; min-width: 150px;">
+                        <label style="display: block; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.3rem;">Start Date</label>
+                        <input type="date" id="refresh-start" style="width: 100%; padding: 0.5rem; border-radius: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white;">
+                    </div>
+                    <div style="flex-grow: 1; min-width: 150px;">
+                        <label style="display: block; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.3rem;">End Date</label>
+                        <input type="date" id="refresh-end" style="width: 100%; padding: 0.5rem; border-radius: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white;">
+                    </div>
+                    <button class="range-btn active" id="btn-refresh-cache" style="padding: 0.6rem 1.25rem; background: var(--accent-color); border: none; font-weight: 600;" onclick="refreshCacheRange()">
+                        Refresh Range
+                    </button>
+                </div>
+                <div id="refresh-progress" style="display: none; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; margin-top: 1rem;">
+                    <div id="refresh-progress-bar" style="height: 100%; background: var(--accent-color); width: 0%; transition: width 0.3s;"></div>
+                </div>
+            </div>
+
             <div style="margin-bottom: 2rem;">
                 <h3 style="color: var(--accent-color); margin-bottom: 1rem; font-size: 1.1rem;">AI Model Selection</h3>
                 <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.9rem;">

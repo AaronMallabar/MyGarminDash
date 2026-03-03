@@ -363,8 +363,13 @@ class GarminSyncManager:
         """Get metric for a specific day, syncing if missing."""
         month_data = GarminPersistence.load_month(metric, date_str)
         
-        # Don't use cache for today if it's older than 10 mins (heart rate/steps change)
-        is_today = (date_str == get_today().isoformat())
+        # Don't use cache for today or recently if it's older than threshold (heart rate/steps change)
+        today = get_today()
+        dt = datetime.strptime(date_str, '%Y-%m-%d').date()
+        is_today = (date_str == today.isoformat())
+        # Refresh last 3 days if they're stale (not having everything yet if watch didn't sync)
+        is_near_past = (today - dt).days <= 3 and (today - dt).days >= 0
+
         if not force_refresh and date_str in month_data:
             cached = month_data[date_str]
             
@@ -377,15 +382,20 @@ class GarminSyncManager:
                     is_backfill_needed = True
 
             if not is_backfill_needed:
-                if not is_today:
+                if not is_today and not is_near_past:
                     return cached
-                # If today, check staleness
+                
+                # If today or near past, check staleness
+                # For today: 10 mins (600s)
+                # For near past: 1 hour (3600s)
+                expiry = 600 if is_today else 3600
+                
                 if isinstance(cached, dict):
-                    if time.time() - cached.get('timestamp', 0) < 600:
+                    if time.time() - cached.get('timestamp', 0) < expiry:
                         return cached
                 else:
                     last_sync = self.sync_times.get(f"{metric}_{date_str}", 0)
-                    if time.time() - last_sync < 600:
+                    if time.time() - last_sync < expiry:
                         return cached
         
         # Sync required
@@ -538,7 +548,7 @@ class GarminSyncManager:
         except Exception as e:
             logger.error(f"Batch sync weight failed: {e}")
 
-    def get_range(self, metric, start_date, end_date):
+    def get_range(self, metric, start_date, end_date, force_refresh=False):
         """Fetch a range of data, using cache where possible and batch fetching for gaps."""
         missing_ranges = []
         current = start_date
@@ -549,24 +559,28 @@ class GarminSyncManager:
             month_data = GarminPersistence.load_month(metric, d_str)
             
             is_today = (d_str == get_today().isoformat())
-            is_missing = d_str not in month_data
-            if d_str in month_data:
+            is_missing = force_refresh or d_str not in month_data
+            if not force_refresh and d_str in month_data:
                 cached = month_data[d_str]
+                today = get_today()
+                age = (today - current).days
+                is_near_past = age <= 3 and age >= 0
+                expiry = 600 if is_today else 3600 if is_near_past else None
+
                 # Safe check for dict vs list
                 if isinstance(cached, dict):
-                    if is_today and time.time() - cached.get('timestamp', 0) > 600:
+                    if expiry and time.time() - cached.get('timestamp', 0) > expiry:
                         is_missing = True
                 else:
                     last_sync = self.sync_times.get(f"{metric}_{d_str}", 0)
                     # Auto-repair cached [] lists that might be corrupt or incomplete,
                     # specifically for activities in the last 7 days window.
                     if metric == 'activities':
-                        age = (get_today() - current).days
                         if age <= 7 and not cached:
                             is_missing = True
-                        elif is_today and time.time() - last_sync > 600:
+                        elif expiry and time.time() - last_sync > expiry:
                             is_missing = True
-                    elif is_today and time.time() - last_sync > 600:
+                    elif expiry and time.time() - last_sync > expiry:
                         is_missing = True
             
             if is_missing:
@@ -598,7 +612,7 @@ class GarminSyncManager:
         current = start_date
         while current <= end_date:
             d_str = current.isoformat()
-            val = self.get_metric_for_date(metric, d_str)
+            val = self.get_metric_for_date(metric, d_str, force_refresh=force_refresh)
             if val is not None:
                 if isinstance(val, dict):
                     results.append({**val, 'date': d_str, 'calendarDate': d_str})
@@ -734,6 +748,16 @@ def server_warmup():
     logger.info("Server Warmup: Starting deep background pre-fetch...")
     try:
         mgr = get_sync_manager()
+        
+        # Proactively refresh last 3 days of core metrics
+        logger.info("Server Warmup: Refreshing last 3 days of core metrics...")
+        for i in range(4): # 0 (today) to 3 days ago
+            d_str = (get_today() - timedelta(days=i)).isoformat()
+            # These will check staleness internally based on the updated get_metric_for_date logic
+            mgr.get_metric_for_date('stats', d_str)
+            mgr.get_metric_for_date('sleep', d_str)
+            mgr.get_metric_for_date('weight', d_str)
+        
         # Pre-fetch activity heatmap (lightweight)
         if not activity_heatmap_cache['data']:
             logger.info("Server Warmup: Pre-fetching activity heatmap...")
@@ -937,6 +961,49 @@ def update_settings():
             
     except Exception as e:
         logger.error(f"Error updating settings: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/cache/refresh', methods=['POST'])
+@login_required
+def refresh_cache():
+    """Manually refresh cache for a date range."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+            
+        start_str = data.get('start_date')
+        end_str = data.get('end_date')
+        # Default metrics to refresh
+        metrics = data.get('metrics', ['stats', 'activities', 'steps', 'sleep', 'weight', 'hr', 'hrv', 'stress', 'intensity_minutes', 'hydration'])
+        
+        if not start_str or not end_str:
+            return jsonify({'error': 'Missing start_date or end_date'}), 400
+            
+        start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
+        
+        if start_date > end_date:
+            return jsonify({'error': 'start_date must be before end_date'}), 400
+            
+        # Limit range to avoid timing out or hitting rate limits too hard
+        if (end_date - start_date).days > 31:
+             return jsonify({'error': 'Range too large. Max 31 days at once.'}), 400
+
+        mgr = get_sync_manager()
+        for metric in metrics:
+            logger.info(f"Manual refresh: {metric} from {start_date} to {end_date}")
+            mgr.get_range(metric, start_date, end_date, force_refresh=True)
+            
+        # Invalidate memory-based summaries that might be affected
+        global activity_heatmap_cache, heatmap_cache, ai_insights_cache
+        activity_heatmap_cache = {'data': None, 'timestamp': 0}
+        heatmap_cache = {'data': None, 'timestamp': 0, 'range': None}
+        ai_insights_cache = {'data': None, 'timestamp': 0}
+
+        return jsonify({'success': True, 'message': f'Successfully refreshed {len(metrics)} metrics from {start_str} to {end_str}.'})
+    except Exception as e:
+        logger.error(f"Error refreshing cache: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/check_update', methods=['GET'])
