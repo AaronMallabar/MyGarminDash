@@ -243,6 +243,20 @@ window.fetchAIInsights = async function (forceRefresh = false) {
                 window.safeSetHTML('ai-suggestions', data.suggestions);
             }
 
+            // Render top_highlights as pill chips beneath the daily summary
+            const highlightsContainer = document.getElementById('ai-top-highlights');
+            if (highlightsContainer) {
+                const highlights = data.top_highlights || [];
+                if (highlights.length > 0) {
+                    highlightsContainer.innerHTML = highlights.map(h =>
+                        `<span class="ai-highlight-chip">${h}</span>`
+                    ).join('');
+                    highlightsContainer.style.display = 'flex';
+                } else {
+                    highlightsContainer.style.display = 'none';
+                }
+            }
+
             const titleEl = document.getElementById('ai-insight-title');
             if (titleEl) {
                 titleEl.textContent = data.is_ai ? "AI Training Insight" : "Training Insight";

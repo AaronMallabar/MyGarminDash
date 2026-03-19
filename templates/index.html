@@ -99,6 +99,124 @@
             animation: spin 1s linear infinite;
         }
 
+        /* Muscle Map - High Fidelity Image Based */
+        .muscle-map-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1.1;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 1.5rem;
+            border: 1px solid rgba(56, 189, 248, 0.1);
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .muscle-base {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            opacity: 0.25;
+            filter: brightness(0.9) contrast(1.2) grayscale(1);
+        }
+
+        .muscle-highlight {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            /* Filter to isolate ONLY the blue pixels and turn them into our accent color */
+            /* Logic: Alpha = Blue - Red */
+            filter: url('#isolate-blue-filter');
+        }
+
+        .muscle-highlight.active-primary {
+            opacity: 0.4;
+            /* Static filter for performance; only animate simple opacity/brightness */
+            filter: url('#isolate-blue-filter') drop-shadow(0 0 15px rgba(2, 132, 199, 0.8));
+            animation: muscle-pulse-ultra-smooth 1.5s infinite alternate ease-in-out;
+            will-change: opacity, filter;
+        }
+
+        @keyframes muscle-pulse-ultra-smooth {
+            0% {
+                opacity: 0.4;
+                filter: url('#isolate-blue-filter') drop-shadow(0 0 5px rgba(2, 132, 199, 0.4)) brightness(0.9);
+            }
+
+            100% {
+                opacity: 0.9;
+                filter: url('#isolate-blue-filter') drop-shadow(0 0 25px rgba(14, 165, 233, 1)) brightness(1.3);
+            }
+        }
+
+        .muscle-view-label {
+            position: absolute;
+            bottom: 1.25rem;
+            width: 100%;
+            text-align: center;
+            font-size: 0.65rem;
+            font-weight: 900;
+            color: var(--accent-color);
+            letter-spacing: 0.35rem;
+            text-transform: uppercase;
+            opacity: 0.7;
+            z-index: 10;
+        }
+
+        .muscle-stat-row {
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            border-left: 2px solid transparent !important;
+        }
+
+        .muscle-stat-row:hover {
+            background: rgba(56, 189, 248, 0.08) !important;
+            border-left-color: var(--accent-color) !important;
+            transform: translateX(6px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .tech-grid {
+            background-image: linear-gradient(rgba(56, 189, 248, 0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(56, 189, 248, 0.04) 1px, transparent 1px);
+            background-size: 25px 25px;
+        }
+
+        /* Strength View Mode Logic */
+        .strength-dashboard[data-view-mode="time"] .mode-time {
+            display: block !important;
+        }
+
+        .strength-dashboard[data-view-mode="time"] .mode-reps {
+            display: none !important;
+        }
+
+        .strength-dashboard[data-view-mode="time"] .toggle-btn:nth-child(1) {
+            background: var(--accent-color) !important;
+            color: #0f172a !important;
+        }
+
+        .strength-dashboard[data-view-mode="reps"] .mode-time {
+            display: none !important;
+        }
+
+        .strength-dashboard[data-view-mode="reps"] .mode-reps {
+            display: block !important;
+        }
+
+        .strength-dashboard[data-view-mode="reps"] .toggle-btn:nth-child(2) {
+            background: var(--accent-color) !important;
+            color: #0f172a !important;
+        }
+
+
         @keyframes pulse {
             0% {
                 transform: scale(1);
@@ -299,6 +417,47 @@
             border-bottom-right-radius: 0.2rem;
         }
 
+        .ai-highlight-chip {
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.25);
+            color: #38bdf8;
+            padding: 0.25rem 0.75rem;
+            border-radius: 2rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: all 0.2s;
+            cursor: default;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .ai-highlight-chip:hover {
+            background: rgba(56, 189, 248, 0.2);
+            border-color: rgba(56, 189, 248, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .insight-section h3 {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 0.75rem;
+            font-weight: 700;
+        }
+
+        .insight-content {
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: var(--text-primary);
+        }
+
+        .ai-insights-container {
+            margin-bottom: 3rem;
+        }
+
         .ing-label {
             font-size: 0.65rem;
             color: var(--text-secondary);
@@ -310,6 +469,17 @@
 </head>
 
 <body>
+    <!-- SVG Filter to Isolate Blue/Cyan Pixels (Alpha = B - R) -->
+    <!-- Deepened for a richer, "glowier" blue tone -->
+    <svg style="position: absolute; width: 0; height: 0;" aria-hidden="true">
+        <filter id="isolate-blue-filter">
+            <feColorMatrix type="matrix" values="
+                0 0 0 0 0.05 
+                0 0 0 0 0.40 
+                0 0 0 0 0.95 
+                -1 0 1 0 0" />
+        </filter>
+    </svg>
 
     <div class="container">
 
@@ -358,6 +528,9 @@
                         <div class="insight-content" id="ai-daily-summary">
                             Generating your daily summary...
                         </div>
+                        <!-- Quick-scan highlight chips (populated by fetchAIInsights) -->
+                        <div id="ai-top-highlights"
+                            style="display: none; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem;"></div>
                     </div>
                     <div class="insight-section">
                         <h3>Yesterday's Recap</h3>
@@ -1913,6 +2086,70 @@
                         📚 Download Food Library
                     </button>
                 </div>
+            </div>
+
+            <!-- Cache Management Section -->
+            <div
+                style="margin-bottom: 2.5rem; padding: 1.25rem; background: rgba(56, 189, 248, 0.05); border-radius: 1rem; border: 1px solid rgba(56, 189, 248, 0.15);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                    <h3
+                        style="color: var(--accent-color); margin: 0; font-size: 1.1rem; font-family: 'Lexend', sans-serif;">
+                        Cache Management</h3>
+                    <span
+                        style="font-size: 0.7rem; color: var(--accent-color); font-weight: 700; opacity: 0.8; text-transform: uppercase;">Repair
+                        History</span>
+                </div>
+                <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem; line-height: 1.5;">
+                    If data for a specific day seems inaccurate, you can force a re-fetch from Garmin Connect.
+                </p>
+                <div style="display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1rem;">
+                    <div style="flex-grow: 1; min-width: 150px;">
+                        <label
+                            style="display: block; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.3rem;">Start
+                            Date</label>
+                        <input type="date" id="refresh-start"
+                            style="width: 100%; padding: 0.5rem; border-radius: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white;">
+                    </div>
+                    <div style="flex-grow: 1; min-width: 150px;">
+                        <label
+                            style="display: block; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.3rem;">End
+                            Date</label>
+                        <input type="date" id="refresh-end"
+                            style="width: 100%; padding: 0.5rem; border-radius: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white;">
+                    </div>
+                    <button class="range-btn active" id="btn-refresh-cache"
+                        style="padding: 0.6rem 1.25rem; background: var(--accent-color); border: none; font-weight: 600;"
+                        onclick="refreshCacheRange()">
+                        Refresh Range
+                    </button>
+                </div>
+                <div id="refresh-progress"
+                    style="display: none; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; margin-top: 1rem;">
+                    <div id="refresh-progress-bar"
+                        style="height: 100%; background: var(--accent-color); width: 0%; transition: width 0.3s;"></div>
+                </div>
+            </div>
+
+            <!-- Muscle Mapping Section -->
+            <div
+                style="margin-bottom: 2.5rem; padding: 1.25rem; background: rgba(16, 185, 129, 0.05); border-radius: 1rem; border: 1px solid rgba(16, 185, 129, 0.15);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+                    <h3 style="color: #10b981; margin: 0; font-size: 1.1rem; font-family: 'Lexend', sans-serif;">
+                        Anatomical Mapping</h3>
+                    <span
+                        style="font-size: 0.7rem; color: #10b981; font-weight: 700; opacity: 0.8; text-transform: uppercase;">Exercise
+                        Logic</span>
+                </div>
+                <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.9rem; line-height: 1.5;">
+                    Define how specific exercises map to muscle groups. Format: "EXERCISE_KEY": {"primary": ["Muscle"]}.
+                </p>
+                <textarea id="muscle-mapping-editor" spellcheck="false"
+                    style="width: 100%; height: 200px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.75rem; color: #4ade80; font-family: monospace; font-size: 0.85rem; padding: 1rem; margin-bottom: 1rem;"></textarea>
+                <button class="range-btn active" id="btn-save-mapping"
+                    style="width: 100%; background: #10b981; border: none; font-weight: 600;"
+                    onclick="saveMuscleMapping()">
+                    Save Mapping Configuration
+                </button>
             </div>
 
             <div style="margin-bottom: 2rem;">

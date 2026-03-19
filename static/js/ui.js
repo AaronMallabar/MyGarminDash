@@ -59,10 +59,21 @@ window.openSettings = async function () {
     const modal = document.getElementById('settingsModal');
     if (!modal) return;
 
+    // Initialize refresh dates (yesterday and today)
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+    document.getElementById('refresh-start').value = yesterday;
+    document.getElementById('refresh-end').value = today;
+
     try {
-        const res = await fetch('/api/settings');
-        if (res.ok) {
-            const settings = await res.json();
+        const [settingsRes, mappingRes] = await Promise.all([
+            fetch('/api/settings'),
+            fetch('/api/settings/muscle_mapping')
+        ]);
+
+        if (settingsRes.ok) {
+            const settings = await settingsRes.json();
             window.currentSettings = settings;
             window.selectedModel = settings.ai_model;
 
@@ -73,11 +84,102 @@ window.openSettings = async function () {
             }
 
             window.renderModelOptions(settings);
-            modal.classList.add('active');
         }
+
+        if (mappingRes.ok) {
+            const mapping = await mappingRes.json();
+            const editor = document.getElementById('muscle-mapping-editor');
+            if (editor) {
+                editor.value = JSON.stringify(mapping, null, 2);
+            }
+        }
+
+        modal.classList.add('active');
     } catch (err) {
         console.error('Failed to load settings:', err);
         window.showSettingsStatus('Failed to load settings', 'error');
+    }
+}
+
+window.refreshCacheRange = async function () {
+    const start = document.getElementById('refresh-start').value;
+    const end = document.getElementById('refresh-end').value;
+    const btn = document.getElementById('btn-refresh-cache');
+    const progressBar = document.getElementById('refresh-progress');
+    const progressBarFill = document.getElementById('refresh-progress-bar');
+
+    if (!start || !end) {
+        window.showSettingsStatus('Please select both start and end dates', 'error');
+        return;
+    }
+
+    if (new Date(start) > new Date(end)) {
+        window.showSettingsStatus('Start date must be before end date', 'error');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Syncing...';
+    progressBar.style.display = 'block';
+    progressBarFill.style.width = '20%';
+
+    try {
+        const res = await fetch('/api/cache/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start_date: start, end_date: end })
+        });
+
+        progressBarFill.style.width = '80%';
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            progressBarFill.style.width = '100%';
+            window.showSettingsStatus(data.message || 'Cache refreshed successfully!', 'success');
+            setTimeout(() => {
+                progressBar.style.display = 'none';
+                progressBarFill.style.width = '0%';
+                // Reload dashboard data to show new numbers
+                if (window.fetchDashboardData) window.fetchDashboardData();
+            }, 2000);
+        } else {
+            window.showSettingsStatus(data.error || 'Failed to refresh cache', 'error');
+        }
+    } catch (err) {
+        console.error('Cache refresh failed:', err);
+        window.showSettingsStatus('Error connecting to server', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Refresh Range';
+    }
+}
+
+window.saveMuscleMapping = async function () {
+    const editor = document.getElementById('muscle-mapping-editor');
+    const btn = document.getElementById('btn-save-mapping');
+    if (!editor || !btn) return;
+
+    try {
+        const mapping = JSON.parse(editor.value);
+        btn.disabled = true;
+        btn.textContent = 'Saving Mapping...';
+
+        const res = await fetch('/api/settings/muscle_mapping', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(mapping)
+        });
+
+        if (res.ok) {
+            window.showSettingsStatus('Muscle mapping saved successfully!', 'success');
+        } else {
+            window.showSettingsStatus('Failed to save mapping', 'error');
+        }
+    } catch (err) {
+        window.showSettingsStatus('Invalid JSON format: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Mapping Configuration';
     }
 }
 
