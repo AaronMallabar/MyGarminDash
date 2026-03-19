@@ -7,8 +7,7 @@ import traceback
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 from functools import wraps
 from garminconnect import Garmin
-from datetime import date, timedelta, datetime
-from zoneinfo import ZoneInfo
+import garth
 from datetime import date, timedelta, datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
@@ -162,10 +161,26 @@ def get_garmin_client():
         raise ValueError("Garmin credentials not found in environment variables")
         
     try:
+        # Define token directory in garmin_cache
+        token_dir = os.path.join(GarminPersistence.BASE_DIR, "session")
+        os.makedirs(token_dir, exist_ok=True)
+        
         # Initialize Garmin client
         client = Garmin(email, password)
-        client.login()
-        logger.info("Successfully logged in to Garmin Connect")
+        
+        # Try to login using tokens first
+        try:
+            logger.info(f"Attempting to login to Garmin Connect using tokens in {token_dir}")
+            client.login(token_dir)
+            logger.info("Successfully logged in to Garmin Connect via token")
+        except Exception as e:
+            logger.warning(f"Session token invalid or missing, attempting fresh login: {e}")
+            # Fresh login will use credentials and populate garth session
+            client.login()
+            # Save the new session tokens
+            client.garth.dump(token_dir)
+            logger.info("Successfully logged in to Garmin Connect and saved fresh tokens")
+            
         garmin_client = client
         return client
     except Exception as e:
