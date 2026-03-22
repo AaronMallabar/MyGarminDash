@@ -34,6 +34,10 @@ window.fetchDashboardData = async function () {
             const stats = await statsRes.json();
             if (!stats.error) {
                 if (window.updateDashboard) window.updateDashboard(stats);
+                if (stats.offline_mode && window.showError) {
+                    window.showError("⚠️ Cannot connect to Garmin Connect. Dashboard is running in Offline Cached Mode.");
+                    if (window.safeSetText) window.safeSetText('last-sync', 'Offline Mode');
+                }
             } else {
                 if (window.showError) window.showError(stats.error);
             }

@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 import threading
 import time
+import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pickle
 
@@ -239,7 +240,8 @@ def get_garmin_client():
         if "403" in str(e):
             logger.error(f"CRITICAL: Garmin is blocking this IP address. Please re-bootstrap session from local machine.")
         logger.error(f"Failed to login to Garmin Connect: {e}")
-        raise e
+        # DO NOT RAISE EXCEPTION - Allow offline mode caching fallback
+        return None
 
 def garmin_request(func, *args, **kwargs):
     """Wrapper to handle Garmin API calls with retries and session auto-saving."""
@@ -247,6 +249,9 @@ def garmin_request(func, *args, **kwargs):
     max_retries = 3
     for attempt in range(max_retries):
         try:
+            # JITTER: Random delay to prevent Rate Limits and IP Bans
+            time.sleep(random.uniform(1.5, 3.5))
+            
             res = func(*args, **kwargs)
             
             # PROACTIVE: Save session tokens if refreshed in-memory
@@ -466,9 +471,9 @@ class GarminSyncManager:
                     return cached
                 
                 # If today or near past, check staleness
-                # For today: 10 mins (600s)
-                # For near past: 1 hour (3600s)
-                expiry = 600 if is_today else 3600
+                # For today: 1 hour (3600s)
+                # For near past: 24 hours (86400s)
+                expiry = 3600 if is_today else 86400
                 
                 if isinstance(cached, dict):
                     if time.time() - cached.get('timestamp', 0) < expiry:
@@ -645,7 +650,7 @@ class GarminSyncManager:
                 today = get_today()
                 age = (today - current).days
                 is_near_past = age <= 3 and age >= 0
-                expiry = 600 if is_today else 3600 if is_near_past else None
+                expiry = 3600 if is_today else 86400 if is_near_past else None
 
                 # Safe check for dict vs list
                 if isinstance(cached, dict):
@@ -843,7 +848,7 @@ def server_warmup():
             logger.info("Server Warmup: Pre-fetching activity heatmap...")
             today = get_today()
             start_date = today - timedelta(days=366)
-            activities = mgr.client.get_activities_by_date(start_date.isoformat(), today.isoformat())
+            activities = mgr.client.get_activities_by_date(start_date.isoformat(), today.isoformat()) if mgr.client else []
             
             heatmap = {}
             for activity in activities:
@@ -1939,6 +1944,7 @@ def get_stats():
                     break
 
         response_data = {
+            'offline_mode': mgr.client is None,
             'steps': cal_data.get('steps', 0),
             'steps_goal': cal_data.get('steps_goal', 10000),
             'resting_hr': cal_data.get('resting_hr', 0),
@@ -1972,6 +1978,7 @@ def get_stats():
 def get_user_goals():
     try:
         client = get_garmin_client()
+        if not client: return jsonify([])
         active_goals = client.get_goals("active")
         future_goals = client.get_goals("future")
         # Combine lists
