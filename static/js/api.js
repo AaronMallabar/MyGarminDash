@@ -28,15 +28,17 @@ window.fetchDashboardData = async function () {
             window.fetchCalorieHistory()
         ];
 
+        let isOffline = false;
+
         // Fetch basic stats
         const statsRes = await fetch('/api/stats');
         if (statsRes.ok) {
             const stats = await statsRes.json();
             if (!stats.error) {
+                isOffline = stats.offline_mode;
                 if (window.updateDashboard) window.updateDashboard(stats);
-                if (stats.offline_mode && window.showError) {
+                if (isOffline && window.showError) {
                     window.showError("⚠️ Cannot connect to Garmin Connect. Dashboard is running in Offline Cached Mode.");
-                    if (window.safeSetText) window.safeSetText('last-sync', 'Offline Mode');
                 }
             } else {
                 if (window.showError) window.showError(stats.error);
@@ -77,7 +79,13 @@ window.fetchDashboardData = async function () {
             }
         }
 
-        if (window.safeSetText) window.safeSetText('last-sync', `Last synced: ${new Date().toLocaleTimeString()}`);
+        if (window.safeSetText) {
+            if (isOffline) {
+                window.safeSetText('last-sync', 'Offline Mode');
+            } else {
+                window.safeSetText('last-sync', `Last synced: ${new Date().toLocaleTimeString()}`);
+            }
+        }
 
         // Wait for all primary data to finish loading before touching AI
         await Promise.allSettled(dataPromises);

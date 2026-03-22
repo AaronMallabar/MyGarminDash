@@ -169,6 +169,7 @@ stats_cache = {}
 weight_cache = {'value': None, 'timestamp': 0}
 user_profile_cache = {'data': None, 'timestamp': 0}
 calorie_cache = {}
+offline_mode_active = False
 
 def load_json(path, default):
     if os.path.exists(path):
@@ -203,9 +204,12 @@ def save_settings(settings):
         return False
 
 def get_garmin_client():
-    global garmin_client
+    global garmin_client, offline_mode_active
     if garmin_client:
         return garmin_client
+        
+    if offline_mode_active:
+        return None
     
     email = os.getenv("GARMIN_EMAIL")
     password = os.getenv("GARMIN_PASSWORD")
@@ -241,6 +245,7 @@ def get_garmin_client():
             logger.error(f"CRITICAL: Garmin is blocking this IP address. Please re-bootstrap session from local machine.")
         logger.error(f"Failed to login to Garmin Connect: {e}")
         # DO NOT RAISE EXCEPTION - Allow offline mode caching fallback
+        offline_mode_active = True
         return None
 
 def garmin_request(func, *args, **kwargs):
@@ -1902,6 +1907,14 @@ def get_stats():
         cal_data = mgr.get_metric_for_date('stats', today_str) or {}
         sleep_data = mgr.get_metric_for_date('sleep', today_str) or {}
         hrv_data = mgr.get_metric_for_date('hrv', today_str) or {}
+        
+        # If offline mode and completely zero data for today, display yesterday's valid cache so the UI isn't empty
+        if mgr.client is None and not cal_data.get('steps'):
+            yesterday_str = (today - timedelta(days=1)).isoformat()
+            logger.info("Offline mode: Today is completely empty falling back to yesterday's cache summary.")
+            cal_data = mgr.get_metric_for_date('stats', yesterday_str) or {}
+            sleep_data = mgr.get_metric_for_date('sleep', yesterday_str) or {}
+            hrv_data = mgr.get_metric_for_date('hrv', yesterday_str) or {}
         
         # 2. Recent activities (using last 7 days range for cache reliability)
         start_date = today - timedelta(days=7)
