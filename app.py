@@ -236,22 +236,36 @@ def get_garmin_client():
         garmin_client = client
         return client
     except Exception as e:
+        if "403" in str(e):
+            logger.error(f"CRITICAL: Garmin is blocking this IP address. Please re-bootstrap session from local machine.")
         logger.error(f"Failed to login to Garmin Connect: {e}")
         raise e
 
 def garmin_request(func, *args, **kwargs):
-    """Wrapper to handle Garmin API calls with retries for transient network errors."""
+    """Wrapper to handle Garmin API calls with retries and session auto-saving."""
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            return func(*args, **kwargs)
+            res = func(*args, **kwargs)
+            
+            # PROACTIVE: Save session tokens if refreshed in-memory
+            # This ensures that if the token was refreshed during the session, it gets saved to disk.
+            global garmin_client
+            if garmin_client:
+                try:
+                    token_dir = os.path.join(GarminPersistence.BASE_DIR, "session")
+                    garmin_client.garth.dump(token_dir)
+                except Exception as save_err:
+                    logger.warning(f"Failed to auto-save Garmin session: {save_err}")
+                    
+            return res
         except Exception as e:
             if attempt < max_retries - 1:
                 wait = (attempt + 1) * 2
                 logger.warning(f"Garmin API error: {e}. Retrying in {wait}s... (Attempt {attempt + 1}/{max_retries})")
                 time.sleep(wait)
                 # Force re-login on next attempt if it seems like a session issue
-                if any(err in str(e).lower() for err in ["session", "login", "auth", "expired"]):
+                if any(err in str(e).lower() for err in ["403", "session", "login", "auth", "expired"]):
                     global garmin_client
                     garmin_client = None
             else:
