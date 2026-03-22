@@ -1332,8 +1332,12 @@ def generate_insights_logic():
         im_goal     = n(im_raw.get('goal', 150))
 
         # ── 2. FOOD LOGS — loaded from local JSON file (not Garmin API) ──────────
-        # Format: {"YYYY-MM-DD": [{name, calories, protein, carbs, fat, cholesterol, caffeine}, ...]}
-        food_logs = load_json(FOOD_LOGS_FILE, {}) if os.path.exists(FOOD_LOGS_FILE) else {}
+        # Format: [{"date": "YYYY-MM-DD", name, calories, protein, carbs, ...}, ...]
+        raw_food_logs = load_json(FOOD_LOGS_FILE, []) if os.path.exists(FOOD_LOGS_FILE) else []
+        food_logs = {}
+        for entry in isinstance(raw_food_logs, list) and raw_food_logs or []:
+            if isinstance(entry, dict) and entry.get('date'):
+                food_logs.setdefault(entry['date'], []).append(entry)
 
         today_log_entries = food_logs.get(today_str, [])
         today_nutrition = None
@@ -1604,15 +1608,15 @@ def generate_insights_logic():
                         ex_sets = a.get('exercise_sets', [])
                         if ex_sets:
                             active_sets = []
-                            for s in ex_sets:
-                                if s.get('setType') == 'ACTIVE':
-                                    ex_list = [ex.get('name') or ex.get('category', 'Exercise') for ex in s.get('exercises', [])]
+                            for ex_set in ex_sets:
+                                if ex_set.get('setType') == 'ACTIVE':
+                                    ex_list = [ex.get('name') or ex.get('category', 'Exercise') for ex in ex_set.get('exercises', [])]
                                     # Clean exercise names
                                     ex_list = [e.replace('_', ' ').title() for e in ex_list if e]
                                     active_sets.append({
                                         "exercises": list(set(ex_list)), # Unique set for AI
-                                        "reps": s.get('repetitionCount'),
-                                        "weight_lbs": round(n(s.get('weight')) * 0.00220462, 1) if s.get('weight') else 0
+                                        "reps": ex_set.get('repetitionCount'),
+                                        "weight_lbs": round(n(ex_set.get('weight')) * 0.00220462, 1) if ex_set.get('weight') else 0
                                     })
                             stage_data["strength_active_sets"] = active_sets
 
@@ -1877,9 +1881,9 @@ Return ONLY valid JSON (no markdown, no code fences):
         return result
 
     except Exception as e:
+        import traceback; traceback.print_exc()
         logger.error(f"Logic generation failed: {e}")
         error_msg = str(e)
-        # Try to extract a clean message if it's a Google API error
         if "Quota exceeded" in error_msg or "429" in error_msg:
             error_msg = "Gemini API Quota Exceeded. Please wait a minute before retrying."
         elif "503" in error_msg or "504" in error_msg:
