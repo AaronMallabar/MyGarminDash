@@ -243,6 +243,7 @@ def get_garmin_client():
 
 def garmin_request(func, *args, **kwargs):
     """Wrapper to handle Garmin API calls with retries and session auto-saving."""
+    global garmin_client
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -250,7 +251,6 @@ def garmin_request(func, *args, **kwargs):
             
             # PROACTIVE: Save session tokens if refreshed in-memory
             # This ensures that if the token was refreshed during the session, it gets saved to disk.
-            global garmin_client
             if garmin_client:
                 try:
                     token_dir = os.path.join(GarminPersistence.BASE_DIR, "session")
@@ -266,7 +266,6 @@ def garmin_request(func, *args, **kwargs):
                 time.sleep(wait)
                 # Force re-login on next attempt if it seems like a session issue
                 if any(err in str(e).lower() for err in ["403", "session", "login", "auth", "expired"]):
-                    global garmin_client
                     garmin_client = None
             else:
                 logger.error(f"Garmin API failed after {max_retries} attempts: {e}")
