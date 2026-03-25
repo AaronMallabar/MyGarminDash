@@ -214,6 +214,11 @@ def get_garmin_client():
     email = os.getenv("GARMIN_EMAIL")
     password = os.getenv("GARMIN_PASSWORD")
     
+    # Route all Garmin API traffic through the Cloudflare WARP SOCKS5 Proxy 
+    # This bypasses the datacenter ban Cloudflare places on Oracle IPs.
+    os.environ['HTTP_PROXY'] = 'socks5h://127.0.0.1:40000'
+    os.environ['HTTPS_PROXY'] = 'socks5h://127.0.0.1:40000'
+    
     if not email or not password:
         raise ValueError("Garmin credentials not found in environment variables")
         
