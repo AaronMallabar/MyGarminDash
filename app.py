@@ -214,11 +214,6 @@ def get_garmin_client():
     email = os.getenv("GARMIN_EMAIL")
     password = os.getenv("GARMIN_PASSWORD")
     
-    # Route all Garmin API traffic through the Cloudflare WARP SOCKS5 Proxy 
-    # This bypasses the datacenter ban Cloudflare places on Oracle IPs.
-    os.environ['HTTP_PROXY'] = 'socks5h://127.0.0.1:40000'
-    os.environ['HTTPS_PROXY'] = 'socks5h://127.0.0.1:40000'
-    
     if not email or not password:
         raise ValueError("Garmin credentials not found in environment variables")
         
@@ -230,25 +225,20 @@ def get_garmin_client():
         # Initialize Garmin client
         client = Garmin(email, password)
         
-        # Try to login using tokens first
-        try:
-            logger.info(f"Attempting to login to Garmin Connect using tokens in {token_dir}")
-            client.login(token_dir)
-            logger.info("Successfully logged in to Garmin Connect via token")
-        except Exception as e:
-            logger.warning(f"Session token invalid or missing, attempting fresh login: {e}")
-            # Fresh login will use credentials and populate garth session
-            client.login()
-            # Save the new session tokens
-            client.garth.dump(token_dir)
-            logger.info("Successfully logged in to Garmin Connect and saved fresh tokens")
+        # ONLY use token-based login — NEVER attempt a fresh credential login.
+        # Fresh logins hit sso.garmin.com which triggers Cloudflare IP bans
+        # on datacenter IPs. Tokens are pushed from a local PC via sync_tokens.py.
+        logger.info(f"Attempting to login to Garmin Connect using tokens in {token_dir}")
+        client.login(token_dir)
+        logger.info("Successfully logged in to Garmin Connect via token")
             
         garmin_client = client
         return client
     except Exception as e:
         if "403" in str(e):
-            logger.error(f"CRITICAL: Garmin is blocking this IP address. Please re-bootstrap session from local machine.")
-        logger.error(f"Failed to login to Garmin Connect: {e}")
+            logger.error(f"CRITICAL: Garmin is blocking this IP address. Run sync_tokens.py from your local PC to push fresh tokens.")
+        else:
+            logger.warning(f"Garmin token login failed (tokens may be expired — run sync_tokens.py): {e}")
         # DO NOT RAISE EXCEPTION - Allow offline mode caching fallback
         offline_mode_active = True
         return None
