@@ -1,0 +1,73 @@
+name: Garmin Token Sync
+
+on:
+  schedule:
+    # Runs every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  sync-tokens:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install garminconnect garth python-dotenv
+
+      - name: Refresh Garmin tokens
+        env:
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+        run: |
+          python -c "
+          import os
+          from garminconnect import Garmin
+
+          email = os.environ['GARMIN_EMAIL']
+          password = os.environ['GARMIN_PASSWORD']
+          token_dir = 'garmin_tokens'
+          os.makedirs(token_dir, exist_ok=True)
+
+          client = Garmin(email, password)
+          client.login()
+          client.garth.dump(token_dir)
+          print('Garmin tokens refreshed successfully.')
+          
+          # Verify tokens work
+          stats = client.get_stats(os.popen('date +%Y-%m-%d').read().strip())
+          print(f'Verified: got stats with {stats.get(\"totalSteps\", 0)} steps')
+          "
+
+      - name: Push tokens to Oracle server
+        env:
+          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+        run: |
+          # Write SSH key to file
+          echo "$ORACLE_SSH_KEY" > /tmp/oracle_key
+          chmod 600 /tmp/oracle_key
+          
+          # Push token files to server
+          scp -o StrictHostKeyChecking=no -i /tmp/oracle_key \
+            garmin_tokens/* \
+            ubuntu@${ORACLE_HOST}:/home/ubuntu/MyGarminDash/garmin_cache/session/
+          
+          echo "Tokens pushed to Oracle server."
+          
+          # Restart the dashboard service
+          ssh -o StrictHostKeyChecking=no -i /tmp/oracle_key \
+            ubuntu@${ORACLE_HOST} \
+            "sudo systemctl restart garmin.service"
+          
+          echo "Dashboard service restarted."
+          
+          # Cleanup
+          rm -f /tmp/oracle_key
