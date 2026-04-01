@@ -819,9 +819,10 @@ heatmap_cache = {
 HEATMAP_CACHE_EXPIRY = 120  # 2 minute cache duration (used when all routes loaded)
 HEATMAP_CACHE_EXPIRY_SYNCING = 10  # 10 second cache during active syncing
 
-# Activity Heatmap Cache
+# Activity Heatmap Cache (Persisted)
 ACT_HEATMAP_CACHE_EXPIRY = 86400 # 24 Hours
-activity_heatmap_cache = {
+_cached_heatmap = GarminPersistence.get_singleton("activity_heatmap")
+activity_heatmap_cache = _cached_heatmap if _cached_heatmap else {
     'data': None,
     'timestamp': None
 }
@@ -830,22 +831,47 @@ activity_heatmap_cache = {
 def server_warmup():
     """Warms up the Garmin client and pre-fills caches on startup."""
     global ai_insights_cache, activity_heatmap_cache
+    
+    # 1. JITTER & LOCK: Stagger workers so they don't all slam RAM at once
+    # Random wait between 2-15 seconds
+    time.sleep(random.uniform(2.0, 15.0))
+    
+    lock_file = os.path.join(GarminPersistence.BASE_DIR, "warmup.lock")
+    os.makedirs(GarminPersistence.BASE_DIR, exist_ok=True)
+    
+    # Check if another worker is already warming up (within last 10 mins)
+    if os.path.exists(lock_file):
+        try:
+            mtime = os.path.getmtime(lock_file)
+            if time.time() - mtime < 600: # 10 minute lock
+                logger.info("Server Warmup: Another worker is already warming up. Skipping to save RAM.")
+                return
+        except: pass
+            
+    # Create/Update lock
+    try:
+        with open(lock_file, 'w') as f: f.write(str(os.getpid()))
+    except: pass
+
     logger.info("Server Warmup: Starting deep background pre-fetch...")
     try:
         mgr = get_sync_manager()
+        now = time.time()
         
         # Proactively refresh last 3 days of core metrics
         logger.info("Server Warmup: Refreshing last 3 days of core metrics...")
         for i in range(4): # 0 (today) to 3 days ago
             d_str = (get_today() - timedelta(days=i)).isoformat()
-            # These will check staleness internally based on the updated get_metric_for_date logic
             mgr.get_metric_for_date('stats', d_str)
             mgr.get_metric_for_date('sleep', d_str)
             mgr.get_metric_for_date('weight', d_str)
         
-        # Pre-fetch activity heatmap (lightweight)
-        if not activity_heatmap_cache['data']:
-            logger.info("Server Warmup: Pre-fetching activity heatmap...")
+        # Pre-fetch activity heatmap (lightweight, but slow to build)
+        # Check if disk cache is expired or missing
+        is_heatmap_expired = not activity_heatmap_cache['data'] or (now - (activity_heatmap_cache.get('timestamp') or 0) > ACT_HEATMAP_CACHE_EXPIRY)
+        
+        if is_heatmap_expired:
+            logger.info("Server Warmup: Activity heatmap cache empty/expired. Fetching 1 year of metadata...")
             today = get_today()
             start_date = today - timedelta(days=366)
             activities = mgr.client.get_activities_by_date(start_date.isoformat(), today.isoformat()) if mgr.client else []
@@ -853,6 +879,7 @@ def server_warmup():
             heatmap = {}
             for activity in activities:
                 if not activity: continue
+                # Extract date and basic stats without loading full activity details
                 start_local = activity.get('startTimeLocal')
                 if start_local and len(start_local) >= 10:
                     date_str = start_local[:10]
@@ -868,13 +895,15 @@ def server_warmup():
                         'dist': dist_mi,
                         'dur': dur_m
                     })
-            activity_heatmap_cache['data'] = heatmap
-            activity_heatmap_cache['timestamp'] = time.time()
+            activity_heatmap_cache = {'data': heatmap, 'timestamp': now}
+            GarminPersistence.save_singleton("activity_heatmap", activity_heatmap_cache)
+            logger.info("Server Warmup: Activity heatmap persisted to disk.")
+        else:
+            logger.info(f"Server Warmup: Activity heatmap is fresh ({round((now - activity_heatmap_cache['timestamp']) / 3600, 1)}h old). Skipping.")
 
         # Trigger AI Insight Generation in background only if no fresh cache exists
-        now = time.time()
         if ai_insights_cache['data'] and ai_insights_cache['timestamp'] and (now - ai_insights_cache['timestamp'] < AI_CACHE_EXPIRY):
-            logger.info(f"Server Warmup: AI Insights cache is still fresh ({round((now - ai_insights_cache['timestamp']) / 60)}min old). Skipping regeneration.")
+            logger.info(f"Server Warmup: AI Insights cache is fresh ({round((now - ai_insights_cache['timestamp']) / 60)}min old). Skipping.")
         elif not ai_insights_cache['data']:
             logger.info("Server Warmup: No cached AI Insights found. Generating in advance...")
             generate_insights_logic()
@@ -882,9 +911,14 @@ def server_warmup():
             logger.info("Server Warmup: AI Insights cache expired. Regenerating...")
             generate_insights_logic()
             
-        logger.info("Server Warmup: Completed.")
+        logger.info("Server Warmup: Sequence Completed.")
     except Exception as e:
         logger.error(f"Server Warmup Failed: {e}")
+    finally:
+        # Remove lock file when done
+        try:
+            if os.path.exists(lock_file): os.remove(lock_file)
+        except: pass
 
 @app.route('/api/warmup', methods=['GET'])
 def trigger_warmup():
