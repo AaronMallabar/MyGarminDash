@@ -255,7 +255,12 @@ window.renderActivityMap = function (polylineData) {
     }
 
     container.style.display = 'block';
-    const latlngs = Array.isArray(polylineData[0]) ? polylineData : polylineData.map(p => [p.lat, p.lon]);
+    
+    // Save the FULL points for highlighting (including gaps) to stay in sync with charts
+    window.currentActivityPoints = polylineData.map(p => (p && p[0] != null) ? [p[0], p[1]] : null);
+    
+    // Filtered points for display (only valid lat/lng)
+    const displayPoints = window.currentActivityPoints.filter(p => p !== null);
 
     window.activityMap = L.map('activityMap', {
         zoomControl: false,
@@ -264,18 +269,15 @@ window.renderActivityMap = function (polylineData) {
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(window.activityMap);
 
-    const path = L.polyline(latlngs, {
-        color: '#38bdf8',
-        weight: 4,
-        opacity: 0.8,
-        lineJoin: 'round'
-    }).addTo(window.activityMap);
+    if (displayPoints.length > 1) {
+        const path = L.polyline(displayPoints, {
+            color: '#38bdf8', weight: 4, opacity: 0.8, lineJoin: 'round'
+        }).addTo(window.activityMap);
 
-    window.activityMap.fitBounds(path.getBounds(), { padding: [20, 20] });
+        window.activityMap.fitBounds(path.getBounds(), { padding: [20, 20] });
+    }
+    
     setTimeout(() => { if (window.activityMap) window.activityMap.invalidateSize(); }, 200);
-
-    // Save the original points for highlighting
-    window.currentActivityPoints = latlngs;
 }
 
 window.highlightActivitySegment = function(startIdx, endIdx) {
@@ -286,19 +288,21 @@ window.highlightActivitySegment = function(startIdx, endIdx) {
         window.activityMap.removeLayer(window.activityHighlightLayer);
     }
     
-    const segment = window.currentActivityPoints.slice(startIdx, endIdx + 1);
+    // Extraction from the original index-aligned list
+    const rawSegment = window.currentActivityPoints.slice(startIdx, endIdx + 1);
+    const segment = rawSegment.filter(p => p !== null);
+    
     if (segment.length < 2) return;
     
     window.activityHighlightLayer = L.polyline(segment, {
-        color: '#f59e0b', // Amber/Gold highlight
-        weight: 8,
-        opacity: 0.9,
-        lineJoin: 'round',
-        lineCap: 'round',
-        className: 'pulse-segment'
+        color: '#f59e0b', weight: 8, opacity: 0.9, lineJoin: 'round', lineCap: 'round', className: 'pulse-segment'
     }).addTo(window.activityMap);
+}
 
-    // Optionally pan slightly to the segment? No, keep focus but clear.
+window.zoomActivityMap = function(factor) {
+    if (!window.activityMap) return;
+    const currentZoom = window.activityMap.getZoom();
+    window.activityMap.setZoom(currentZoom + factor);
 }
 
 window.clearActivityHighlight = function() {

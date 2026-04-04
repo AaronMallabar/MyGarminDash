@@ -2856,7 +2856,26 @@ def get_activity_details(activity_id):
             pts = load_json('garmin_cache/personal_bests_details.json', {})
             aid_str = str(activity_id)
             
-            if aid_str not in pts:
+            # Re-calculate if not in cache OR if it's in the old format (missing indices)
+            needs_calc = aid_str not in pts
+            if not needs_calc:
+                rec = pts[aid_str]
+                # Check for old format in power
+                p_items = rec.get('power', {})
+                if rec.get('is_bike') and p_items:
+                    first_val = next(iter(p_items.values()), None)
+                    if first_val is not None and not isinstance(first_val, dict):
+                        needs_calc = True
+                
+                # Check for old format in pace
+                if not needs_calc and rec.get('is_run'):
+                    pa_items = rec.get('pace', {})
+                    if pa_items:
+                        first_val = next(iter(pa_items.values()), None)
+                        if first_val is not None and not isinstance(first_val, dict):
+                            needs_calc = True
+            
+            if needs_calc:
                 is_run = is_running_activity(activity_info)
                 is_bike = is_cycling_activity(activity_info)
                 if is_run or is_bike:
@@ -3026,9 +3045,10 @@ def get_activity_details(activity_id):
 
         logger.info(f"Activity {activity_id}: found {len(splits)} splits, dist {total_dist_m}m, dur {total_dur_s}s")
 
-        # Prepare polyline (compact it for front-end performance)
-        raw_poly = (details.get('geoPolylineDTO') or {}).get('polyline', [])
-        compact_poly = [[p['lat'], p['lon']] for p in raw_poly if 'lat' in p and 'lon' in p]
+        # Prepare polyline from the SAME metrics used for charts to ensure 1:1 synchronization
+        lat_col = [get_val(m.get('metrics', {}), 'directLatitude') for m in metrics_list]
+        lon_col = [get_val(m.get('metrics', {}), 'directLongitude') for m in metrics_list]
+        compact_poly = [[lat, lon] if lat is not None else None for lat, lon in zip(lat_col, lon_col)]
 
         # Fetch exercise sets for strength activities
         exercise_sets = None

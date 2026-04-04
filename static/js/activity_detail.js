@@ -52,6 +52,9 @@ window.openActivityDetail = async function (id, basic) {
         if (polylines.length > 0 && window.renderActivityMap) {
             window.renderActivityMap(polylines);
         }
+        
+        // Save prefix for global reset access
+        window.currentActivityPrefix = ids.length === 1 ? `stage-${ids[0]}` : null;
     } catch (err) {
         console.error('Modal error:', err);
         if (dynamicBody) dynamicBody.innerHTML = '<div style="color: var(--danger-color); text-align:center;">Failed to load details.</div>';
@@ -120,8 +123,9 @@ window.renderStage = function (data, basic, num) {
 
     let pbHtml = '';
     const bests = data.bests || {};
-    const hasPowerBests = bests.power && Object.values(bests.power).some(v => v > 0);
-    const hasPaceBests = bests.pace && Object.values(bests.pace).some(v => v > 0);
+    const getVal = (v) => (v && typeof v === 'object' ? v.value : v) || 0;
+    const hasPowerBests = bests.power && Object.values(bests.power).some(v => getVal(v) > 0);
+    const hasPaceBests = bests.pace && Object.values(bests.pace).some(v => getVal(v) > 0);
     const hasBests = hasPowerBests || hasPaceBests;
     
     if (hasBests) {
@@ -140,10 +144,9 @@ window.renderStage = function (data, basic, num) {
                     const start = rec.start || 0;
                     const end = rec.end || 0;
                     tableRows += `
-                        <div class="pb-row-hover" 
-                             onmouseenter="window.highlightChartRange('${prefix}', ${start}, ${end}); window.highlightActivitySegment(${start}, ${end});"
-                             onmouseleave="window.clearChartHighlight('${prefix}'); window.clearActivityHighlight();"
-                             style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.6rem; background: rgba(15, 23, 42, 0.5); border-radius: 0.4rem; border: 1px solid rgba(255,255,255,0.03); cursor: crosshair; transition: all 0.2s ease;">
+                        <div class="pb-row-clickable" 
+                             onclick="window.toggleActivityHighlight(this, '${prefix}', ${start}, ${end})"
+                             style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.6rem; background: rgba(15, 23, 42, 0.5); border-radius: 0.4rem; border: 1px solid rgba(255,255,255,0.03); cursor: pointer; transition: all 0.2s ease;">
                             <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary);">${labels[k]}</span>
                             <span style="font-size: 0.8rem; font-weight: 800; color: white;">${val}<span style="font-size: 0.6rem; opacity: 0.5; margin-left: 2px;">W</span></span>
                         </div>`;
@@ -161,10 +164,9 @@ window.renderStage = function (data, basic, num) {
                     const m = Math.floor(s / 60);
                     const sec = Math.floor(s % 60).toString().padStart(2, '0');
                     tableRows += `
-                        <div class="pb-row-hover" 
-                             onmouseenter="window.highlightChartRange('${prefix}', ${start}, ${end}); window.highlightActivitySegment(${start}, ${end});"
-                             onmouseleave="window.clearChartHighlight('${prefix}'); window.clearActivityHighlight();"
-                             style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.6rem; background: rgba(15, 23, 42, 0.5); border-radius: 0.4rem; border: 1px solid rgba(255,255,255,0.03); cursor: crosshair; transition: all 0.2s ease;">
+                        <div class="pb-row-clickable" 
+                             onclick="window.toggleActivityHighlight(this, '${prefix}', ${start}, ${end})"
+                             style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.6rem; background: rgba(15, 23, 42, 0.5); border-radius: 0.4rem; border: 1px solid rgba(255,255,255,0.03); cursor: pointer; transition: all 0.2s ease;">
                             <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary);">${labels[k]}</span>
                             <span style="font-size: 0.8rem; font-weight: 800; color: white;">${m}:${sec}<span style="font-size: 0.6rem; opacity: 0.5; margin-left: 2px;">/mi</span></span>
                         </div>`;
@@ -339,12 +341,40 @@ window.renderStage = function (data, basic, num) {
         </div>
         ${strengthHtml}
         ${pbHtml}
-        <div class="stage-charts" style="margin-top: 2rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
-            ${isStrength ? '' : `<div class="small-chart-container"><div class="chart-label">Elevation</div><canvas id="${prefix}-activityElevChart"></canvas></div>`}
-            <div class="small-chart-container"><div class="chart-label">Heart Rate</div><canvas id="${prefix}-activityHrChart"></canvas></div>
-            ${isStrength ? '' : `<div class="small-chart-container"><div class="chart-label">${isRun ? 'Pace' : 'Speed'}</div><canvas id="${prefix}-activitySpeedChart"></canvas></div>`}
-            ${hasCadence ? `<div class="small-chart-container"><div class="chart-label">${isRun ? 'Cadence' : 'RPM'}</div><canvas id="${prefix}-activityCadenceChart"></canvas></div>` : ''}
-            ${hasPower ? `<div class="small-chart-container"><div class="chart-label">Power</div><canvas id="${prefix}-activityPowerChart"></canvas></div>` : ''}
+        <div id="${prefix}-selection-stats" class="selection-stats-bar" style="display:none; margin-top: 1.5rem; padding: 1rem; background: rgba(56, 189, 248, 0.05); border-radius: 0.75rem; border: 1px solid rgba(56, 189, 248, 0.2);">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem;">
+                <div class="stat-unit"><div class="stat-label">Time</div><div id="${prefix}-stat-time" class="stat-val">--</div></div>
+                <div class="stat-unit"><div class="stat-label">Dist</div><div id="${prefix}-stat-dist" class="stat-val">--</div></div>
+                <div class="stat-unit"><div class="stat-label">Avg Pwr</div><div id="${prefix}-stat-power" class="stat-val">--</div></div>
+                <div class="stat-unit"><div class="stat-label">Avg HR</div><div id="${prefix}-stat-hr" class="stat-val">--</div></div>
+                <div class="stat-unit"><div class="stat-label">Avg Speed</div><div id="${prefix}-stat-speed" class="stat-val">--</div></div>
+                <div class="stat-unit"><div class="stat-label">Avg RPM</div><div id="${prefix}-stat-cadence" class="stat-val">--</div></div>
+            </div>
+            <button onclick="window.clearSelection('${prefix}')" style="margin-top: 1rem; width: 100%; padding: 0.4rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.5rem; color: #94a3b8; font-size: 0.7rem; cursor: pointer;">Clear Selection</button>
+        </div>
+
+        <!-- Zoom & Scroll Controls -->
+        <div class="activity-controls" style="margin-top: 2rem; display: flex; flex-direction: column; gap: 1rem; padding: 1rem; background: rgba(15, 23, 42, 0.3); border-radius: 1rem; border: 1px solid rgba(255,255,255,0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.7rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Visual Navigation</span>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button onclick="window.resetZoom('${prefix}')" class="btn-tool" title="Reset All" style="padding: 0.3rem 0.6rem; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 0.4rem; color: #f59e0b; cursor: pointer; font-size: 0.7rem; font-weight: 800;">RESET</button>
+                    <div style="width: 1px; height: 16px; background: rgba(255,255,255,0.1); margin: 0 0.5rem;"></div>
+                    <button onclick="window.zoomActivityCharts('${prefix}', 0.8)" class="btn-tool" title="Zoom In Charts" style="padding: 0.3rem 0.6rem; background: rgba(56, 189, 248, 0.2); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 0.4rem; color: var(--accent-color); cursor: pointer;">+</button>
+                    <button onclick="window.zoomActivityCharts('${prefix}', 1.25)" class="btn-tool" title="Zoom Out Charts" style="padding: 0.3rem 0.6rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.4rem; color: white; cursor: pointer;">-</button>
+                </div>
+            </div>
+            <input type="range" id="${prefix}-zoom-scroll" min="0" max="100" value="50" 
+                   oninput="window.scrollActivityCharts('${prefix}', this.value)"
+                   style="width: 100%; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); outline: none; cursor: pointer;">
+        </div>
+
+        <div class="stage-charts" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 2rem;">
+            ${isStrength ? '' : `<div class="full-chart-container" style="height: 250px; background: rgba(15, 23, 42, 0.3); padding: 1rem; border-radius: 1rem;"><div class="chart-label">Elevation</div><canvas id="${prefix}-activityElevChart"></canvas></div>`}
+            <div class="full-chart-container" style="height: 250px; background: rgba(15, 23, 42, 0.3); padding: 1rem; border-radius: 1rem;"><div class="chart-label">Heart Rate</div><canvas id="${prefix}-activityHrChart"></canvas></div>
+            ${isStrength ? '' : `<div class="full-chart-container" style="height: 250px; background: rgba(15, 23, 42, 0.3); padding: 1rem; border-radius: 1rem;"><div class="chart-label">${isRun ? 'Pace' : 'Speed'}</div><canvas id="${prefix}-activitySpeedChart"></canvas></div>`}
+            ${hasCadence ? `<div class="full-chart-container" style="height: 250px; background: rgba(15, 23, 42, 0.3); padding: 1rem; border-radius: 1rem;"><div class="chart-label">${isRun ? 'Cadence' : 'RPM'}</div><canvas id="${prefix}-activityCadenceChart"></canvas></div>` : ''}
+            ${hasPower ? `<div class="full-chart-container" style="height: 250px; background: rgba(15, 23, 42, 0.3); padding: 1rem; border-radius: 1rem;"><div class="chart-label">Power</div><canvas id="${prefix}-activityPowerChart"></canvas></div>` : ''}
         </div>
         ${splitsHtml}
     `;
@@ -361,5 +391,38 @@ window.renderStage = function (data, basic, num) {
             window.renderActivityBestsChart(chartId, bests, hasPowerBests);
         }
     }, 100);
+}
+
+window.toggleActivityHighlight = function(el, prefix, start, end) {
+    const isActive = el.classList.contains('active');
+    
+    // Clear all highlighting in this modal
+    document.querySelectorAll('.pb-row-clickable').forEach(r => {
+        r.classList.remove('active');
+        r.style.background = 'rgba(15, 23, 42, 0.5)';
+        r.style.borderColor = 'rgba(255,255,255,0.03)';
+        r.style.boxShadow = 'none';
+        r.style.transform = 'scale(1)';
+    });
+    window.clearChartHighlight(prefix);
+    window.clearActivityHighlight();
+
+    if (!isActive) {
+        // Activate this row
+        el.classList.add('active');
+        el.style.background = 'rgba(245, 158, 11, 0.15)';
+        el.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+        el.style.boxShadow = '0 0 15px rgba(245, 158, 11, 0.1)';
+        el.style.transform = 'scale(1.02)';
+        
+        // Highlight charts and map
+        window.highlightChartRange(prefix, start, end);
+        window.highlightActivitySegment(start, end);
+        
+        // Update stats bar for this specific record
+        if (window.updateSelectionStatsUI) {
+            window.updateSelectionStatsUI(prefix, start, end, true);
+        }
+    }
 }
 
