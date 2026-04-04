@@ -22,6 +22,22 @@ load_dotenv()
 # Helper for null-to-zero conversions
 n = lambda x: x if x is not None else 0
 
+def is_cycling_activity(act):
+    """Reliably determine if an activity is cycling-related."""
+    if not act or not isinstance(act, dict): return False
+    tk = act.get('activityType', {}).get('typeKey', '').lower()
+    an = act.get('activityName', '').lower()
+    # Check typeKey and activityName for various cycling indicators
+    return any(k in tk for k in ['cycling', 'ride', 'biking', 'virtual', 'indoor', 'road']) or \
+           any(k in an for k in ['zwift', 'ride', 'cycling', 'peloton', 'trainerroad', 'road biking', 'mountain biking', 'road cycling'])
+
+def is_running_activity(act):
+    """Reliably determine if an activity is running-related."""
+    if not act or not isinstance(act, dict): return False
+    tk = act.get('activityType', {}).get('typeKey', '').lower()
+    an = act.get('activityName', '').lower()
+    return 'running' in tk or 'run' in tk or 'run' in an or 'running' in an
+
 # Timezone Configuration
 EST = ZoneInfo("America/New_York")
 
@@ -1264,11 +1280,6 @@ def generate_insights_logic():
             """Sum a nutrient key across a list of food log entries."""
             return round(sum(e.get(key, 0) or 0 for e in entries), 1)
 
-        def is_cycling(act):
-            tk = act.get('activityType', {}).get('typeKey', '').lower()
-            an = act.get('activityName', '').lower()
-            return any(k in tk for k in ['cycling', 'ride', 'biking', 'virtual', 'indoor']) or \
-                   any(k in an for k in ['zwift', 'ride', 'cycling', 'peloton', 'trainerroad'])
 
         def fetch_full_act(a):
             try:
@@ -1530,7 +1541,7 @@ def generate_insights_logic():
             if act_date >= ytd_start:
                 if 'running' in type_key:
                     baselines['ytd_run_max_dist_mi'] = max(baselines['ytd_run_max_dist_mi'], d_mi)
-                elif is_cycling(a):
+                elif is_cycling_activity(a):
                     baselines['ytd_cycle_max_dist_mi'] = max(baselines['ytd_cycle_max_dist_mi'], d_mi)
                     summary = a.get('summaryDTO', {})
                     p = a.get('averagePower') or a.get('avgPower') or summary.get('averagePower') or summary.get('avgPower')
@@ -1590,15 +1601,15 @@ def generate_insights_logic():
                 })
             else:
                 # New session
-                is_cycling_session = any(is_cycling(a) for a in s)
+                is_cycling_session = any(is_cycling_activity(a) for a in s)
                 stages = []
                 for a in s:
                     d_mi = n(a.get('distance', 0)) * 0.000621371
                     dur_m = n(a.get('duration', 0)) / 60
                     
                     # Robust local check for this stage
-                    this_is_run = 'running' in a.get('activityType', {}).get('typeKey', '').lower()
-                    this_is_cycle = is_cycling(a)
+                    this_is_run = is_running_activity(a)
+                    this_is_cycle = is_cycling_activity(a)
                     
                     stage_data = {
                         "activity_id": a.get('activityId'),
@@ -2081,9 +2092,9 @@ def get_longterm_stats():
                 dist_mi = n(a.get('distance', 0)) * 0.000621371
                 type_key = a.get('activityType', {}).get('typeKey', '').lower()
                 
-                if 'running' in type_key:
+                if is_running_activity(a):
                     running += dist_mi
-                elif any(k in type_key for k in ['cycling', 'ride', 'virtual_ride']):
+                elif is_cycling_activity(a):
                     cycling += dist_mi
             return running, cycling
 
@@ -2158,10 +2169,10 @@ def get_ytd_mileage_comparison():
                         type_key = act.get('activityType', {}).get('typeKey', '').lower()
                         
                         # Cycling
-                        if any(k in type_key for k in ['cycling', 'ride', 'virtual_ride']):
+                        if is_cycling_activity(act):
                             day_map_cycle[d_num] = day_map_cycle.get(d_num, 0) + dist_meters
                         # Running
-                        elif 'running' in type_key or 'run' in type_key:
+                        elif is_running_activity(act):
                             day_map_run[d_num] = day_map_run.get(d_num, 0) + dist_meters
                     except: continue
 
@@ -2881,8 +2892,7 @@ def get_activity_details(activity_id):
         act_name = activity_info.get('activityName', '').lower() if activity_info else ""
         
         # Comprehensive cycling check (Type or Name)
-        is_cycling = any(k in type_key for k in ['cycling', 'ride', 'biking', 'virtual', 'indoor']) or \
-                     any(k in act_name for k in ['zwift', 'ride', 'cycling', 'peloton', 'trainerroad'])
+        is_cycling = is_cycling_activity(activity_info)
         
         split_len = 5 if is_cycling else 1
         
