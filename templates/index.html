@@ -52,6 +52,7 @@
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
     <script src="{{ url_for('static', filename='js/activity_detail.js') }}"></script>
     <script src="{{ url_for('static', filename='js/health.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/pbs.js') }}"></script>
 
     <style>
         /* Custom Cluster Styles for Dark Mode */
@@ -1407,6 +1408,67 @@
 
             </div>
 
+        </div>
+
+        <!-- Personal Bests Module -->
+        <div id="pb-module">
+            <h2 style="margin-top: 2rem; margin-bottom: 1.5rem; font-size: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+                <div>Personal Bests <span style="font-size: 0.8rem; font-weight:normal; background: rgba(56, 189, 248, 0.1); padding: 0.2rem 0.5rem; border-radius: 1rem; color: var(--accent-color);">BETA</span></div>
+                <button onclick="triggerPBSync()" id="pb-sync-btn" style="background: rgba(255,255,255,0.05); color:white; border: 1px solid rgba(255,255,255,0.1); padding: 0.4rem 0.8rem; border-radius: 0.5rem; font-size:0.8rem; cursor:pointer;">Sync Past Bests (2025+)</button>
+            </h2>
+            
+            <div class="card pb-card" style="margin-bottom: 3rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 1rem;">
+                    
+                    <div class="toggle-group sport-toggle">
+                        <button class="toggle-btn active" onclick="setPbSport('bike', this)">🚲 Cycling</button>
+                        <button class="toggle-btn" onclick="setPbSport('run', this)">🏃 Running</button>
+                    </div>
+                    
+                    <div class="range-selector" style="display: flex; padding: 0.2rem;">
+                        <button class="range-btn active" onclick="setPbPeriod('lifetime', this)">Lifetime</button>
+                        <button class="range-btn" onclick="setPbPeriod('year', this)">This Year</button>
+                        <button class="range-btn" onclick="setPbPeriod('month', this)">This Month</button>
+                    </div>
+                </div>
+                
+                <div id="pb-bike-view">
+                    <div class="health-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+                        <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 0.8rem;">
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Longest Ride</div>
+                            <div style="font-size: 1.5rem; font-weight: bold; color: var(--accent-color);" id="pb-bike-longest">--</div>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 0.8rem;">
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Max Speed</div>
+                            <div style="font-size: 1.5rem; font-weight: bold; color: var(--accent-color);" id="pb-bike-speed">--</div>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 0.8rem;">
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Highest Climb</div>
+                            <div style="font-size: 1.5rem; font-weight: bold; color: var(--accent-color);" id="pb-bike-climb">--</div>
+                        </div>
+                    </div>
+                    
+                    <h3 style="margin-top: 1.5rem; font-size: 1rem; color: var(--text-secondary); margin-bottom: 1rem;">Power Curve / Peak Powers</h3>
+                    <div class="power-curve-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.8rem;" id="pb-power-grid">
+                        <!-- populated from JS -->
+                    </div>
+                </div>
+                
+                <div id="pb-run-view" style="display: none;">
+                    <div class="health-grid" style="grid-template-columns: 1fr;">
+                        <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 0.8rem;">
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Longest Run</div>
+                            <div style="font-size: 1.5rem; font-weight: bold; color: var(--accent-color);" id="pb-run-longest">--</div>
+                        </div>
+                    </div>
+                    
+                    <h3 style="margin-top: 1.5rem; font-size: 1rem; color: var(--text-secondary); margin-bottom: 1rem;">Fastest Split Paces</h3>
+                    <div class="power-curve-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.8rem;" id="pb-pace-grid">
+                        <!-- populated from JS -->
+                    </div>
+                </div>
+                
+            </div>
         </div>
 
         <!-- Nutrition & Metabolism -->

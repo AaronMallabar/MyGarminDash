@@ -118,6 +118,43 @@ window.renderStage = function (data, basic, num) {
         `;
     }
 
+    let pbHtml = '';
+    if (data.bests && (data.bests.is_run || data.bests.is_bike)) {
+        let items = [];
+        if (data.bests.is_bike && data.bests.power) {
+            const labels = {'5': '5 Sec', '30': '30 Sec', '60': '1 Min', '120': '2 Min', '300': '5 Min', '600': '10 Min', '1200': '20 Min', '1800': '30 Min', '3600': '60 Min'};
+            Object.keys(data.bests.power).forEach(k => {
+                if (data.bests.power[k] > 0) items.push({label: labels[k]+' Power', val: data.bests.power[k]+' W'});
+            });
+        }
+        if (data.bests.is_run && data.bests.pace) {
+            const labels = {'1mi': 'Best 1 Mile', '5k': 'Best 5K', '5mi': 'Best 5 Mile'};
+            Object.keys(data.bests.pace).forEach(k => {
+                const s = data.bests.pace[k];
+                if (s > 0) {
+                    const m = Math.floor(s/60);
+                    const sec = (s%60).toString().padStart(2,'0');
+                    items.push({label: labels[k], val: m+':'+sec});
+                }
+            });
+        }
+        if (items.length > 0) {
+            pbHtml = `
+                <div style="margin-top: 1.5rem;">
+                    <h4 style="color: var(--text-secondary); margin-bottom: 0.8rem; font-size: 0.8rem; text-transform: uppercase;">Activity Bests</h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 0.6rem;">
+                        ${items.map(i => `
+                            <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); padding: 0.6rem; border-radius: 0.5rem; text-align: center;">
+                                <div style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 0.1rem;">${i.label}</div>
+                                <div style="font-size: 1.05rem; font-weight: bold; color: white;">${i.val}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+    }
+
     // Strength Sets Support
     let strengthHtml = '';
     const muscleStats = data.muscle_stats || {};
@@ -264,6 +301,7 @@ window.renderStage = function (data, basic, num) {
             <div class="activity-detail-card"><div class="activity-detail-label">Avg HR</div><div class="activity-detail-value">${summary.averageHR ? Math.round(summary.averageHR) : '--'} bpm</div></div>
         </div>
         ${strengthHtml}
+        ${pbHtml}
         <div class="stage-charts" style="margin-top: 2rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
             ${isStrength ? '' : `<div class="small-chart-container"><div class="chart-label">Elevation</div><canvas id="${prefix}-activityElevChart"></canvas></div>`}
             <div class="small-chart-container"><div class="chart-label">Heart Rate</div><canvas id="${prefix}-activityHrChart"></canvas></div>
