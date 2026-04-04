@@ -1381,6 +1381,11 @@ function renderDetailChart(id, x, y, label, color, unit, rev = false, colorFunc 
                 zoom: {
                     pan: { enabled: true, mode: 'x', onPan: (c) => syncActivityCharts(c.chart, prefix) },
                     zoom: { wheel: { enabled: true }, mode: 'x', onZoom: (c) => syncActivityCharts(c.chart, prefix) }
+                },
+                rangeHighlight: {
+                    start: null,
+                    end: null,
+                    color: 'rgba(245, 158, 11, 0.2)' // Amber highlight
                 }
             },
             scales: {
@@ -1395,6 +1400,48 @@ function renderDetailChart(id, x, y, label, color, unit, rev = false, colorFunc 
                     grid: { display: false }
                 }
             }
+        },
+        plugins: [{
+            id: 'rangeHighlight',
+            beforeDraw: (chart, args, options) => {
+                const {ctx, chartArea: {top, bottom, left, right}, scales: {x}} = chart;
+                if (options.start !== null && options.end !== null) {
+                    ctx.save();
+                    ctx.fillStyle = options.color;
+                    const xStart = x.getPixelForValue(options.start);
+                    const xEnd = x.getPixelForValue(options.end);
+                    ctx.fillRect(xStart, top, xEnd - xStart, bottom - top);
+                    ctx.restore();
+                }
+            }
+        }]
+    });
+}
+
+window.highlightChartRange = function(prefix, startIdx, endIdx) {
+    const keys = Object.keys(window.chartInstances).filter(k => k.startsWith(prefix + '-'));
+    keys.forEach(k => {
+        const chart = window.chartInstances[k];
+        if (chart && chart.options.plugins.rangeHighlight) {
+            // Convert indices to X-values (elapsed seconds)
+            const xValues = chart.data.labels;
+            const startX = xValues[startIdx];
+            const endX = xValues[endIdx];
+            chart.options.plugins.rangeHighlight.start = startX;
+            chart.options.plugins.rangeHighlight.end = endX;
+            chart.update('none');
+        }
+    });
+}
+
+window.clearChartHighlight = function(prefix) {
+    const keys = Object.keys(window.chartInstances).filter(k => k.startsWith(prefix + '-'));
+    keys.forEach(k => {
+        const chart = window.chartInstances[k];
+        if (chart && chart.options.plugins.rangeHighlight) {
+            chart.options.plugins.rangeHighlight.start = null;
+            chart.options.plugins.rangeHighlight.end = null;
+            chart.update('none');
         }
     });
 }

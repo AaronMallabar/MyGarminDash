@@ -2846,28 +2846,34 @@ def get_activity_details(activity_id):
         
         # --- PB Tracking ---
         try:
+            settings = load_settings()
+            pb_year = str(settings.get('pb_start_year', 2025))
             start_str = activity_info.get('startTimeLocal', '')
-            if start_str and start_str >= '2025-01-01':
-                pts = load_json('garmin_cache/personal_bests_details.json', {})
-                aid_str = str(activity_id)
-                if aid_str not in pts:
-                    is_run = is_running_activity(activity_info)
-                    is_bike = is_cycling_activity(activity_info)
-                    if is_run or is_bike:
-                        pow_bests, pace_bests = pb_parse_activity_details(details)
-                        pts[aid_str] = {
-                            'power': pow_bests if is_bike else {},
-                            'pace': pace_bests if is_run else {},
-                            'timestamp': time.time(),
-                            'date': start_str,
-                            'is_run': is_run,
-                            'is_bike': is_bike
-                        }
-                        save_json('garmin_cache/personal_bests_details.json', pts)
-                
-                # Attach to payload
-                if aid_str in pts:
-                    activity_info['activity_bests'] = pts[aid_str]
+            
+            # Use specific setting instead of hardcoded 2025
+            # For individual view, we allow calculation for ANY activity if needed,
+            # but usually we follow the sync settings. Let's be permissive here.
+            pts = load_json('garmin_cache/personal_bests_details.json', {})
+            aid_str = str(activity_id)
+            
+            if aid_str not in pts:
+                is_run = is_running_activity(activity_info)
+                is_bike = is_cycling_activity(activity_info)
+                if is_run or is_bike:
+                    pow_bests, pace_bests = pb_parse_activity_details(details)
+                    pts[aid_str] = {
+                        'power': pow_bests if is_bike else {},
+                        'pace': pace_bests if is_run else {},
+                        'timestamp': time.time(),
+                        'date': start_str,
+                        'is_run': is_run,
+                        'is_bike': is_bike
+                    }
+                    save_json('garmin_cache/personal_bests_details.json', pts)
+            
+            # Attach to payload
+            if aid_str in pts:
+                activity_info['activity_bests'] = pts[aid_str]
         except Exception as pb_e:
             logger.error(f"Error parsing PBs for {activity_id}: {pb_e}")
             
@@ -3843,7 +3849,6 @@ def api_personal_bests():
         today_date = get_today()
         month_prefix = today_date.strftime('%Y-%m')
         year_prefix = today_date.strftime('%Y')
-        
         def init_record():
             return {
                 'run': {
@@ -3864,8 +3869,9 @@ def api_personal_bests():
             
         res = {'lifetime': init_record(), 'year': init_record(), 'month': init_record()}
         
-        def update_run_pace(period, key, val, aid, d_str):
+        def update_run_pace(period, key, val_obj, aid, d_str):
             curr = res[period]['run'][key]
+            val = val_obj.get('value') if isinstance(val_obj, dict) else val_obj
             if val is not None and val > 0:
                 if curr is None or val < curr:
                     res[period]['run'][key] = val
@@ -3902,7 +3908,7 @@ def api_personal_bests():
             if is_bike and not include_virtual and is_virtual_ride(a):
                 continue
             
-            r_name = a.get('activityName', 'Activity')
+            r_name = a.get('activityName', 'Activity').replace("'", "\\'")
             
             periods = ['lifetime']
             if d_str.startswith(year_prefix): periods.append('year')
@@ -3926,10 +3932,11 @@ def api_personal_bests():
                 for p in periods:
                     if is_run and det.get('pace'):
                         for key in ['1mi', '5k', '5mi']:
-                            val = det['pace'].get(key)
-                            update_run_pace(p, f"fastest_{key}", val, aid, d_str)
+                            val_obj = det['pace'].get(key)
+                            update_run_pace(p, f"fastest_{key}", val_obj, aid, d_str)
                     if is_bike and det.get('power'):
-                        for k, val in det['power'].items():
+                        for k, val_obj in det['power'].items():
+                            val = val_obj.get('value') if isinstance(val_obj, dict) else val_obj
                             curr = res[p]['bike']['power_curve'][k]['val']
                             if val and val > curr:
                                 res[p]['bike']['power_curve'][k] = {

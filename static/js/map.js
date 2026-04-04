@@ -273,4 +273,37 @@ window.renderActivityMap = function (polylineData) {
 
     window.activityMap.fitBounds(path.getBounds(), { padding: [20, 20] });
     setTimeout(() => { if (window.activityMap) window.activityMap.invalidateSize(); }, 200);
+
+    // Save the original points for highlighting
+    window.currentActivityPoints = latlngs;
+}
+
+window.highlightActivitySegment = function(startIdx, endIdx) {
+    if (!window.activityMap || !window.currentActivityPoints) return;
+    
+    // Clear existing highlight
+    if (window.activityHighlightLayer) {
+        window.activityMap.removeLayer(window.activityHighlightLayer);
+    }
+    
+    const segment = window.currentActivityPoints.slice(startIdx, endIdx + 1);
+    if (segment.length < 2) return;
+    
+    window.activityHighlightLayer = L.polyline(segment, {
+        color: '#f59e0b', // Amber/Gold highlight
+        weight: 8,
+        opacity: 0.9,
+        lineJoin: 'round',
+        lineCap: 'round',
+        className: 'pulse-segment'
+    }).addTo(window.activityMap);
+
+    // Optionally pan slightly to the segment? No, keep focus but clear.
+}
+
+window.clearActivityHighlight = function() {
+    if (window.activityMap && window.activityHighlightLayer) {
+        window.activityMap.removeLayer(window.activityHighlightLayer);
+        window.activityHighlightLayer = null;
+    }
 }

@@ -200,7 +200,10 @@ window.renderActivityBestsChart = function(canvasId, bests, isBike) {
 
     if (isBike && bests.power) {
         labels = powerLabels;
-        const activityData = powerKeys.map(k => bests.power[k] || 0);
+        const activityData = powerKeys.map(k => {
+            const rec = bests.power[k];
+            return (rec && typeof rec === 'object' ? rec.value : rec) || 0;
+        });
 
         datasets = [
             {
@@ -235,7 +238,8 @@ window.renderActivityBestsChart = function(canvasId, bests, isBike) {
     } else if (!isBike && bests.pace) {
         labels = paceLabels;
         const activityData = paceKeys.map(k => {
-            const v = bests.pace[k];
+            const rec = bests.pace[k];
+            const v = (rec && typeof rec === 'object' ? rec.value : rec);
             return v && v > 0 ? v / 60 : 0;
         });
 

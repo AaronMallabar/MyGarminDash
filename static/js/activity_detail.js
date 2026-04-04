@@ -119,36 +119,52 @@ window.renderStage = function (data, basic, num) {
     }
 
     let pbHtml = '';
-    const hasBests = data.bests && (data.bests.is_run || data.bests.is_bike);
+    const bests = data.bests || {};
+    const hasPowerBests = bests.power && Object.values(bests.power).some(v => v > 0);
+    const hasPaceBests = bests.pace && Object.values(bests.pace).some(v => v > 0);
+    const hasBests = hasPowerBests || hasPaceBests;
+    
     if (hasBests) {
-        const isBike = data.bests.is_bike;
+        const isBike = hasPowerBests; // Default to bike layout if it has power
         const chartId = `${prefix}-activityBestsChart`;
 
         // Build the compact data table
         let tableRows = '';
-        if (isBike && data.bests.power) {
+        if (isBike && bests.power) {
             const labels = {'5': '5s', '30': '30s', '60': '1m', '120': '2m', '300': '5m', '600': '10m', '1200': '20m', '1800': '30m', '3600': '60m'};
             const keys = ['5', '30', '60', '120', '300', '600', '1200', '1800', '3600'];
             keys.forEach(k => {
-                const val = data.bests.power[k];
+                const rec = bests.power[k];
+                const val = rec && typeof rec === 'object' ? rec.value : rec;
                 if (val && val > 0) {
+                    const start = rec.start || 0;
+                    const end = rec.end || 0;
                     tableRows += `
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.6rem; background: rgba(15, 23, 42, 0.5); border-radius: 0.4rem; border: 1px solid rgba(255,255,255,0.03);">
+                        <div class="pb-row-hover" 
+                             onmouseenter="window.highlightChartRange('${prefix}', ${start}, ${end}); window.highlightActivitySegment(${start}, ${end});"
+                             onmouseleave="window.clearChartHighlight('${prefix}'); window.clearActivityHighlight();"
+                             style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.6rem; background: rgba(15, 23, 42, 0.5); border-radius: 0.4rem; border: 1px solid rgba(255,255,255,0.03); cursor: crosshair; transition: all 0.2s ease;">
                             <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary);">${labels[k]}</span>
                             <span style="font-size: 0.8rem; font-weight: 800; color: white;">${val}<span style="font-size: 0.6rem; opacity: 0.5; margin-left: 2px;">W</span></span>
                         </div>`;
                 }
             });
         }
-        if (!isBike && data.bests.pace) {
+        if (!isBike && bests.pace) {
             const labels = {'1mi': '1 Mile', '5k': '5K', '5mi': '5 Mile'};
-            Object.keys(data.bests.pace).forEach(k => {
-                const s = data.bests.pace[k];
+            Object.keys(bests.pace).forEach(k => {
+                const rec = bests.pace[k];
+                const s = rec && typeof rec === 'object' ? rec.value : rec;
                 if (s && s > 0) {
+                    const start = rec.start || 0;
+                    const end = rec.end || 0;
                     const m = Math.floor(s / 60);
                     const sec = Math.floor(s % 60).toString().padStart(2, '0');
                     tableRows += `
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.6rem; background: rgba(15, 23, 42, 0.5); border-radius: 0.4rem; border: 1px solid rgba(255,255,255,0.03);">
+                        <div class="pb-row-hover" 
+                             onmouseenter="window.highlightChartRange('${prefix}', ${start}, ${end}); window.highlightActivitySegment(${start}, ${end});"
+                             onmouseleave="window.clearChartHighlight('${prefix}'); window.clearActivityHighlight();"
+                             style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.6rem; background: rgba(15, 23, 42, 0.5); border-radius: 0.4rem; border: 1px solid rgba(255,255,255,0.03); cursor: crosshair; transition: all 0.2s ease;">
                             <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary);">${labels[k]}</span>
                             <span style="font-size: 0.8rem; font-weight: 800; color: white;">${m}:${sec}<span style="font-size: 0.6rem; opacity: 0.5; margin-left: 2px;">/mi</span></span>
                         </div>`;
@@ -342,7 +358,7 @@ window.renderStage = function (data, basic, num) {
         // Render the activity-specific bests chart (power curve / pace)
         if (hasBests && window.renderActivityBestsChart) {
             const chartId = `${prefix}-activityBestsChart`;
-            window.renderActivityBestsChart(chartId, data.bests, data.bests.is_bike);
+            window.renderActivityBestsChart(chartId, bests, hasPowerBests);
         }
     }, 100);
 }
