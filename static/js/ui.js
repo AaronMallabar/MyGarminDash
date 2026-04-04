@@ -83,6 +83,10 @@ window.openSettings = async function () {
                 versionEl.textContent = settings.app_version;
             }
 
+            // PB start year
+            const yearInput = document.getElementById('setting-pb-year');
+            if (yearInput) yearInput.value = settings.pb_start_year || 2025;
+
             window.renderModelOptions(settings);
         }
 
@@ -236,10 +240,14 @@ window.saveSettings = async function () {
     window.showSettingsStatus('Saving...', 'info');
 
     try {
+        const body = { ai_model: window.selectedModel };
+        const pbYear = document.getElementById('setting-pb-year');
+        if (pbYear) body.pb_start_year = parseInt(pbYear.value);
+
         const res = await fetch('/api/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ai_model: window.selectedModel })
+            body: JSON.stringify(body)
         });
 
         if (res.ok) {

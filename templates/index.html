@@ -248,6 +248,48 @@
         }
 
         /* Conversational UI Styles */
+        
+        /* Toggle Switch for PBs */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 34px;
+            height: 20px;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255,255,255,0.1);
+            transition: .4s;
+            border-radius: 34px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: var(--accent-color);
+        }
+        input:checked + .slider:before {
+            transform: translateX(14px);
+        }
         .chat-bubble {
             padding: 1rem 1.25rem;
             border-radius: 1.25rem;
@@ -257,6 +299,64 @@
             font-size: 0.95rem;
             animation: slideDown 0.3s ease-out;
             position: relative;
+        }
+
+        /* PB Redesign Styles */
+        .pb-split-container {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+        .pb-chart-pane-wrapper {
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 1.25rem;
+            padding: 1.5rem;
+            height: 420px;
+            position: relative;
+        }
+        .pb-chart-pane {
+            width: 100%;
+            height: 100%;
+        }
+        .pb-data-pane {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .pb-compact-table {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+        .pb-compare-cell-compact {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 0.5rem;
+            padding: 0.4rem 0.6rem;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .pb-compare-cell-compact:hover {
+            background: rgba(56, 189, 248, 0.1);
+            border-color: rgba(56, 189, 248, 0.3);
+            transform: translateY(-1px);
+        }
+        .pb-row-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+        @media (max-width: 1100px) {
+            .pb-split-container {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+            .pb-chart-pane-wrapper {
+                height: 350px;
+            }
         }
 
         .chat-bubble.ai {
@@ -1425,46 +1525,50 @@
                         <button class="toggle-btn" onclick="setPbSport('run', this)">🏃 Running</button>
                     </div>
                     
-                    <div class="range-selector" style="display: flex; padding: 0.2rem;">
-                        <button class="range-btn active" onclick="setPbPeriod('lifetime', this)">Lifetime</button>
-                        <button class="range-btn" onclick="setPbPeriod('year', this)">This Year</button>
-                        <button class="range-btn" onclick="setPbPeriod('month', this)">This Month</button>
+                    <div style="display: flex; align-items: center; gap: 0.8rem; background: rgba(255,255,255,0.05); padding: 0.4rem 0.8rem; border-radius: 2rem; border: 1px solid rgba(255,255,255,0.1);">
+                        <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600;">Include Virtual</span>
+                        <label class="switch" style="position: relative; display: inline-block; width: 34px; height: 20px;">
+                            <input type="checkbox" id="pb-virtual-toggle" checked onchange="togglePbVirtual()" style="opacity: 0; width: 0; height: 0;">
+                            <span class="slider round" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255,255,255,0.1); transition: .4s; border-radius: 34px;"></span>
+                        </label>
                     </div>
                 </div>
                 
-                <div id="pb-bike-view">
-                    <div class="health-grid" style="grid-template-columns: 1fr 1fr 1fr;">
-                        <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 0.8rem;">
-                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Longest Ride</div>
-                            <div style="font-size: 1.5rem; font-weight: bold; color: var(--accent-color);" id="pb-bike-longest">--</div>
-                        </div>
-                        <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 0.8rem;">
-                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Max Speed</div>
-                            <div style="font-size: 1.5rem; font-weight: bold; color: var(--accent-color);" id="pb-bike-speed">--</div>
-                        </div>
-                        <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 0.8rem;">
-                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Highest Climb</div>
-                            <div style="font-size: 1.5rem; font-weight: bold; color: var(--accent-color);" id="pb-bike-climb">--</div>
+                <div id="pb-bike-view" class="pb-split-container">
+                    <div class="pb-chart-pane-wrapper">
+                        <div class="pb-chart-pane">
+                            <canvas id="pb-power-chart"></canvas>
                         </div>
                     </div>
                     
-                    <h3 style="margin-top: 1.5rem; font-size: 1rem; color: var(--text-secondary); margin-bottom: 1rem;">Power Curve / Peak Powers</h3>
-                    <div class="power-curve-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.8rem;" id="pb-power-grid">
-                        <!-- populated from JS -->
+                    <div class="pb-data-pane">
+                        <div id="pb-bike-stats-container">
+                            <!-- Populated by JS: comparison rows for Longest, Speed, Climb -->
+                        </div>
+                        
+                        <h4 style="margin-top: 1rem; font-size: 0.85rem; color: var(--accent-color); margin-bottom: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800;">Power Curve</h4>
+                        <div id="pb-power-comparison-container" class="pb-compact-table">
+                            <!-- Comparison rows for power items -->
+                        </div>
                     </div>
                 </div>
                 
-                <div id="pb-run-view" style="display: none;">
-                    <div class="health-grid" style="grid-template-columns: 1fr;">
-                        <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 0.8rem;">
-                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.2rem;">Longest Run</div>
-                            <div style="font-size: 1.5rem; font-weight: bold; color: var(--accent-color);" id="pb-run-longest">--</div>
+                <div id="pb-run-view" class="pb-split-container" style="display: none;">
+                    <div class="pb-chart-pane-wrapper">
+                        <div class="pb-chart-pane">
+                            <canvas id="pb-run-chart"></canvas>
                         </div>
                     </div>
                     
-                    <h3 style="margin-top: 1.5rem; font-size: 1rem; color: var(--text-secondary); margin-bottom: 1rem;">Fastest Split Paces</h3>
-                    <div class="power-curve-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.8rem;" id="pb-pace-grid">
-                        <!-- populated from JS -->
+                    <div class="pb-data-pane">
+                        <div id="pb-run-stats-container">
+                            <!-- Comparison row for Longest Run -->
+                        </div>
+                        
+                        <h4 style="margin-top: 1rem; font-size: 0.85rem; color: var(--accent-color); margin-bottom: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800;">Fastest Splits</h4>
+                        <div id="pb-pace-comparison-container" class="pb-compact-table">
+                            <!-- Comparison rows for distances -->
+                        </div>
                     </div>
                 </div>
                 
@@ -2214,6 +2318,18 @@
                 </button>
             </div>
 
+            <div style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <h3 style="color: var(--accent-color); margin-bottom: 0.5rem; font-size: 1.1rem;">Personal Bests Depth</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.85rem;">
+                    Sync Lifetime bests from this year forward. (Earlier years require manual re-sync).
+                </p>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <label style="font-size: 0.9rem; font-weight: 600;">Starting Year:</label>
+                    <input type="number" id="setting-pb-year" min="2000" max="2099" 
+                           style="width: 100px; padding: 0.6rem; border-radius: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; font-weight: 700; text-align: center;">
+                </div>
+            </div>
+
             <div style="margin-bottom: 2rem;">
                 <h3 style="color: var(--accent-color); margin-bottom: 1rem; font-size: 1.1rem;">AI Model Selection</h3>
                 <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: 0.9rem;">
@@ -2616,6 +2732,23 @@
         });
     </script>
     <div id="heatmap-tooltip"></div>
+    <!-- PB Tooltip Layer -->
+    <div id="pb-tooltip" style="position: fixed; display: none; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(255,255,255,0.1); padding: 1rem; border-radius: 0.75rem; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); z-index: 10000; width: 220px; backdrop-filter: blur(12px); pointer-events: auto;">
+        <!-- Invisible bridge to keep hover alive -->
+        <div style="position: absolute; top: -20px; left: -20px; right: -20px; bottom: -20px; z-index: -1;"></div>
+        
+        <div id="pb-tooltip-label" style="font-size: 0.65rem; color: var(--accent-color); font-weight: 800; text-transform: uppercase; margin-bottom: 0.25rem;"></div>
+        <div id="pb-tooltip-val" style="font-size: 1.25rem; font-weight: 900; color: white; margin-bottom: 0.5rem;"></div>
+        <div style="border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.5rem; margin-top: 0.5rem;">
+            <div id="pb-tooltip-name" style="font-size: 0.8rem; font-weight: 600; color: white; margin-bottom: 0.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+            <div id="pb-tooltip-date" style="font-size: 0.7rem; color: var(--text-secondary);"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.82rem;">
+            <button id="pb-tooltip-btn" style="width: 100%; padding: 0.45rem; background: var(--accent-color); color: white; border: none; border-radius: 0.4rem; font-size: 0.75rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s;">View Full Activity</button>
+            <button id="pb-tooltip-ignore" style="width: 100%; padding: 0.45rem; background: rgba(248, 113, 113, 0.1); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.2); border-radius: 0.4rem; font-size: 0.75rem; font-weight: 700; cursor: pointer; transition: background 0.2s;">Ignore for Bests</button>
+        </div>
+    </div>
+
 </body>
 
 

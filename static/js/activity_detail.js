@@ -119,36 +119,57 @@ window.renderStage = function (data, basic, num) {
     }
 
     let pbHtml = '';
-    if (data.bests && (data.bests.is_run || data.bests.is_bike)) {
-        let items = [];
-        if (data.bests.is_bike && data.bests.power) {
-            const labels = {'5': '5 Sec', '30': '30 Sec', '60': '1 Min', '120': '2 Min', '300': '5 Min', '600': '10 Min', '1200': '20 Min', '1800': '30 Min', '3600': '60 Min'};
-            Object.keys(data.bests.power).forEach(k => {
-                if (data.bests.power[k] > 0) items.push({label: labels[k]+' Power', val: data.bests.power[k]+' W'});
-            });
-        }
-        if (data.bests.is_run && data.bests.pace) {
-            const labels = {'1mi': 'Best 1 Mile', '5k': 'Best 5K', '5mi': 'Best 5 Mile'};
-            Object.keys(data.bests.pace).forEach(k => {
-                const s = data.bests.pace[k];
-                if (s > 0) {
-                    const m = Math.floor(s/60);
-                    const sec = (s%60).toString().padStart(2,'0');
-                    items.push({label: labels[k], val: m+':'+sec});
+    const hasBests = data.bests && (data.bests.is_run || data.bests.is_bike);
+    if (hasBests) {
+        const isBike = data.bests.is_bike;
+        const chartId = `${prefix}-activityBestsChart`;
+
+        // Build the compact data table
+        let tableRows = '';
+        if (isBike && data.bests.power) {
+            const labels = {'5': '5s', '30': '30s', '60': '1m', '120': '2m', '300': '5m', '600': '10m', '1200': '20m', '1800': '30m', '3600': '60m'};
+            const keys = ['5', '30', '60', '120', '300', '600', '1200', '1800', '3600'];
+            keys.forEach(k => {
+                const val = data.bests.power[k];
+                if (val && val > 0) {
+                    tableRows += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.6rem; background: rgba(15, 23, 42, 0.5); border-radius: 0.4rem; border: 1px solid rgba(255,255,255,0.03);">
+                            <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary);">${labels[k]}</span>
+                            <span style="font-size: 0.8rem; font-weight: 800; color: white;">${val}<span style="font-size: 0.6rem; opacity: 0.5; margin-left: 2px;">W</span></span>
+                        </div>`;
                 }
             });
         }
-        if (items.length > 0) {
+        if (!isBike && data.bests.pace) {
+            const labels = {'1mi': '1 Mile', '5k': '5K', '5mi': '5 Mile'};
+            Object.keys(data.bests.pace).forEach(k => {
+                const s = data.bests.pace[k];
+                if (s && s > 0) {
+                    const m = Math.floor(s / 60);
+                    const sec = Math.floor(s % 60).toString().padStart(2, '0');
+                    tableRows += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.6rem; background: rgba(15, 23, 42, 0.5); border-radius: 0.4rem; border: 1px solid rgba(255,255,255,0.03);">
+                            <span style="font-size: 0.7rem; font-weight: 700; color: var(--text-secondary);">${labels[k]}</span>
+                            <span style="font-size: 0.8rem; font-weight: 800; color: white;">${m}:${sec}<span style="font-size: 0.6rem; opacity: 0.5; margin-left: 2px;">/mi</span></span>
+                        </div>`;
+                }
+            });
+        }
+
+        if (tableRows) {
             pbHtml = `
                 <div style="margin-top: 1.5rem;">
-                    <h4 style="color: var(--text-secondary); margin-bottom: 0.8rem; font-size: 0.8rem; text-transform: uppercase;">Activity Bests</h4>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 0.6rem;">
-                        ${items.map(i => `
-                            <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); padding: 0.6rem; border-radius: 0.5rem; text-align: center;">
-                                <div style="font-size: 0.65rem; color: var(--text-secondary); margin-bottom: 0.1rem;">${i.label}</div>
-                                <div style="font-size: 1.05rem; font-weight: bold; color: white;">${i.val}</div>
-                            </div>
-                        `).join('')}
+                    <h4 style="color: var(--accent-color); margin-bottom: 1rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent-color); border-radius: 2px;"></span>
+                        ${isBike ? 'Power Curve' : 'Pace Analysis'}
+                    </h4>
+                    <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.5rem; align-items: start;">
+                        <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 1rem; padding: 1rem; height: 280px; position: relative;">
+                            <canvas id="${chartId}"></canvas>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 0.3rem; max-height: 280px; overflow-y: auto;">
+                            ${tableRows}
+                        </div>
                     </div>
                 </div>
             `;
@@ -317,6 +338,11 @@ window.renderStage = function (data, basic, num) {
     setTimeout(() => {
         if (window.renderActivityCharts) {
             window.renderActivityCharts(data.charts, isRun, isCycle, prefix);
+        }
+        // Render the activity-specific bests chart (power curve / pace)
+        if (hasBests && window.renderActivityBestsChart) {
+            const chartId = `${prefix}-activityBestsChart`;
+            window.renderActivityBestsChart(chartId, data.bests, data.bests.is_bike);
         }
     }, 100);
 }

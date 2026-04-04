@@ -22,6 +22,7 @@ load_dotenv()
 
 # Helper for null-to-zero conversions
 n = lambda x: x if x is not None else 0
+EXCLUDED_ACTS_FILE = 'garmin_cache/excluded_activities.json'
 
 def is_cycling_activity(act):
     """Reliably determine if an activity is cycling-related."""
@@ -38,6 +39,13 @@ def is_running_activity(act):
     tk = act.get('activityType', {}).get('typeKey', '').lower()
     an = act.get('activityName', '').lower()
     return 'running' in tk or 'run' in tk or 'run' in an or 'running' in an
+
+def is_virtual_ride(act):
+    """Identify if a cycling activity is virtual (indoor)."""
+    if not act or not isinstance(act, dict): return False
+    tk = act.get('activityType', {}).get('typeKey', '').lower()
+    an = act.get('activityName', '').lower()
+    return any(k in tk for k in ['virtual', 'indoor']) or any(k in an for k in ['zwift', 'peloton', 'trainerroad'])
 
 # Timezone Configuration
 EST = ZoneInfo("America/New_York")
@@ -122,7 +130,8 @@ garmin_client = None
 # Settings management
 SETTINGS_FILE = 'settings.json'
 DEFAULT_SETTINGS = {
-    'ai_model': 'gemma-3-27b-it'
+    'ai_model': 'gemma-3-27b-it',
+    'pb_start_year': 2025
 }
 
 # Nutrition Storage
@@ -1089,6 +1098,13 @@ def update_settings():
             global ai_insights_cache
             ai_insights_cache = {'timestamp': 0, 'data': None}
             save_ai_insights_cache(None, 0)
+            
+        if 'pb_start_year' in data:
+            try:
+                yr = int(data['pb_start_year'])
+                current_settings['pb_start_year'] = yr
+                logger.info(f"PB Sync start year updated to: {yr}")
+            except: pass
         
         if save_settings(current_settings):
             return jsonify({'success': True, 'settings': current_settings})
@@ -2879,8 +2895,12 @@ def get_activity_details(activity_id):
                 if cad is None: cad = get_val(row, 'directFractionalCadence')
                 charts['cadence'].append(cad)
 
+
         # Summary Refinement: Merge details summary with full activity summary
+        saved_bests = activity_info.get('activity_bests')
         activity_info = client.get_activity(activity_id) or {}
+        if saved_bests:
+            activity_info['activity_bests'] = saved_bests
         summary = {}
         # Start with the full activity summary (usually has movingDuration, etc.)
         info_summary = activity_info.get('summaryDTO')
@@ -3812,6 +3832,7 @@ def api_personal_bests():
         import glob
         from collections import defaultdict
         
+        excluded_ids = load_json(EXCLUDED_ACTS_FILE, [])
         pts = load_json('garmin_cache/personal_bests_details.json', {})
         files = glob.glob('garmin_cache/activities/*.json')
         activities = []
@@ -3826,18 +3847,20 @@ def api_personal_bests():
         def init_record():
             return {
                 'run': {
-                    'fastest_1mi': None, 'fastest_1mi_id': None, 'fastest_1mi_date': None,
-                    'fastest_5k': None, 'fastest_5k_id': None, 'fastest_5k_date': None,
-                    'fastest_5mi': None, 'fastest_5mi_id': None, 'fastest_5mi_date': None,
-                    'longest_run': 0, 'longest_run_id': None, 'longest_run_date': None,
+                    'fastest_1mi': None, 'fastest_1mi_id': None, 'fastest_1mi_date': None, 'fastest_1mi_name': None,
+                    'fastest_5k': None, 'fastest_5k_id': None, 'fastest_5k_date': None, 'fastest_5k_name': None,
+                    'fastest_5mi': None, 'fastest_5mi_id': None, 'fastest_5mi_date': None, 'fastest_5mi_name': None,
+                    'longest_run': 0, 'longest_run_id': None, 'longest_run_date': None, 'longest_run_name': None,
                 },
                 'bike': {
-                    'power_curve': {str(w): {'val': 0, 'id': None, 'date': None} for w in [5, 30, 60, 120, 300, 600, 1200, 1800, 3600]},
-                    'longest_ride': 0, 'longest_ride_id': None, 'longest_ride_date': None,
-                    'max_speed': 0, 'max_speed_id': None, 'max_speed_date': None,
-                    'highest_climb': 0, 'highest_climb_id': None, 'highest_climb_date': None,
+                    'power_curve': {str(w): {'val': 0, 'id': None, 'date': None, 'name': None} for w in [5, 30, 60, 120, 300, 600, 1200, 1800, 3600]},
+                    'longest_ride': 0, 'longest_ride_id': None, 'longest_ride_date': None, 'longest_ride_name': None,
+                    'max_speed': 0, 'max_speed_id': None, 'max_speed_date': None, 'max_speed_name': None,
+                    'highest_climb': 0, 'highest_climb_id': None, 'highest_climb_date': None, 'highest_climb_name': None,
                 }
             }
+        
+        include_virtual = request.args.get('include_virtual', 'true').lower() == 'true'
             
         res = {'lifetime': init_record(), 'year': init_record(), 'month': init_record()}
         
@@ -3848,6 +3871,7 @@ def api_personal_bests():
                     res[period]['run'][key] = val
                     res[period]['run'][f"{key}_id"] = aid
                     res[period]['run'][f"{key}_date"] = d_str
+                    res[period]['run'][f"{key}_name"] = r_name
 
         def update_run_max(period, key, val, aid, d_str):
             curr = res[period]['run'][key]
@@ -3855,6 +3879,7 @@ def api_personal_bests():
                 res[period]['run'][key] = val
                 res[period]['run'][f"{key}_id"] = aid
                 res[period]['run'][f"{key}_date"] = d_str
+                res[period]['run'][f"{key}_name"] = r_name
                 
         def update_bike_max(period, key, val, aid, d_str):
             curr = res[period]['bike'][key]
@@ -3862,15 +3887,22 @@ def api_personal_bests():
                 res[period]['bike'][key] = val
                 res[period]['bike'][f"{key}_id"] = aid
                 res[period]['bike'][f"{key}_date"] = d_str
+                res[period]['bike'][f"{key}_name"] = r_name
                 
         for a in activities:
             aid = str(a.get('activityId'))
             d_str = a.get('startTimeLocal', '')
-            if not d_str or not aid: continue
+            if not d_str or not aid or aid in excluded_ids: continue
             
             is_run = is_running_activity(a)
             is_bike = is_cycling_activity(a)
             if not is_run and not is_bike: continue
+            
+            # Virtual Filter
+            if is_bike and not include_virtual and is_virtual_ride(a):
+                continue
+            
+            r_name = a.get('activityName', 'Activity')
             
             periods = ['lifetime']
             if d_str.startswith(year_prefix): periods.append('year')
@@ -3900,11 +3932,34 @@ def api_personal_bests():
                         for k, val in det['power'].items():
                             curr = res[p]['bike']['power_curve'][k]['val']
                             if val and val > curr:
-                                res[p]['bike']['power_curve'][k] = {'val': val, 'id': aid, 'date': d_str}
+                                res[p]['bike']['power_curve'][k] = {
+                                    'val': val, 
+                                    'id': aid, 
+                                    'date': d_str, 
+                                    'name': r_name
+                                }
                                 
         return jsonify(res)
     except Exception as e:
         logger.error(f"Error fetching PBs: {e}")
+        return jsonify({'error': str(e)}), 500
+        
+@app.route('/api/exclude_activity', methods=['POST'])
+@login_required
+def exclude_activity():
+    try:
+        data = request.json
+        aid = str(data.get('activityId'))
+        if not aid: return jsonify({'error': 'No activity ID provided'}), 400
+        
+        excluded = load_json(EXCLUDED_ACTS_FILE, [])
+        if aid not in excluded:
+            excluded.append(aid)
+            save_json(EXCLUDED_ACTS_FILE, excluded)
+            
+        return jsonify({'status': 'success', 'excluded': aid})
+    except Exception as e:
+        logger.error(f"Error excluding activity {e}")
         return jsonify({'error': str(e)}), 500
 
 pb_sync_active = False
@@ -3928,10 +3983,14 @@ def trigger_pb_sync():
                 for act_list in load_json(f, {}).values():
                     if isinstance(act_list, list): acts.extend(act_list)
             
+            settings = load_settings()
+            pb_year = str(settings.get('pb_start_year', 2025))
+            pb_date_threshold = f"{pb_year}-01-01"
+            
             for a in acts:
                 aid = str(a.get('activityId', ''))
                 start_str = a.get('startTimeLocal', '')
-                if not aid or start_str < '2025-01-01': continue
+                if not aid or start_str < pb_date_threshold: continue
                 if aid in pts: continue
                 is_run = is_running_activity(a)
                 is_bike = is_cycling_activity(a)
