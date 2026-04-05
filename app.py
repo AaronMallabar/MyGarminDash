@@ -1810,55 +1810,48 @@ def generate_insights_logic():
         #    The activity_insights field powers the activity cards below.
         # ═══════════════════════════════════════════════════════════════════════
         prompt = f"""
-You are my personal health assistant. You've just reviewed all of my Garmin data for today ({today_str})
-and the past 30 days. Give me a brief, friendly, plain-English debrief — like a knowledgeable friend
-who spots patterns and calls out what actually matters.
+You are my personal health assistant, acting as a supportive but strict sports coach. You've just reviewed all of my Garmin data for today ({today_str})
+and the past 30 days. Give me a debrief that spots patterns, calls out what actually matters, and provides actionable advice.
 
-FOCUS: Summary first, then trends and outliers.
-- Connect the dots: explain how activities impact metrics (e.g. low steps during a cycling day, or elevated stress after a hard run).
-- What does today's overall picture look like?
-- Are any metrics trending up or down over the past week vs. my 30-day averages?
-- Is anything unusually high or low (an outlier)?
-- If there are food logs, briefly note calorie balance if interesting.
-- For STRENGTH activities (see strength_active_sets), summarize the main exercises performed and the overall intensity/focus of the session.
-- For all other activities, find the ONE thing that stands out in each session.
+FOCUS & ACTIONABLE ADVICE:
+- Connect the dots: explicitly state cause and effect (e.g., "Your sleep score dropped to 60 because you worked out late and had a late meal").
+- Suggest actionable advice based on today's stress, HRV, and activities (e.g., "Given your high stress, focus on active recovery tomorrow").
+- If there are food logs, explicitly state how they fueled my workouts today.
+- For STRENGTH activities (see strength_active_sets), summarize volume (reps x weight) compared to what I usually do.
+- For all other activities, explicitly reference my 30-day baselines (activity_baselines_30d) and point out if I pushed harder, went further, or had lower HR for the same pace/power.
 
 TONE:
-- Friendly and direct. Use 'you/your'. No jargon, no clinical language.
+- Act like a supportive but sometimes strict sports coach. Do not be overly gentle if I am slacking.
 - Don't start with "Great job!" or "Hey there!" Just get to the point.
 - Be specific with numbers. Don't say "your sleep was good" — say "7.5h with a score of 82".
 - Weight in lbs, hydration in oz, pace in min/mi, power in watts, speed in mph.
 - HRV status meanings: BALANCED=good, UNBALANCED=elevated stress signal, LOW=needs attention.
 - Stress scale: 0-25=low/resting, 26-50=moderate, 51-75=high, 76+=very high.
-- Hydration: 0 oz intake usually means nothing was logged, not that no water was drunk.
 
 DATA:
 {json.dumps(context)}
 
 ACTIVITY RULES:
 - Sessions with "cached_insight" already have an analysis — reuse it as-is.
-- For new sessions: the 4 most recent get a detailed multi-paragraph breakdown (Strava-style).
-  All older sessions get a concise 2-sentence highlight.
+- For new sessions: generate a "Strava-style" coaching observation explicitly referencing my 30-day baselines.
 - Every session in 'training_history' MUST appear in 'activity_insights'.
-- Compare to activity_baselines_30d for context. Use ytd_run_max_dist_mi / ytd_cycle_max_power_w
-  for YTD records — only sessions marked CURRENT_YEAR count for YTD claims.
+- Compare to activity_baselines_30d for context. Use ytd_run_max_dist_mi / ytd_cycle_max_power_w for YTD records.
 
-Return ONLY valid JSON (no markdown, no code fences):
+Return ONLY valid JSON (no markdown block wrapper around it, but you MUST use HTML tags like <ul>, <li>, <strong>, <br> inside the strings to properly format the daily_summary).
 {{
-  "daily_summary": "3-5 sentences. A holistic narrative of today's health. DO NOT just list numbers. Connect the dots: if steps are low but you did a hard bike ride, explain that. If sleep was poor but HRV is balanced, acknowledge the resilience. Focus on the 'why' and the 'how' today felt based on the data. Mention today's workouts specifically and how they integrated with your health (sleep/stress/HRV).",
+  "daily_summary": "<ul><li><strong>📊 Readiness:</strong> ...</li><li><strong>🚴 Performance:</strong> ...</li><li><strong>💡 Action Plan:</strong> ...</li></ul>",
   "top_highlights": [
-    "Emoji + concise callout. FOCUS ON STATS/MILESTONES HERE. Use this for specific wins or trends (e.g. '🔥 3rd fastest 5k of the year'). DO NOT REPEAT WHAT YOU WROTE IN THE DAILY SUMMARY.",
-    "Another distinct highlight or outlier (2-4 items total). Each chip must be different from the text in daily_summary."
+    "Emoji + strict/supportive callout. Focus STRICTLY on unusual data points, records, or significant streak deviations against exactly my 30-day baselines."
   ],
-  "yesterday_summary": "1-2 sentences recap of yesterday's key metrics (steps, sleep, any workout). Use this to bridge the story if today's data is still incoming.",
+  "yesterday_summary": "1-2 sentences recap of yesterday's key metrics. Bridge the story if today's data is incoming.",
   "suggestions": ["One concrete, actionable tip.", "Another tip."],
   "activity_insights": [{{
     "session_id": "...",
     "name": "...",
     "highlight": "**BOLD headline** (the one thing that stood out)",
-    "was": "Narrative analysis. Compare to 30d baseline. Use **bold** for key numbers.",
+    "was": "Strava-style coaching observation. Explicitly compare this specific effort to my 30-day baseline. Use **bold** for key numbers.",
     "worked_on": "e.g. Aerobic Endurance",
-    "better_next": "One specific improvement suggestion."
+    "better_next": "One strict, specific improvement or recovery suggestion."
   }}]
 }}
 """
@@ -3216,6 +3209,148 @@ def log_food():
     
     return jsonify(logged_entries)
 
+def calculate_nutrition_streak(logs):
+    """Calculate the current consecutive day streak of 'Full Logging' (B/L/D)."""
+    if not logs:
+        return 0, {'breakfast': False, 'lunch': False, 'dinner': False}
+
+    today = get_today()
+    
+    def check_day_complete(date_str):
+        day_logs = [l for l in logs if l.get('date') == date_str and l.get('calories', 0) > 0]
+        b = any(4 <= int(l.get('time', '00:00').split(':')[0]) < 11 for l in day_logs)
+        l_en = any(11 <= int(l.get('time', '00:00').split(':')[0]) < 16 for l in day_logs)
+        d = any(16 <= int(l.get('time', '00:00').split(':')[0]) <= 23 for l in day_logs)
+        return b, l_en, d
+
+    # Today's Progress
+    b_t, l_t, d_t = check_day_complete(today.isoformat())
+    today_complete = b_t and l_t and d_t
+    today_progress = {'breakfast': b_t, 'lunch': l_t, 'dinner': d_t}
+
+    streak = 0
+    # Start checking from Yesterday backwards
+    check_date = today - timedelta(days=1)
+    
+    # If Today is complete, streak starts at 1
+    if today_complete:
+        streak = 1
+    
+    while True:
+        b, l, d = check_day_complete(check_date.isoformat())
+        if b and l and d:
+            streak += 1
+            check_date -= timedelta(days=1)
+        else:
+            break
+            
+    return streak, today_progress
+
+@app.route('/api/nutrition/streak')
+@login_required
+def get_nutrition_streak_api():
+    logs = load_json(FOOD_LOGS_FILE, [])
+    streak, progress = calculate_nutrition_streak(logs)
+    return jsonify({
+        'streak': streak,
+        'today_progress': progress,
+        'streak_in_danger': not (progress['breakfast'] and progress['lunch'] and progress['dinner'])
+    })
+
+@app.route('/api/nutrition/proactive_suggestions')
+@login_required
+def get_proactive_suggestions():
+    """Analyze history and current state to provide frictionless logging options."""
+    logs = load_json(FOOD_LOGS_FILE, [])
+    custom = load_json(CUSTOM_FOODS_FILE, {})
+    
+    streak, progress = calculate_nutrition_streak(logs)
+    
+    # 1. Frequent Items (Top 8)
+    all_names = [l.get('name') for l in logs if l.get('name')]
+    from collections import Counter
+    counts = Counter(all_names)
+    frequent = [name for name, count in counts.most_common(8)]
+    
+    # 2. Yesterday's Meals
+    yesterday_str = (get_today() - timedelta(days=1)).isoformat()
+    yesterday_meals = [l for l in logs if l.get('date') == yesterday_str]
+    
+    # 3. Smart Nudges
+    now_est = datetime.now(EST)
+    current_hour = now_est.hour
+    today_str = get_today().isoformat()
+    today_logs = [l for l in logs if l.get('date') == today_str]
+    today_names = [l.get('name', '').lower() for l in today_logs]
+    
+    nudges = []
+    
+    # Logic: If after 8am and no "coffee" logged (assuming coffee/breakfast)
+    if current_hour >= 8 and current_hour < 11:
+        if not any('coffee' in n or 'breakfast' in n for n in today_names):
+            nudges.append({
+                'type': 'morning',
+                'message': "Morning, Aaron! Had your usual coffee or breakfast?",
+                'action': "Log Morning Coffee",
+                'item': "Coffee" # Fallback if not found in frequent
+            })
+            
+    # Logic: If after 1pm and low calories/no lunch
+    if current_hour >= 13 and current_hour < 16:
+        if not progress['lunch']:
+            nudges.append({
+                'type': 'lunch',
+                'message': "It's past 1 PM. What was for lunch?",
+                'action': "Quick Log Lunch",
+                'item': "Lunch"
+            })
+
+    # Logic: If after 6pm and no dinner logged
+    if current_hour >= 18:
+        if not progress['dinner']:
+            msg = "Dinner time! Choose a size or log your performance fuel."
+            if streak > 0:
+                msg = f"{streak} day streak in danger! 🚨 Log dinner to keep it alive."
+            
+            nudges.append({
+                'type': 'dinner',
+                'message': msg,
+                'options': [
+                    {'label': 'Small (400)', 'item': 'Small Dinner'},
+                    {'label': 'Med (700)', 'item': 'Med Dinner'},
+                    {'label': 'Large (1000)', 'item': 'Large Dinner'},
+                    {'label': 'High Protein', 'item': 'High Protein Dinner'}
+                ]
+            })
+            
+    return jsonify({
+        'frequent': frequent,
+        'yesterday': yesterday_meals,
+        'nudges': nudges,
+        'streak': streak,
+        'today_progress': progress
+    })
+
+@app.route('/api/nutrition/copy_yesterday_meal', methods=['POST'])
+@login_required
+def copy_yesterday_meal():
+    """Copy a specific log entry from yesterday to today at the current time."""
+    log_id = request.json.get('id')
+    logs = load_json(FOOD_LOGS_FILE, [])
+    
+    source_entry = next((l for l in logs if l.get('id') == log_id), None)
+    if not source_entry:
+        return jsonify({'error': 'Source log not found'}), 404
+        
+    new_entry = source_entry.copy()
+    new_entry['id'] = int(time.time() * 1000)
+    new_entry['date'] = get_today().isoformat()
+    new_entry['time'] = datetime.now(EST).strftime('%H:%M')
+    
+    logs.append(new_entry)
+    save_json(FOOD_LOGS_FILE, logs)
+    return jsonify({'status': 'success', 'entry': new_entry})
+
 @app.route('/api/nutrition/delete', methods=['POST'])
 @login_required
 def delete_food_log():
@@ -3566,7 +3701,7 @@ def get_nutrition_analysis():
             time_context = "evening"
         
         prompt = f"""
-        You are 'Athlete Intelligence', a personal health coach. Analyze my nutrition for {date_str}.
+        You are 'Athlete Intelligence', a supportive but strict sports coach. Analyze my nutrition for {date_str} with a "Performance Fueling" perspective.
         My Goals: Weight loss, low cholesterol.
         
         Metabolic Data:
@@ -3578,17 +3713,13 @@ def get_nutrition_analysis():
         7-Day Calorie History (for trend analysis): {history_str}
         
         - Address me directly as 'you'. 
-        - I still have {meals_remaining} expected for the rest of the day since it is {time_str}
-          DO NOT praise a 'significant deficit' as an achievement if the day is not over;
-          instead, frame it as 'Available Fuel Capacity' for my upcoming meals.
-        -I already know what time of day it is you dont need to be explicit. 
-        
-        Provide a concise analysis (2-3 sentences). 
-        Focus on how my energy balance (intake vs total out) and cholesterol align with my weight loss and heart health goals. 
-        If 'Active' calories are high, mention my workout efficiency. 
-        Note the current time and how many meal I have expected for the rest of the day.
-        Let me know if there are any trends over time of my calories.
-        If I overate yesteday, motivate me to eat less today, or if I underate yesterday, suggest that I can eat more today. 
+        - I still have {meals_remaining} expected for the rest of the day since it is {time_str}.
+        - DO NOT praise a 'significant deficit' as an achievement if the day is not over; frame it as 'Available Fuel Capacity'.
+        - Focus on Performance Fueling: directly tie my active calories to my food intake (e.g., "You burned 1,200 calories riding today; ensure your next meal has heavy carbs to replenish glycogen"). Be strict if I am eating junk while trying to fuel performance.
+
+        Return plain text (no markdown blocks or JSON formatting). We will inject it directly as HTML.
+        Please structure your response as:
+        2-3 sentences analyzing energy balance and cholesterol. Explicitly point out if yesterday affected today. <br><br><strong>Action Plan:</strong> 1-2 sharp, strict sentences of advice for my next meal or rest of day.
         """
         
         response = ai_client.models.generate_content(model=model_name, contents=prompt)

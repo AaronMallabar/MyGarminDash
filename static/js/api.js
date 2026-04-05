@@ -93,6 +93,9 @@ window.fetchDashboardData = async function () {
         // Now load AI insights (lowest priority — won't block anything)
         if (window.fetchAIInsights) window.fetchAIInsights(false);
 
+        // Load proactive nutrition suggestions (Frictionless Logging)
+        if (window.fetchProactiveSuggestions) window.fetchProactiveSuggestions();
+
         // Preload yearly data in background
         if (typeof preloadYearlyData === 'function') preloadYearlyData();
 

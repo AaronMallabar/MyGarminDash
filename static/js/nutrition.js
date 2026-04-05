@@ -896,26 +896,326 @@ window.logFromLibrary = async function (name) {
 
 window.importLogs = async function (input) {
     if (!input.files || !input.files[0]) return;
-    const file = input.files[0];
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', input.files[0]);
+    try {
+        const res = await fetch('/api/nutrition/import', { method: 'POST', body: formData });
+        if (res.ok) {
+            const data = await res.json();
+            alert(`Imported ${data.count} logs.`);
+            if (window.fetchNutritionData) window.fetchNutritionData();
+        }
+    } catch (e) { console.error(e); }
+    finally { input.value = ''; }
+}
+
+// --- Frictionless Logging Logic ---
+
+window.toggleFloatingQuickLog = function() {
+    const el = document.getElementById('floating-quick-log');
+    const icon = document.getElementById('floating-icon');
+    if (!el) return;
+    const isVisible = el.style.display === 'block';
+    el.style.display = isVisible ? 'none' : 'block';
+    icon.textContent = isVisible ? '🍎' : '✕';
+    if (!isVisible) {
+        document.getElementById('floating-chat-input').focus();
+        window.fetchProactiveSuggestions(); // Refresh suggestions when opening
+    }
+}
+
+window.fetchProactiveSuggestions = async function() {
+    try {
+        const res = await fetch('/api/nutrition/proactive_suggestions');
+        const data = await res.json();
+        
+        // 0. Update Streak Counter
+        const streakBadge = document.getElementById('nutrition-streak-badge');
+        const streakCount = document.getElementById('streak-count');
+        const floatingBtn = document.querySelector('.floating-action-btn');
+
+        if (streakBadge && streakCount && data.streak !== undefined) {
+            streakCount.textContent = data.streak;
+            streakBadge.style.display = 'flex'; // Always show once we have data
+            
+            // Check for danger state
+            const progress = data.today_progress;
+            const now = new Date();
+            const hour = now.getHours();
+            let inDanger = false;
+            if (data.streak > 0) {
+                if (hour >= 11 && !progress.breakfast) inDanger = true;
+                if (hour >= 16 && !progress.lunch) inDanger = true;
+                if (hour >= 20 && !progress.dinner) inDanger = true;
+            }
+            
+            if (inDanger) {
+                streakBadge.classList.add('streak-danger');
+            } else {
+                streakBadge.classList.remove('streak-danger');
+            }
+
+            // Update Floating Action Button with Streak Badge
+            if (floatingBtn) {
+                let floatBadge = document.getElementById('floating-streak-badge');
+                if (data.streak > 0) {
+                    if (!floatBadge) {
+                        floatBadge = document.createElement('div');
+                        floatBadge.id = 'floating-streak-badge';
+                        floatingBtn.appendChild(floatBadge);
+                    }
+                    floatBadge.textContent = data.streak;
+                } else if (floatBadge) {
+                    floatBadge.remove();
+                }
+            }
+        }
+
+        // 1. Update Quick Log Bar (Nutrition Grid)
+        const bar = document.getElementById('quick-log-bar');
+        if (bar && data.frequent) {
+            bar.innerHTML = data.frequent.map(name => `
+                <button class="quick-log-btn" onclick="window.quickLogOneShot('${name}')">
+                    <span>➕</span> ${name}
+                </button>
+            `).join('');
+            bar.style.display = 'flex';
+        }
+
+        // 2. Update Floating Bar Menu
+        const floatBar = document.getElementById('floating-frequent-items');
+        if (floatBar && data.frequent) {
+            let itemsHtml = `
+                <div style="font-size: 0.65rem; font-weight: 800; opacity: 0.5; margin-top: 0.5rem; margin-bottom: 0.3rem;">RECENTS</div>
+                ${data.frequent.slice(0, 4).map(name => `
+                    <button class="quick-log-btn" onclick="window.quickLogOneShot('${name}')" style="width: 100%; justify-content: flex-start; padding: 0.5rem;">
+                        <span>➕</span> ${name}
+                    </button>
+                `).join('')}
+                
+                <div style="font-size: 0.65rem; font-weight: 800; opacity: 0.5; margin-top: 1rem; margin-bottom: 0.3rem;">STANDARD SIZES</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem;">
+                    <button class="quick-log-btn" onclick="window.quickLogOneShot('Small Dinner')" style="font-size: 0.75rem; padding: 0.5rem;">Small (400)</button>
+                    <button class="quick-log-btn" onclick="window.quickLogOneShot('Med Dinner')" style="font-size: 0.75rem; padding: 0.5rem;">Med (700)</button>
+                    <button class="quick-log-btn" onclick="window.quickLogOneShot('Large Dinner')" style="font-size: 0.75rem; padding: 0.5rem;">Large (1000)</button>
+                    <button class="quick-log-btn" onclick="window.openFoodModal()" style="font-size: 0.75rem; padding: 0.5rem; background: rgba(255,255,255,0.05);">📝 Manual</button>
+                </div>
+            `;
+            floatBar.innerHTML = itemsHtml;
+        }
+
+        // 3. Handle Yesterday's Meals (Copy Button)
+        if (data.yesterday && data.yesterday.length > 0) {
+            const lunch = data.yesterday.find(l => (l.name || '').toLowerCase().includes('lunch'));
+            if (lunch && bar) {
+                const existingCopy = document.getElementById('copy-yesterday-btn');
+                if (existingCopy) existingCopy.remove();
+                
+                const copyBtn = document.createElement('button');
+                copyBtn.id = 'copy-yesterday-btn';
+                copyBtn.className = 'quick-log-btn';
+                copyBtn.style.cssText = 'background: rgba(16, 185, 129, 0.2); border-color: #10b981;';
+                copyBtn.onclick = () => window.copyYesterdayMeal(lunch.id);
+                copyBtn.innerHTML = `<span>🔁</span> Copy Yesterday's Lunch`;
+                bar.insertAdjacentElement('afterbegin', copyBtn);
+            }
+        }
+
+        // 4. Handle Nudges (Toasts & Banners)
+        const nudgeContainer = document.getElementById('coach-nudge-container');
+        if (data.nudges && data.nudges.length > 0) {
+            const nudge = data.nudges[0];
+            if (nudgeContainer) {
+                let optionsHtml = '';
+                if (nudge.options) {
+                    optionsHtml = `
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;">
+                            ${nudge.options.map(opt => `
+                                <button class="quick-log-btn" style="background: var(--accent-color); color: white;" onclick="window.quickLogOneShot('${opt.item}')">
+                                    ${opt.label}
+                                </button>
+                            `).join('')}
+                            <button class="quick-log-btn" style="background: rgba(255,255,255,0.1);" onclick="window.openFoodModal()">
+                                📝 Manual
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    optionsHtml = `
+                        <button class="quick-log-btn" style="background: var(--accent-color); color: white; margin-top: 1rem;" onclick="window.quickLogOneShot('${nudge.item}')">
+                            ${nudge.action}
+                        </button>
+                    `;
+                }
+
+                nudgeContainer.innerHTML = `
+                    <div class="nudge-banner" style="flex-direction: column; align-items: flex-start; ${data.streak_in_danger ? 'border-color: rgba(248,113,113,0.5);' : ''}">
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <div style="font-size: 1.5rem;">${data.streak_in_danger ? '🚨' : '💡'}</div>
+                            <div style="font-size: 0.95rem; font-weight: 500;">${nudge.message}</div>
+                        </div>
+                        ${optionsHtml}
+                    </div>
+                `;
+                nudgeContainer.style.display = 'block';
+            }
+            // Also show a Toast if it's "Today"
+            if (window.getLocalDateStr() === window.getLocalDateStr(window.activeNutritionDate)) {
+                window.showCoachToast(nudge);
+            }
+        } else if (nudgeContainer) {
+            nudgeContainer.style.display = 'none';
+        }
+
+    } catch (err) { console.error("Proactive fetch error:", err); }
+}
+
+window.showCoachToast = function(nudge) {
+    const container = document.getElementById('coach-toast-container');
+    if (!container || document.getElementById(`toast-${nudge.type}`)) return;
+
+    const toast = document.createElement('div');
+    toast.id = `toast-${nudge.type}`;
+    toast.className = 'coach-toast';
+    toast.style.flexDirection = 'column';
+    toast.style.alignItems = 'flex-start';
+    
+    let actionArea = '';
+    if (nudge.options) {
+        actionArea = `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; width: 100%; margin-top: 1rem;">
+                ${nudge.options.map(opt => `
+                    <button onclick="window.quickLogOneShot('${opt.item}'); this.closest('.coach-toast').remove();" 
+                        style="background: var(--accent-color); border: none; color: white; padding: 0.5rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700; cursor: pointer;">
+                        ${opt.label}
+                    </button>
+                `).join('')}
+                <button onclick="window.openFoodModal(); this.closest('.coach-toast').remove();" 
+                    style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 0.5rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700; cursor: pointer; grid-column: span 2;">
+                    📝 Detailed Manual Log
+                </button>
+            </div>
+        `;
+    } else {
+        actionArea = `
+            <div style="display: flex; gap: 0.5rem; width: 100%; margin-top: 1rem;">
+                <button onclick="window.quickLogOneShot('${nudge.item}'); this.closest('.coach-toast').remove();" 
+                    style="background: var(--accent-color); border: none; color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700; cursor: pointer; flex-grow: 1;">
+                    ${nudge.action || 'Log Now'}
+                </button>
+                <button onclick="this.closest('.coach-toast').remove()" 
+                    style="background: rgba(255,255,255,0.1); border: none; color: white; width: 36px; height: 36px; border-radius: 18px; cursor: pointer;">✕</button>
+            </div>
+        `;
+    }
+
+    toast.innerHTML = `
+        <div style="display: flex; gap: 1rem; width: 100%;">
+            <div style="font-size: 1.5rem;">🏋️‍♂️</div>
+            <div style="flex-grow: 1;">
+                <div style="font-size: 0.7rem; font-weight: 800; color: var(--accent-color); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem;">Coach's Nudge</div>
+                <div style="font-size: 0.85rem; font-weight: 500; line-height: 1.4;">${nudge.message}</div>
+            </div>
+            ${!nudge.options ? '' : `<button onclick="this.closest('.coach-toast').remove()" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 0;">✕</button>`}
+        </div>
+        ${actionArea}
+    `;
+    container.appendChild(toast);
+    setTimeout(() => { if(toast.parentNode) toast.remove(); }, 20000); // 20s for choices
+}
+
+window.quickLogOneShot = async function(name) {
+    if (!name) return;
+    
+    // Immediate UI feedback
+    const toastContainer = document.getElementById('coach-toast-container');
+    const tempToast = document.createElement('div');
+    tempToast.className = 'coach-toast';
+    tempToast.style.background = 'rgba(16, 185, 129, 0.9)';
+    tempToast.innerHTML = `<div class="loading-dots" style="font-size: 0.85rem; font-weight: 600;">Logging ${name}</div>`;
+    if (toastContainer) toastContainer.appendChild(tempToast);
 
     try {
-        const res = await fetch('/api/nutrition/import', {
+        const now = new Date();
+        const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+        
+        // Capture streak BEFORE log to check if completing day
+        const oldStreakRes = await fetch('/api/nutrition/streak');
+        const oldStreakData = await oldStreakRes.json();
+
+        const res = await fetch('/api/nutrition/log', {
             method: 'POST',
-            body: formData
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                name: name,
+                date: window.getLocalDateStr(new Date()),
+                time: timeStr
+            })
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            const logged = data[0];
+            
+            // Check if day just completed
+            const newStreakRes = await fetch('/api/nutrition/streak');
+            const newStreakData = await newStreakRes.json();
+            
+            let message = `✅ Logged ${logged.name} (${logged.calories} kcal)`;
+            let bg = 'rgba(16, 185, 129, 0.9)';
+            
+            // Celebration Logic
+            if (!newStreakData.streak_in_danger && oldStreakData.streak_in_danger) {
+                message = `🏆 Wow ${newStreakData.streak} days in a row remembering to log food!`;
+                bg = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+                // Trigger confetti if available or just shiny effect
+                tempToast.classList.add('streak-celebration');
+            }
+
+            tempToast.style.background = bg;
+            tempToast.innerHTML = `
+                <div style="color: white; font-weight: 600; font-size: 0.85rem;">
+                    ${message}
+                </div>
+                <button onclick="window.deleteFoodLog(${logged.id}); this.closest('.coach-toast').remove();" 
+                    style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 0.3rem 0.6rem; border-radius: 0.4rem; font-size: 0.7rem; cursor: pointer; margin-left: 1rem;">
+                    Undo
+                </button>
+            `;
+            setTimeout(() => { if(tempToast.parentNode) tempToast.remove(); }, 5000);
+            
+            // Refresh data
+            if (window.fetchNutritionData) window.fetchNutritionData();
+            window.fetchProactiveSuggestions();
+        } else {
+            tempToast.remove();
+        }
+    } catch (err) {
+        console.error(err);
+        tempToast.remove();
+    }
+}
+
+window.copyYesterdayMeal = async function(logId) {
+    try {
+        const res = await fetch('/api/nutrition/copy_yesterday_meal', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: logId })
         });
         if (res.ok) {
             const data = await res.json();
-            alert(`Successfully imported ${data.count} logs.`);
+            // Show toast
+            const toastContainer = document.getElementById('coach-toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'coach-toast';
+            toast.style.background = 'rgba(16, 185, 129, 0.9)';
+            toast.innerHTML = `<div style="font-weight: 600; font-size: 0.85rem;">✅ Copied: ${data.entry.name}</div>`;
+            if (toastContainer) toastContainer.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+
             if (window.fetchNutritionData) window.fetchNutritionData();
-        } else {
-            const err = await res.json();
-            alert('Import failed: ' + (err.error || 'Unknown error'));
+            window.fetchProactiveSuggestions();
         }
-    } catch (e) {
-        alert('Import error: ' + e);
-    } finally {
-        input.value = '';
-    }
+    } catch (err) { console.error(err); }
 }
