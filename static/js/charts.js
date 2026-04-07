@@ -635,14 +635,31 @@ window.renderHydrationVisual = async function (data) {
 }
 
 function renderHydrationContent(data, oz) {
+    const hChart = document.getElementById('hydration-chart');
+    const hDonutContainer = document.getElementById('hydration-donut-container');
+    const hHistoryChart = document.getElementById('hydrationHistoryChart');
+
     if (window.currentHydrationRange === '1d') {
-        const intake = data.intake || 0, goal = data.goal || 2000, p = Math.min(100, Math.round((intake / goal) * 100));
+        if (hDonutContainer) hDonutContainer.style.display = 'flex';
+        if (hHistoryChart) hHistoryChart.style.display = 'none';
+
+        const summary = data.summary || data;
+        const intake = summary.intake || 0;
+        const goal = summary.goal || 2000;
+        const p = goal > 0 ? Math.min(100, Math.round((intake / goal) * 100)) : 0;
+        
         safeSetText('hydration-val', oz(intake) + ' oz');
         safeSetText('hydration-percent', p + '%');
-        const hChart = document.getElementById('hydration-chart');
-        if (hChart) hChart.style.background = `conic-gradient(${p >= 100 ? '#22c55e' : '#38bdf8'} ${p}%, rgba(255,255,255,0.05) ${p}% 100%)`;
+        safeSetText('hydration-goal', `Goal: ${oz(goal)} oz`);
+        
+        if (hChart) {
+            hChart.style.background = `conic-gradient(${p >= 100 ? '#22c55e' : '#38bdf8'} ${p}%, rgba(255,255,255,0.05) ${p}% 100%)`;
+        }
     } else {
-        const ctx = document.getElementById('hydrationHistoryChart').getContext('2d');
+        if (hDonutContainer) hDonutContainer.style.display = 'none';
+        if (hHistoryChart) hHistoryChart.style.display = 'block';
+
+        const ctx = hHistoryChart.getContext('2d');
         if (chartInstances['hydrationHistoryChart']) chartInstances['hydrationHistoryChart'].destroy();
         chartInstances['hydrationHistoryChart'] = new Chart(ctx, {
             type: 'bar',
@@ -654,8 +671,174 @@ function renderHydrationContent(data, oz) {
 
 window.updateHRVRange = async function (range, btn) {
     if (range) window.currentHRVRange = range;
-    if (btn) { btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
-    if (window.fetchHRV) window.fetchHRV();
+    if (btn) {
+        btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    if (window.fetchHRVHistory) window.fetchHRVHistory();
+}
+
+window.renderHRVVisual = function (data) {
+    const canvasId = 'hrvHistoryChart';
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const statusContainer = document.getElementById('hrv-status-container');
+
+    if (window.currentHRVRange === '1d') {
+        if (canvas) canvas.style.display = 'none';
+        if (statusContainer) statusContainer.style.display = 'block';
+
+        const summary = data.hrvSummary || data.summary || data || {};
+        const lastNight = summary.lastNightAvg || summary.last_night_avg || '--';
+        const weeklyAvg = summary.weeklyAvg || summary.weekly_avg || '--';
+        const status = summary.lastNightStatus || summary.last_night_status || summary.status || '--';
+        const feedback = summary.feedbackText || summary.feedback || '';
+        
+        const baseline = summary.baseline || {};
+        const low = baseline.balancedLow || summary.baselineLow || 0;
+        const high = baseline.balancedUpper || summary.baselineHigh || 0;
+        let markerPercent = (baseline.markerValue !== undefined) ? (baseline.markerValue * 100) : null;
+
+        // Restore Preferred Arrangement: 7d Avg as Main, Nightly as Secondary
+        safeSetText('hrv-val', weeklyAvg);
+        safeSetText('hrv-status-badge', status.replace(/_/g, ' '));
+        safeSetText('hrv-weekly-avg', `Overnight: ${lastNight} ms`);
+        safeSetText('hrv-baseline-low', low || '--');
+        safeSetText('hrv-baseline-high', high || '--');
+        safeSetText('hrv-feedback', feedback);
+
+        // Update badge color
+        const badge = document.getElementById('hrv-status-badge');
+        if (badge) {
+            badge.className = 'badge';
+            const s = status.toLowerCase();
+            if (s.includes('balanced') && !s.includes('unbalanced')) badge.classList.add('badge-success');
+            else if (s.includes('low') || s.includes('unbalanced')) badge.classList.add('badge-warning');
+            else if (s.includes('poor')) badge.classList.add('badge-danger');
+        }
+
+        // Update gauge marker
+        const marker = document.getElementById('hrv-marker');
+        const zone = document.getElementById('hrv-baseline-zone');
+        if (marker) {
+            if (markerPercent !== null) {
+                marker.style.left = Math.max(5, Math.min(95, markerPercent)) + '%';
+            } else if (low && high) {
+                const range = high - low;
+                const scaleMin = Math.max(0, low - range);
+                const scaleMax = high + range;
+                const scaleRange = scaleMax - scaleMin;
+                const val = (lastNight !== '--') ? lastNight : weeklyAvg;
+                const percent = (scaleRange > 0 && typeof val === 'number') ? ((val - scaleMin) / scaleRange) * 100 : 50;
+                marker.style.left = Math.max(5, Math.min(95, percent)) + '%';
+            }
+        }
+        
+        if (zone && low && high) {
+            // green zone represents the baseline. In our UI it's usually static 35-65%
+            zone.style.left = '35%';
+            zone.style.width = '30%';
+        }
+    } else {
+        if (canvas) canvas.style.display = 'block';
+        if (statusContainer) statusContainer.style.display = 'none';
+
+        if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+        
+        const history = data.history || [];
+        const statusColors = history.map(d => {
+            const st = (d.status || d.lastNightStatus || '').toLowerCase();
+            if (st.includes('balanced')) return '#22c55e';
+            if (st.includes('low') || st.includes('unbalanced')) return '#eab308';
+            if (st.includes('poor')) return '#ef4444';
+            return '#38bdf8';
+        });
+
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: history.map(d => d.calendarDate ? d.calendarDate.split('-').slice(1).join('/') : (d.date ? d.date.split('-').slice(1).join('/') : '')),
+                datasets: [
+                    {
+                        label: '7d Trend',
+                        data: history.map(d => d.weeklyAvg || d.weekly_avg),
+                        borderColor: '#ffffff', // Fallback
+                        borderWidth: 3,
+                        segment: {
+                            borderColor: ctx => statusColors[ctx.p1DataIndex] || '#ffffff'
+                        },
+                        pointBackgroundColor: statusColors,
+                        pointBorderColor: '#1e293b',
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        tension: 0.4,
+                        fill: false,
+                        order: 1
+                    },
+                    {
+                        label: 'Nightly Avg',
+                        data: history.map(d => d.lastNightAvg || d.last_night_avg),
+                        borderColor: 'rgba(56, 189, 248, 0.4)',
+                        borderDash: [5, 5],
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.4,
+                        fill: false,
+                        order: 2
+                    },
+                    {
+                        label: 'Baseline Low',
+                        data: history.map(d => {
+                            const b = d.baseline || d.summary?.baseline || {};
+                            return b.balancedLow || d.baselineLow || 0;
+                        }),
+                        borderColor: 'transparent',
+                        pointRadius: 0,
+                        tension: 0.4,
+                        fill: false,
+                        order: 3
+                    },
+                    {
+                        label: 'Baseline Range',
+                        data: history.map(d => {
+                            const b = d.baseline || d.summary?.baseline || {};
+                            return b.balancedUpper || d.baselineHigh || 0;
+                        }),
+                        borderColor: 'transparent',
+                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                        pointRadius: 0,
+                        tension: 0.4,
+                        fill: '-1',
+                        order: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: {
+                            color: '#94a3b8',
+                            boxWidth: 12,
+                            filter: (item) => !item.text.includes('Baseline')
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#94a3b8' },
+                        suggestedMin: 40,
+                        suggestedMax: 100
+                    }
+                }
+            }
+        });
+    }
 }
 
 /**
