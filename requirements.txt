@@ -1,5 +1,6 @@
 flask
-garminconnect
+garminconnect>=0.3.2
+curl_cffi
 python-dotenv
 gunicorn
 google-genai

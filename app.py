@@ -7,7 +7,6 @@ import traceback
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 from functools import wraps
 from garminconnect import Garmin
-import garth
 from datetime import date, timedelta, datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
@@ -248,23 +247,18 @@ def get_garmin_client():
         token_dir = os.path.join(GarminPersistence.BASE_DIR, "session")
         os.makedirs(token_dir, exist_ok=True)
         
-        # Initialize Garmin client
+        # Initialize Garmin client with new v0.3 library (which handles bypassing rate limits)
         client = Garmin(email, password)
         
-        # ONLY use token-based login — NEVER attempt a fresh credential login.
-        # Fresh logins hit sso.garmin.com which triggers Cloudflare IP bans
-        # on datacenter IPs. Tokens are pushed from a local PC via sync_tokens.py.
         logger.info(f"Attempting to login to Garmin Connect using tokens in {token_dir}")
+        # login() automatically uses token_dir if valid, otherwise falls back to fresh login with credentials.
         client.login(token_dir)
-        logger.info("Successfully logged in to Garmin Connect via token")
+        logger.info("Successfully logged in to Garmin Connect")
             
         garmin_client = client
         return client
     except Exception as e:
-        if "403" in str(e):
-            logger.error(f"CRITICAL: Garmin is blocking this IP address. Run sync_tokens.py from your local PC to push fresh tokens.")
-        else:
-            logger.warning(f"Garmin token login failed (tokens may be expired — run sync_tokens.py): {e}")
+        logger.warning(f"Garmin token login failed: {e}")
         # DO NOT RAISE EXCEPTION - Allow offline mode caching fallback
         offline_mode_active = True
         return None
@@ -280,15 +274,8 @@ def garmin_request(func, *args, **kwargs):
             
             res = func(*args, **kwargs)
             
-            # PROACTIVE: Save session tokens if refreshed in-memory
-            # This ensures that if the token was refreshed during the session, it gets saved to disk.
-            if garmin_client:
-                try:
-                    token_dir = os.path.join(GarminPersistence.BASE_DIR, "session")
-                    garmin_client.garth.dump(token_dir)
-                except Exception as save_err:
-                    logger.warning(f"Failed to auto-save Garmin session: {save_err}")
-                    
+            # Note: garminconnect v0.3+ automatically saves tokens after refresh to tokenstore_path.
+            # No manual garth.dump() is needed.
             return res
         except Exception as e:
             if attempt < max_retries - 1:
