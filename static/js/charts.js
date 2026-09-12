@@ -33,9 +33,18 @@ function setCachedData(metric, range, endDate, data) {
     chartDataCache[metric][key] = data;
 }
 
-// Disable animations for performance on large datasets (1yr history)
-Chart.defaults.animation = false;
-Chart.defaults.font.family = "'Inter', sans-serif";
+window.populateChartCache = function(metric, range, endDate, data) {
+    if (chartDataCache[metric]) {
+        setCachedData(metric, range, endDate, data);
+    }
+};
+
+// Smooth, fluid animations for interactive feel
+Chart.defaults.animation = {
+    duration: 350,
+    easing: 'easeOutQuart'
+};
+Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
 
 window.renderYTDChart = function (canvasId, labels, data) {
     const canvas = document.getElementById(canvasId);
@@ -512,26 +521,103 @@ window.renderHRVisual = function (data) {
     const ctx = canvas.getContext('2d');
     if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
-    if (window.currentHRRange === '1d') {
-        const dailyMax = parseInt(data.summary.max) || 0;
+    const range = data.range || window.currentHRRange || '1d';
+
+    if (range === '1d') {
+        const summary = data.summary || {};
+        const dailyMax = parseInt(summary.max) || 0;
         const zones = data.zones || [95, 114, 133, 152, 171];
         safeSetText('hr-max-val', dailyMax || '--');
-        const points = data.samples.map(s => ({ x: s[0], y: s[1] }));
+        const rawSamples = data.samples || [];
+        const points = rawSamples
+            .filter(s => Array.isArray(s) && s[0] != null && s[1] != null)
+            .map(s => ({ x: s[0], y: s[1] }));
         const getZoneColor = (hr) => {
-            if (hr >= zones[4]) return '#a855f7'; if (hr >= zones[3]) return '#ef4444'; if (hr >= zones[2]) return '#f97316';
-            if (hr >= zones[1]) return '#22c55e'; if (hr >= zones[0]) return '#3b82f6'; return '#94a3b8';
+            if (hr == null) return '#38bdf8';
+            if (hr >= zones[4]) return '#a855f7';
+            if (hr >= zones[3]) return '#ef4444';
+            if (hr >= zones[2]) return '#f97316';
+            if (hr >= zones[1]) return '#22c55e';
+            if (hr >= zones[0]) return '#38bdf8';
+            return '#94a3b8';
         };
+        const minY = points.length > 0 ? Math.max(30, Math.min(...points.map(p => p.y)) - 5) : 40;
+        const maxY = points.length > 0 ? Math.max(dailyMax || 120, Math.max(...points.map(p => p.y)) + 5) : 120;
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
-            data: { datasets: [{ label: 'HR', data: points, borderWidth: 2, pointRadius: 0, segment: { borderColor: ctx => getZoneColor(ctx.p1.parsed.y) }, tension: 0.4 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { type: 'time', time: { displayFormats: { hour: 'HH:mm' } }, grid: { display: false }, ticks: { color: '#94a3b8' } }, y: { min: 40, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } } } }
+            data: {
+                datasets: [{
+                    label: 'HR',
+                    data: points,
+                    borderColor: '#38bdf8',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    spanGaps: true,
+                    segment: {
+                        borderColor: ctx => getZoneColor(ctx.p1?.parsed?.y ?? ctx.p0?.parsed?.y)
+                    },
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => {
+                                if (!items.length) return '';
+                                const d = new Date(items[0].parsed.x);
+                                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            },
+                            label: (ctx) => `Heart Rate: ${ctx.parsed.y} bpm`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: { displayFormats: { hour: 'HH:mm', minute: 'HH:mm' } },
+                        grid: { display: false },
+                        ticks: { color: '#94a3b8', maxTicksLimit: 8 }
+                    },
+                    y: {
+                        min: minY,
+                        max: maxY,
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#94a3b8' }
+                    }
+                }
+            }
         });
     } else {
-        const labels = data.history.map(d => { const p = d.date.split('-'); return p[1] + '/' + p[2]; });
+        const history = data.history || [];
+        const labels = history.map(d => {
+            if (!d.date) return '';
+            const p = d.date.split('-');
+            return p[1] ? p[1] + '/' + p[2] : d.date;
+        });
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
-            data: { labels, datasets: [{ label: 'Resting', data: data.history.map(d => d.rhr), borderColor: '#38bdf8', borderWidth: 3, tension: 0.4, fill: false }, { label: 'Max', data: data.history.map(d => d.max), borderColor: '#ef4444', borderWidth: 2, tension: 0.4, fill: false }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, labels: { color: '#94a3b8' } } }, scales: { x: { grid: { display: false }, ticks: { color: '#94a3b8' } }, y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } } } }
+            data: {
+                labels,
+                datasets: [
+                    { label: 'Resting', data: history.map(d => d.rhr), borderColor: '#38bdf8', borderWidth: 3, tension: 0.4, fill: false },
+                    { label: 'Max', data: history.map(d => d.max), borderColor: '#ef4444', borderWidth: 2, tension: 0.4, fill: false }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, labels: { color: '#94a3b8' } }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                }
+            }
         });
     }
 }
@@ -557,21 +643,95 @@ window.renderStressVisual = function (data) {
     const ctx = canvas.getContext('2d');
     if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
-    if (window.currentStressRange === '1d') {
-        safeSetText('stress', data.summary.avg || '--');
-        const points = data.samples.map(s => ({ x: s[0], y: s[1] }));
-        const getStressColor = (v) => { if (v < 25) return '#94a3b8'; if (v < 50) return '#f97316'; return '#ef4444'; };
+    const range = data.range || window.currentStressRange || '1d';
+
+    if (range === '1d') {
+        const summary = data.summary || {};
+        safeSetText('stress', summary.avg || '--');
+        const rawSamples = data.samples || [];
+        const points = rawSamples
+            .filter(s => Array.isArray(s) && s[0] != null && s[1] != null && s[1] >= 0)
+            .map(s => ({ x: s[0], y: s[1] }));
+        const getStressColor = (v) => {
+            if (v == null) return '#94a3b8';
+            if (v < 25) return '#38bdf8';
+            if (v < 50) return '#f59e0b';
+            if (v < 75) return '#f97316';
+            return '#ef4444';
+        };
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
-            data: { datasets: [{ label: 'Stress', data: points, borderWidth: 2, pointRadius: 0, segment: { borderColor: ctx => getStressColor(ctx.p1.parsed.y) }, tension: 0.4 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { type: 'time', grid: { display: false } }, y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+            data: {
+                datasets: [{
+                    label: 'Stress',
+                    data: points,
+                    borderColor: '#f97316',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    spanGaps: true,
+                    segment: {
+                        borderColor: ctx => getStressColor(ctx.p1?.parsed?.y ?? ctx.p0?.parsed?.y)
+                    },
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => {
+                                if (!items.length) return '';
+                                const d = new Date(items[0].parsed.x);
+                                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                            },
+                            label: (ctx) => `Stress: ${ctx.parsed.y}`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: { displayFormats: { hour: 'HH:mm', minute: 'HH:mm' } },
+                        grid: { display: false },
+                        ticks: { color: '#94a3b8', maxTicksLimit: 8 }
+                    },
+                    y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                }
+            }
         });
     } else {
-        const labels = data.history.map(d => { const p = d.date.split('-'); return p[1] + '/' + p[2]; });
+        const history = data.history || [];
+        const labels = history.map(d => {
+            if (!d.date) return '';
+            const p = d.date.split('-');
+            return p[1] ? p[1] + '/' + p[2] : d.date;
+        });
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
-            data: { labels, datasets: [{ label: 'Avg', data: data.history.map(d => d.avg), borderColor: '#f97316', borderWidth: 3, tension: 0.4, fill: false }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { min: 0, max: 100 } } }
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Avg',
+                    data: history.map(d => d.avg),
+                    borderColor: '#f97316',
+                    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                    borderWidth: 3,
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+                    y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                }
+            }
         });
     }
 }

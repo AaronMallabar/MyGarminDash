@@ -1815,4 +1815,29 @@ h1 {
     border-radius: 10px;
     border: 2px solid var(--bg-color);
     box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+/* Smooth Transitions & Map Dark Background */
+@keyframes smoothFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.card {
+    animation: smoothFadeIn 0.3s ease-out forwards;
+}
+
+.leaflet-container {
+    background-color: #0b1120 !important;
+    font-family: var(--font-family) !important;
+}
+
+.leaflet-tile-pane {
+    filter: brightness(0.95) contrast(1.05);
 }

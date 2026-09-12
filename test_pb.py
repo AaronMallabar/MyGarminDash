@@ -11,7 +11,11 @@ def test_api_personal_bests():
         files = glob.glob('garmin_cache/activities/*.json')
         activities = []
         for f in files:
-            activities.extend(list(load_json(f, {}).values()))
+            for day_acts in load_json(f, {}).values():
+                if isinstance(day_acts, list):
+                    activities.extend(day_acts)
+                elif isinstance(day_acts, dict):
+                    activities.append(day_acts)
             
         today_date = get_today()
         month_prefix = today_date.strftime('%Y-%m')
@@ -91,7 +95,8 @@ def test_api_personal_bests():
                             val = det['pace'].get(key)
                             update_run_pace(p, f"fastest_{key}", val, aid, d_str)
                     if is_bike and det.get('power'):
-                        for k, val in det['power'].items():
+                        for k, val_obj in det['power'].items():
+                            val = val_obj.get('value') if isinstance(val_obj, dict) else val_obj
                             curr = res[p]['bike']['power_curve'][k]['val']
                             if val and val > curr:
                                 res[p]['bike']['power_curve'][k] = {'val': val, 'id': aid, 'date': d_str}

@@ -7,6 +7,27 @@ window.heatmapData = [];
 window.heatmapPollInterval = null;
 window.activityMap = null;
 
+function createDarkTileLayer() {
+    const tileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: '&copy; Esri, OpenStreetMap contributors',
+        subdomains: ['server', 'services']
+    });
+
+    // Graceful fallback to OpenStreetMap if tile errors occur
+    tileLayer.on('tileerror', function (error, tile) {
+        if (!tile._fallbackTried) {
+            tile._fallbackTried = true;
+            const z = error.coords.z;
+            const x = error.coords.x;
+            const y = error.coords.y;
+            tile.src = `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
+        }
+    });
+
+    return tileLayer;
+}
+
 window.initMap = function () {
     if (window.globalHeatmap) return;
     const mapEl = document.getElementById('globalHeatmap');
@@ -18,10 +39,7 @@ window.initMap = function () {
         preferCanvas: true
     }).setView([0, 0], 2);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        subdomains: 'abcd',
-        maxZoom: 20
-    }).addTo(window.globalHeatmap);
+    createDarkTileLayer().addTo(window.globalHeatmap);
 
     window.globalLayerGroup = L.layerGroup().addTo(window.globalHeatmap);
 
@@ -267,7 +285,7 @@ window.renderActivityMap = function (polylineData) {
         attributionControl: false
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(window.activityMap);
+    createDarkTileLayer().addTo(window.activityMap);
 
     if (displayPoints.length > 1) {
         const path = L.polyline(displayPoints, {

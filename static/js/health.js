@@ -63,7 +63,24 @@ window.renderIntensityMinutesVisualV2 = function (data) {
     }
 
     if (range === '1d') {
-        const points = (data.samples || []).map(s => ({ x: s[0], y: s[1] }));
+        const sum = data.summary || {};
+        const weekVal = sum.weeklyTotal != null ? sum.weeklyTotal : ((sum.startDayMinutes || 0) + (sum.total || 0));
+        window.safeSetText('im-val', weekVal);
+        window.safeSetText('im-goal', sum.goal || goal);
+
+        const rawSamples = data.samples || [];
+        let points = rawSamples
+            .filter(s => Array.isArray(s) && s[0] != null && s[1] != null)
+            .map(s => ({ x: s[0], y: s[1] }));
+
+        if (points.length === 0) {
+            const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+            const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+            points = [{ x: todayStart.getTime(), y: 0 }, { x: todayEnd.getTime(), y: 0 }];
+        }
+
+        const maxVal = Math.max(10, ...points.map(p => p.y || 0));
+
         window.chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
             data: {
@@ -74,16 +91,27 @@ window.renderIntensityMinutesVisualV2 = function (data) {
                     backgroundColor: 'rgba(56, 189, 248, 0.1)',
                     borderWidth: 2,
                     pointRadius: 0,
+                    spanGaps: true,
                     fill: true,
-                    tension: 0.1
+                    tension: 0.2
                 }]
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    x: { type: 'time', time: { displayFormats: { hour: 'HH:mm' } }, grid: { display: false }, ticks: { color: '#94a3b8' } },
-                    y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                    x: {
+                        type: 'time',
+                        time: { displayFormats: { hour: 'HH:mm', minute: 'HH:mm' } },
+                        grid: { display: false },
+                        ticks: { color: '#94a3b8', maxTicksLimit: 8 }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: maxVal + 2,
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#94a3b8' }
+                    }
                 }
             }
         });

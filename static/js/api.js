@@ -13,103 +13,181 @@ window.cachedActivityInsights = {};
 
 window.fetchDashboardData = async function () {
     try {
-        // Fire all non-AI data fetches concurrently right away
-        const dataPromises = [
-            window.fetchWeightHistory(),
-            window.fetchStepsHistory(),
-            window.fetchHRHistory(),
-            window.fetchStressHistory(),
-            window.fetchSleepHistory(),
-            window.fetchHydrationHistory(),
-            window.fetchHRVHistory(),
-            window.fetchIMHistory(),
-            window.fetchCalendarData(),
-            window.fetchNutritionData(),
-            window.fetchCalorieHistory()
-        ];
-
         let isOffline = false;
+        let bootstrapSuccess = false;
 
-        // Fetch basic stats
-        const statsRes = await fetch('/api/stats');
-        if (statsRes.ok) {
-            const stats = await statsRes.json();
-            if (!stats.error) {
-                isOffline = stats.offline_mode;
-                if (window.updateDashboard) window.updateDashboard(stats);
-                if (isOffline && window.showError) {
-                    window.showError("⚠️ Cannot connect to Garmin Connect. Dashboard is running in Offline Cached Mode.");
-                }
-            } else {
-                if (window.showError) window.showError(stats.error);
-            }
-        }
+        // 1. Instant Consolidated Bootstrap Request
+        try {
+            const bootRes = await fetch('/api/dashboard_bootstrap');
+            if (bootRes.ok) {
+                const boot = await bootRes.json();
+                if (!boot.error) {
+                    bootstrapSuccess = true;
+                    isOffline = (boot.stats || {}).offline_mode;
 
-        // Fetch configurations and summaries
-        const [goalsRes, ltRes, ytdRes] = await Promise.allSettled([
-            fetch('/api/goals_config'),
-            fetch('/api/longterm_stats'),
-            fetch('/api/ytd_mileage_comparison')
-        ]);
+                    // Hydrate dashboard cards & stats
+                    if (boot.stats && window.updateDashboard) {
+                        window.updateDashboard(boot.stats);
+                    }
 
-        if (goalsRes.status === 'fulfilled' && goalsRes.value.ok) {
-            const goalsConfig = await goalsRes.value.json();
-            if (!goalsConfig.error) {
-                // If ltStats also loaded, attach actuals to the goalsConfig
-                if (ltRes.status === 'fulfilled' && ltRes.value.ok) {
-                    const ltStats = await ltRes.value.json();
-                    if (!ltStats.error) {
-                        goalsConfig.monthly.running_actual = (ltStats.month || {}).running || 0;
-                        goalsConfig.monthly.cycling_actual = (ltStats.month || {}).cycling || 0;
-                        goalsConfig.yearly.running_actual = (ltStats.year || {}).running || 0;
-                        goalsConfig.yearly.cycling_actual = (ltStats.year || {}).cycling || 0;
+                    // Hydrate goals config & donut meters
+                    if (boot.goals_config && window.updateGoalsConfig) {
+                        window.updateGoalsConfig(boot.goals_config);
+                    }
+
+                    // Hydrate YTD charts
+                    if (boot.ytd && window.renderYTDChart) {
+                        window.renderYTDChart('ytdCyclingChart', boot.ytd.labels, boot.ytd.cycling);
+                        window.renderYTDChart('ytdRunningChart', boot.ytd.labels, boot.ytd.running);
+                    }
+
+                    // Cache 1w / 1m historical data from bootstrap payload
+                    const hist = boot.history || {};
+                    const today1d = boot.today_1d || {};
+                    const todayObj = new Date();
+
+                    if (window.populateChartCache) {
+                        if (hist.steps) window.populateChartCache('steps', '1w', todayObj, hist.steps);
+                        if (hist.hr) window.populateChartCache('hr', '1w', todayObj, hist.hr);
+                        if (hist.stress) window.populateChartCache('stress', '1w', todayObj, hist.stress);
+                        if (hist.sleep) window.populateChartCache('sleep', '1w', todayObj, hist.sleep);
+                        if (hist.weight) window.populateChartCache('weight', '1m', todayObj, hist.weight);
+                        if (hist.hydration) window.populateChartCache('hydration', '1w', todayObj, hist.hydration);
+                        if (hist.hrv) window.populateChartCache('hrv', '1w', todayObj, hist.hrv);
+
+                        // Cache 1d items
+                        if (today1d.sleep) window.populateChartCache('sleep', '1d', todayObj, today1d.sleep);
+                        if (today1d.hydration) window.populateChartCache('hydration', '1d', todayObj, today1d.hydration);
+                        if (today1d.hrv) window.populateChartCache('hrv', '1d', todayObj, today1d.hrv);
+                        if (today1d.hr) window.populateChartCache('hr', '1d', todayObj, today1d.hr);
+                        if (today1d.stress) window.populateChartCache('stress', '1d', todayObj, today1d.stress);
+                        if (today1d.intensity_minutes) window.populateChartCache('intensity_minutes', '1d', todayObj, today1d.intensity_minutes);
+                    }
+
+                    // Render active 1d / default views
+                    if (today1d.sleep && window.renderSleepVisual) {
+                        window.renderSleepVisual(today1d.sleep);
+                    }
+                    if (today1d.hydration && window.renderHydrationVisual) {
+                        window.renderHydrationVisual(today1d.hydration);
+                    }
+                    if (today1d.hrv && window.renderHRVVisual) {
+                        window.renderHRVVisual(today1d.hrv);
+                    }
+                    if (today1d.hr && window.renderHRVisual) {
+                        window.renderHRVisual(today1d.hr);
+                    }
+                    if (today1d.stress && window.renderStressVisual) {
+                        window.renderStressVisual(today1d.stress);
+                    }
+                    if (hist.steps && window.renderStepsVisual) {
+                        window.renderStepsVisual(hist.steps);
+                    }
+                    if (hist.weight && window.renderWeightChart) {
+                        window.renderWeightChart(hist.weight, '1m');
+                    }
+                    if (today1d.intensity_minutes && window.renderIntensityMinutesVisualV2) {
+                        window.renderIntensityMinutesVisualV2(today1d.intensity_minutes);
+                    } else if (hist.intensity_minutes && window.renderIntensityMinutesVisualV2) {
+                        window.renderIntensityMinutesVisualV2(hist.intensity_minutes);
+                    }
+
+                    if (window.safeSetText) {
+                        if (isOffline) {
+                            window.safeSetText('last-sync', 'Offline Mode');
+                        } else {
+                            window.safeSetText('last-sync', `Last synced: ${new Date().toLocaleTimeString()}`);
+                        }
+                    }
+
+                    if (isOffline && window.showError) {
+                        window.showError("⚠️ Cannot connect to Garmin Connect. Dashboard is running in Offline Cached Mode.");
                     }
                 }
-                if (window.updateGoalsConfig) window.updateGoalsConfig(goalsConfig);
             }
+        } catch (bootErr) {
+            console.warn('Bootstrap fetch failed, falling back to modular endpoints:', bootErr);
         }
 
-        if (ytdRes.status === 'fulfilled' && ytdRes.value.ok) {
-            const ytdData = await ytdRes.value.json();
-            if (!ytdData.error) {
-                if (window.renderYTDChart) {
+        // 2. Secondary asynchronous loaders (Calendar, Nutrition, Calorie History, and 1d HR/Stress timelines)
+        const secondaryPromises = [
+            window.fetchCalendarData(),
+            window.fetchNutritionData(),
+            window.fetchCalorieHistory(),
+            window.fetchHRHistory(),
+            window.fetchStressHistory()
+        ];
+
+        // Fallback to legacy individual fetches if bootstrap did not succeed
+        if (!bootstrapSuccess) {
+            secondaryPromises.push(
+                window.fetchWeightHistory(),
+                window.fetchStepsHistory(),
+                window.fetchHRHistory(),
+                window.fetchStressHistory(),
+                window.fetchSleepHistory(),
+                window.fetchHydrationHistory(),
+                window.fetchHRVHistory(),
+                window.fetchIMHistory()
+            );
+
+            // Fetch basic stats
+            const statsRes = await fetch('/api/stats');
+            if (statsRes.ok) {
+                const stats = await statsRes.json();
+                if (!stats.error) {
+                    isOffline = stats.offline_mode;
+                    if (window.updateDashboard) window.updateDashboard(stats);
+                }
+            }
+
+            const [goalsRes, ltRes, ytdRes] = await Promise.allSettled([
+                fetch('/api/goals_config'),
+                fetch('/api/longterm_stats'),
+                fetch('/api/ytd_mileage_comparison')
+            ]);
+
+            if (goalsRes.status === 'fulfilled' && goalsRes.value.ok) {
+                const goalsConfig = await goalsRes.value.json();
+                if (!goalsConfig.error) {
+                    if (ltRes.status === 'fulfilled' && ltRes.value.ok) {
+                        const ltStats = await ltRes.value.json();
+                        if (!ltStats.error) {
+                            goalsConfig.monthly.running_actual = (ltStats.month || {}).running || 0;
+                            goalsConfig.monthly.cycling_actual = (ltStats.month || {}).cycling || 0;
+                            goalsConfig.yearly.running_actual = (ltStats.year || {}).running || 0;
+                            goalsConfig.yearly.cycling_actual = (ltStats.year || {}).cycling || 0;
+                        }
+                    }
+                    if (window.updateGoalsConfig) window.updateGoalsConfig(goalsConfig);
+                }
+            }
+
+            if (ytdRes.status === 'fulfilled' && ytdRes.value.ok) {
+                const ytdData = await ytdRes.value.json();
+                if (!ytdData.error && window.renderYTDChart) {
                     window.renderYTDChart('ytdCyclingChart', ytdData.labels, ytdData.cycling);
                     window.renderYTDChart('ytdRunningChart', ytdData.labels, ytdData.running);
                 }
             }
         }
 
-        if (window.safeSetText) {
-            if (isOffline) {
-                window.safeSetText('last-sync', 'Offline Mode');
-            } else {
-                window.safeSetText('last-sync', `Last synced: ${new Date().toLocaleTimeString()}`);
-            }
-        }
+        await Promise.allSettled(secondaryPromises);
 
-        // Wait for all primary data to finish loading before touching AI
-        await Promise.allSettled(dataPromises);
-
-        // Now load AI insights (lowest priority — won't block anything)
+        // Background / Low-priority tasks
         if (window.fetchAIInsights) window.fetchAIInsights(false);
-
-        // Load proactive nutrition suggestions (Frictionless Logging)
         if (window.fetchProactiveSuggestions) window.fetchProactiveSuggestions();
 
-        // Preload yearly data in background
-        if (typeof preloadYearlyData === 'function') preloadYearlyData();
-
-        // Heavy Route Overlays (LOWEST PRIORITY)
         setTimeout(() => {
             window.fetchActivityHeatmap();
             if (window.updateGlobalHeatmap) window.updateGlobalHeatmap();
-        }, 1500);
+        }, 1200);
 
     } catch (error) {
-        console.error('Error fetching data:', error);
+        console.error('Error fetching dashboard data:', error);
         if (window.showError) window.showError('Failed to load dashboard data');
     }
-}
+};
 
 /**
  * Format a cache age into a human-readable string
@@ -657,7 +735,7 @@ window.fetchIMHistory = async function () {
 
 
 /**
- * Preload 1-year data for all metrics
+ * Preload 1-year data for all metrics lazily in the background
  */
 async function preloadYearlyData() {
     const todayStr = window.getLocalDateStr(new Date());
@@ -671,20 +749,20 @@ async function preloadYearlyData() {
         { key: 'hrv', url: `/api/hrv?end_date=${todayStr}&range=1y` }
     ];
 
-
-
-    // Fetch all in parallel
-    // We don't await this function itself, but we handle promises here
-    Promise.all(endpoints.map(ep =>
-        fetch(ep.url)
-            .then(res => res.ok ? res.json() : null)
-            .then(data => {
+    // Stagger one-by-one so background preloading never competes with user actions
+    for (const ep of endpoints) {
+        try {
+            await new Promise(r => setTimeout(r, 600));
+            const res = await fetch(ep.url);
+            if (res.ok) {
+                const data = await res.json();
                 if (data && !data.error) {
                     preloadedData[ep.key] = data;
-                    // console.log(`Preloaded ${ep.key} 1y data`);
                 }
-            })
-            .catch(err => console.error(`Failed to preload ${ep.key}:`, err))
-    ));
+            }
+        } catch (err) {
+            // Silently ignore background preloading errors
+        }
+    }
 }
 

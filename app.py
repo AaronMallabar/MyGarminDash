@@ -129,7 +129,7 @@ garmin_client = None
 # Settings management
 SETTINGS_FILE = 'settings.json'
 DEFAULT_SETTINGS = {
-    'ai_model': 'gemma-3-27b-it',
+    'ai_model': 'gemini-3.7-flash',
     'pb_start_year': 2025
 }
 
@@ -247,18 +247,27 @@ def get_garmin_client():
         token_dir = os.path.join(GarminPersistence.BASE_DIR, "session")
         os.makedirs(token_dir, exist_ok=True)
         
-        # Initialize Garmin client with new v0.3 library (which handles bypassing rate limits)
         client = Garmin(email, password)
-        
-        logger.info(f"Attempting to login to Garmin Connect using tokens in {token_dir}")
-        # login() automatically uses token_dir if valid, otherwise falls back to fresh login with credentials.
-        client.login(token_dir)
-        logger.info("Successfully logged in to Garmin Connect")
+        try:
+            logger.info(f"Attempting to login to Garmin Connect using tokens in {token_dir}")
+            client.login(token_dir)
+            logger.info("Successfully logged in to Garmin Connect")
+        except Exception as te:
+            logger.warning(f"Token login failed ({te}), purging stale tokens and logging in freshly with credentials...")
+            for fn in os.listdir(token_dir):
+                fp = os.path.join(token_dir, fn)
+                try:
+                    if os.path.isfile(fp): os.remove(fp)
+                except Exception: pass
+            client = Garmin(email, password)
+            client.login(token_dir)
+            logger.info("Successfully refreshed session and logged in to Garmin Connect")
             
         garmin_client = client
+        offline_mode_active = False
         return client
     except Exception as e:
-        logger.warning(f"Garmin token login failed: {e}")
+        logger.warning(f"Garmin login failed: {e}")
         # DO NOT RAISE EXCEPTION - Allow offline mode caching fallback
         offline_mode_active = True
         return None
@@ -417,8 +426,11 @@ class PolylineCache:
 # ==============================================================================
 
 class GarminPersistence:
-    """Handles structured JSON storage for Garmin metrics by month."""
+    """Handles structured JSON storage for Garmin metrics by month with fast in-memory caching."""
     BASE_DIR = "garmin_cache"
+    _month_cache = {}
+    _cache_mtimes = {}
+    _lock = threading.Lock()
 
     @staticmethod
     def _get_path(metric, date_str):
@@ -429,13 +441,38 @@ class GarminPersistence:
     @staticmethod
     def load_month(metric, date_str):
         path = GarminPersistence._get_path(metric, date_str)
+        cache_key = f"{metric}:{date_str[:7]}"
+        
+        with GarminPersistence._lock:
+            if os.path.exists(path):
+                try:
+                    mtime = os.path.getmtime(path)
+                    if cache_key in GarminPersistence._month_cache and GarminPersistence._cache_mtimes.get(cache_key) == mtime:
+                        return GarminPersistence._month_cache[cache_key]
+                    
+                    data = load_json(path, {})
+                    GarminPersistence._month_cache[cache_key] = data
+                    GarminPersistence._cache_mtimes[cache_key] = mtime
+                    return data
+                except Exception:
+                    pass
+            elif cache_key in GarminPersistence._month_cache:
+                return GarminPersistence._month_cache[cache_key]
         return load_json(path, {})
 
     @staticmethod
     def save_month(metric, date_str, data):
         path = GarminPersistence._get_path(metric, date_str)
+        cache_key = f"{metric}:{date_str[:7]}"
         os.makedirs(os.path.dirname(path), exist_ok=True)
         save_json(path, data)
+        with GarminPersistence._lock:
+            try:
+                GarminPersistence._month_cache[cache_key] = data
+                if os.path.exists(path):
+                    GarminPersistence._cache_mtimes[cache_key] = os.path.getmtime(path)
+            except Exception:
+                GarminPersistence._month_cache[cache_key] = data
 
     @staticmethod
     def get_singleton(metric):
@@ -452,10 +489,21 @@ class GarminPersistence:
 
 class GarminSyncManager:
     """Central manager for syncing and retrieving Garmin data with local priority."""
+    _api_lock = threading.Lock()
+    _last_api_call = 0.0
     
     def __init__(self, client):
         self.client = client
         self.sync_times = {}
+
+    def _throttle_api(self):
+        """Throttle live Garmin API calls with spacing to avoid connection reset and rate limits."""
+        with GarminSyncManager._api_lock:
+            now = time.time()
+            elapsed = now - GarminSyncManager._last_api_call
+            if elapsed < 0.35:
+                time.sleep(0.35 - elapsed)
+            GarminSyncManager._last_api_call = time.time()
 
     def get_metric_for_date(self, metric, date_str, force_refresh=False):
         """Get metric for a specific day, syncing if missing."""
@@ -470,35 +518,27 @@ class GarminSyncManager:
 
         if not force_refresh and date_str in month_data:
             cached = month_data[date_str]
+            if not is_today and not is_near_past:
+                return cached
             
-            # Backfill check: if metric is stats or hr and missing max fields, force re-sync
-            is_backfill_needed = False
+            # If today or near past, check staleness (60s for today, 2h for near past)
+            expiry = 60 if is_today else 7200
             if isinstance(cached, dict):
-                if metric == 'stats' and (not cached.get('max_hr') or not cached.get('resting_hr')):
-                    is_backfill_needed = True
-                elif metric == 'hr' and not cached.get('maxHeartRate'):
-                    is_backfill_needed = True
-
-            if not is_backfill_needed:
-                if not is_today and not is_near_past:
+                if time.time() - cached.get('timestamp', 0) < expiry:
                     return cached
-                
-                # If today or near past, check staleness
-                # For today: 1 hour (3600s)
-                # For near past: 24 hours (86400s)
-                expiry = 3600 if is_today else 86400
-                
-                if isinstance(cached, dict):
-                    if time.time() - cached.get('timestamp', 0) < expiry:
-                        return cached
-                else:
-                    last_sync = self.sync_times.get(f"{metric}_{date_str}", 0)
-                    if time.time() - last_sync < expiry:
-                        return cached
+            else:
+                last_sync = self.sync_times.get(f"{metric}_{date_str}", 0)
+                if time.time() - last_sync < expiry:
+                    return cached
         
+        # If no client available (offline mode / mock / error), return cache directly
+        if self.client is None:
+            return month_data.get(date_str)
+
         # Sync required
         logger.info(f"Syncing {metric} for {date_str}...")
         try:
+            self._throttle_api()
             if metric == 'stats':
                 res = self.client.get_stats(date_str)
                 
@@ -506,11 +546,14 @@ class GarminSyncManager:
                 max_v = n(res.get('maxHeartRate')) if res else 0
                 rhr_v = n(res.get('restingHeartRate')) if res else 0
                 
-                if not max_v or not rhr_v:
-                    # Fallback to detailed heart rate for missing extremes
-                    hr_det = self.client.get_heart_rates(date_str) or {}
-                    if not max_v: max_v = hr_det.get('maxHeartRate') or 0
-                    if not rhr_v: rhr_v = hr_det.get('sleepingRestingHeartRate') or hr_det.get('restingHeartRate') or 0
+                if (not max_v or not rhr_v) and (is_today or is_near_past):
+                    # Fallback to detailed heart rate only for recent days
+                    try:
+                        self._throttle_api()
+                        hr_det = self.client.get_heart_rates(date_str) or {}
+                        if not max_v: max_v = hr_det.get('maxHeartRate') or 0
+                        if not rhr_v: rhr_v = hr_det.get('sleepingRestingHeartRate') or hr_det.get('restingHeartRate') or 0
+                    except Exception: pass
 
                 data = {
                     'total': n(res.get('totalKilocalories') or res.get('totalCalories')) if res else 0,
@@ -535,7 +578,6 @@ class GarminSyncManager:
                     if sl and sl.startswith(date_str):
                         data.append(a)
             elif metric == 'steps':
-                # get_daily_steps returns a list of days, we pick the one matching date_str
                 res = self.client.get_daily_steps(date_str, date_str)
                 data = res[0] if res else {'totalSteps': 0, 'stepGoal': 10000}
                 data['timestamp'] = time.time()
@@ -556,6 +598,7 @@ class GarminSyncManager:
                 data = {
                     'avg': n(res.get('avgStressLevel')) if res else 0,
                     'max': n(res.get('maxStressLevel')) if res else 0,
+                    'stressValuesArray': res.get('stressValuesArray', []) if res else [],
                     'timestamp': time.time()
                 }
             elif metric == 'intensity_minutes':
@@ -564,7 +607,9 @@ class GarminSyncManager:
                     'moderate': n(res.get('moderateMinutes')) if res else 0,
                     'vigorous': n(res.get('vigorousMinutes')) if res else 0,
                     'total': (n(res.get('moderateMinutes')) + 2 * n(res.get('vigorousMinutes'))) if res else 0,
-                    'goal': n(res.get('weekGoal')) if res else 150,
+                    'goal': (n(res.get('weekGoal')) or 150) if res else 150,
+                    'startDayMinutes': n(res.get('startDayMinutes')) if res else 0,
+                    'imValuesArray': res.get('imValuesArray', []) if res else [],
                     'timestamp': time.time()
                 }
             elif metric == 'hr':
@@ -586,12 +631,13 @@ class GarminSyncManager:
             self.sync_times[f"{metric}_{date_str}"] = time.time()
             return data
         except Exception as e:
-            logger.error(f"Sync failed for {metric} on {date_str}: {e}")
+            logger.warning(f"Sync failed for {metric} on {date_str}: {e}")
             return month_data.get(date_str)
 
     def _sync_activities_range(self, start_date, end_date):
         logger.info(f"Batch syncing activities from {start_date} to {end_date}...")
         try:
+            self._throttle_api()
             api_start = (start_date - timedelta(days=1)).isoformat()
             api_end = (end_date + timedelta(days=1)).isoformat()
             activities = self.client.get_activities_by_date(api_start, api_end)
@@ -619,6 +665,7 @@ class GarminSyncManager:
     def _sync_steps_range(self, start_date, end_date):
         logger.info(f"Batch syncing steps from {start_date} to {end_date}...")
         try:
+            self._throttle_api()
             steps_list = self.client.get_daily_steps(start_date.isoformat(), end_date.isoformat())
             for entry in steps_list:
                 d_str = entry.get('calendarDate')
@@ -633,6 +680,7 @@ class GarminSyncManager:
     def _sync_weight_range(self, start_date, end_date):
         logger.info(f"Batch syncing weight from {start_date} to {end_date}...")
         try:
+            self._throttle_api()
             weigh_ins = self.client.get_weigh_ins(start_date.isoformat(), end_date.isoformat())
             summaries = weigh_ins.get('dailyWeightSummaries', [])
             for s in summaries:
@@ -648,6 +696,10 @@ class GarminSyncManager:
 
     def get_range(self, metric, start_date, end_date, force_refresh=False):
         """Fetch a range of data, using cache where possible and batch fetching for gaps."""
+        today = get_today()
+        # For historical queries, only live sync the last 30 days unless force_refresh is requested
+        threshold_date = today - timedelta(days=30)
+        
         missing_ranges = []
         current = start_date
         range_start = None
@@ -656,30 +708,30 @@ class GarminSyncManager:
             d_str = current.isoformat()
             month_data = GarminPersistence.load_month(metric, d_str)
             
-            is_today = (d_str == get_today().isoformat())
-            is_missing = force_refresh or d_str not in month_data
-            if not force_refresh and d_str in month_data:
-                cached = month_data[d_str]
-                today = get_today()
+            is_today = (d_str == today.isoformat())
+            is_missing = False
+            
+            if force_refresh:
+                is_missing = True
+            elif d_str not in month_data:
+                # Missing from disk: only live-sync if within last 30 days
+                if current >= threshold_date:
+                    is_missing = True
+            else:
+                # Present on disk: check expiration for today or near past (last 3 days)
                 age = (today - current).days
-                is_near_past = age <= 3 and age >= 0
-                expiry = 3600 if is_today else 86400 if is_near_past else None
-
-                # Safe check for dict vs list
-                if isinstance(cached, dict):
-                    if expiry and time.time() - cached.get('timestamp', 0) > expiry:
-                        is_missing = True
-                else:
-                    last_sync = self.sync_times.get(f"{metric}_{d_str}", 0)
-                    # Auto-repair cached [] lists that might be corrupt or incomplete,
-                    # specifically for activities in the last 7 days window.
-                    if metric == 'activities':
-                        if age <= 7 and not cached:
+                is_near_past = 0 <= age <= 3
+                expiry = 60 if is_today else 7200 if is_near_past else None
+                
+                if expiry:
+                    cached = month_data[d_str]
+                    if isinstance(cached, dict):
+                        if time.time() - cached.get('timestamp', 0) > expiry:
                             is_missing = True
-                        elif expiry and time.time() - last_sync > expiry:
+                    else:
+                        last_sync = self.sync_times.get(f"{metric}_{d_str}", 0)
+                        if last_sync == 0 or time.time() - last_sync > expiry:
                             is_missing = True
-                    elif expiry and time.time() - last_sync > expiry:
-                        is_missing = True
             
             if is_missing:
                 if range_start is None:
@@ -694,7 +746,7 @@ class GarminSyncManager:
             missing_ranges.append((range_start, end_date))
 
         # Batch fetch missing ranges
-        if missing_ranges:
+        if missing_ranges and self.client:
             if metric == 'activities':
                 for rs, re in missing_ranges:
                     self._sync_activities_range(rs, re)
@@ -704,6 +756,27 @@ class GarminSyncManager:
             elif metric == 'weight':
                 for rs, re in missing_ranges:
                     self._sync_weight_range(rs, re)
+            else:
+                # Parallelize sync with conservative workers (max 2) to prevent rate limits
+                missing_dates = []
+                for rs, re in missing_ranges:
+                    curr = rs
+                    while curr <= re:
+                        missing_dates.append(curr.isoformat())
+                        curr += timedelta(days=1)
+                
+                if missing_dates:
+                    max_w = min(len(missing_dates), 2)
+                    try:
+                        with ThreadPoolExecutor(max_workers=max_w) as executor:
+                            futures = {executor.submit(self.get_metric_for_date, metric, d, True): d for d in missing_dates}
+                            for f in as_completed(futures):
+                                try:
+                                    f.result()
+                                except Exception as e:
+                                    logger.warning(f"Parallel sync failed for {metric} on {futures[f]}: {e}")
+                    except Exception as e:
+                        logger.error(f"ThreadPoolExecutor error for {metric}: {e}")
 
         # Collect results
         results = []
@@ -1055,10 +1128,13 @@ def get_settings():
         settings['app_version'] = APP_VERSION
         # Add available models list
         settings['available_models'] = [
-            {'id': 'gemini-3-flash-preview', 'name': 'Gemini 3.0 Flash (Experimental)', 'description': 'Latest experimental model'},
-            {'id': 'gemini-2.5-flash', 'name': 'Gemini 2.5 Flash', 'description': 'Most capable model'},
-            {'id': 'gemini-2.5-flash-lite', 'name': 'Gemini 2.5 Flash Lite', 'description': 'Optimized for massive scale and lowest cost'},
-            {'id': 'gemma-3-27b-it', 'name': 'Gemma 3 27B', 'description': 'High quota, great performance'}
+            {'id': 'gemini-3.7-flash', 'name': 'Gemini 3.7 Flash (Recommended)', 'description': 'Flagship model with advanced reasoning and high speed'},
+            {'id': 'gemini-3.5-flash', 'name': 'Gemini 3.5 Flash', 'description': 'Next-gen fast intelligence and analysis'},
+            {'id': 'gemini-3.5-flash-lite', 'name': 'Gemini 3.5 Flash Lite', 'description': 'Ultra low-latency and high throughput'},
+            {'id': 'gemini-2.5-flash', 'name': 'Gemini 2.5 Flash', 'description': 'Reliable balanced performance'},
+            {'id': 'gemini-2.5-flash-lite', 'name': 'Gemini 2.5 Flash Lite', 'description': 'Lowest cost & lightweight summaries'},
+            {'id': 'gemini-2.5-pro', 'name': 'Gemini 2.5 Pro', 'description': 'Deep reasoning for comprehensive training plans'},
+            {'id': 'gemma-3-27b-it', 'name': 'Gemma 3 27B', 'description': 'High quota, great open-model performance'}
         ]
         return jsonify(settings)
     except Exception as e:
@@ -1101,6 +1177,23 @@ def update_settings():
     except Exception as e:
         logger.error(f"Error updating settings: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/settings/muscle_mapping', methods=['GET', 'POST'])
+@login_required
+def settings_muscle_mapping():
+    """Get or update strength exercise muscle mapping."""
+    if request.method == 'POST':
+        try:
+            data = request.get_json()
+            if not isinstance(data, dict):
+                return jsonify({'error': 'Invalid format, expected dictionary'}), 400
+            save_muscle_mapping(data)
+            return jsonify({'success': True, 'message': 'Muscle mapping saved successfully'})
+        except Exception as e:
+            logger.error(f"Failed to save muscle mapping: {e}")
+            return jsonify({'error': str(e)}), 500
+    else:
+        return jsonify(load_muscle_mapping())
 
 @app.route('/api/cache/refresh', methods=['POST'])
 @login_required
@@ -1288,37 +1381,43 @@ def generate_insights_logic():
         def fetch_full_act(a):
             try:
                 aid = a.get('activityId')
-                if not aid: return a
+                if not aid or not mgr.client: return a
                 
-                # Fetch both the full summary AND the second-by-second details via mgr client
+                # Fetch summary via client with rate limiting
+                mgr._throttle_api()
                 full = mgr.client.get_activity(aid)
-                details = mgr.client.get_activity_details(aid)
                 
                 if full: 
                     a.update(full)
-                    # Also check nested summaryDTO
                     s_dto = full.get('summaryDTO', {})
                     if s_dto: a.update(s_dto)
                 
-                if details:
-                    descriptors = details.get('metricDescriptors', [])
-                    metrics_list = details.get('activityDetailMetrics', [])
-                    key_map = {d['key']: d['metricsIndex'] for d in descriptors}
-                    
-                    # Extract power if available
-                    p_key = 'directPower'
-                    if p_key in key_map:
-                        idx = key_map[p_key]
-                        powers = [n(m.get('metrics')[idx]) for m in metrics_list if m.get('metrics') and idx < len(m.get('metrics')) and m.get('metrics')[idx] is not None]
-                        if powers:
-                            a['extracted_avg_p'] = round(sum(powers) / len(powers))
-                            a['extracted_max_p'] = max(powers)
+                # Only fetch detailed track metrics if power is missing and it's a cycling activity
+                if is_cycling_activity(a) and not a.get('extracted_avg_p') and not a.get('avgPower'):
+                    try:
+                        mgr._throttle_api()
+                        details = mgr.client.get_activity_details(aid)
+                        if details:
+                            descriptors = details.get('metricDescriptors', [])
+                            metrics_list = details.get('activityDetailMetrics', [])
+                            key_map = {d['key']: d['metricsIndex'] for d in descriptors}
+                            p_key = 'directPower'
+                            if p_key in key_map:
+                                idx = key_map[p_key]
+                                powers = [n(m.get('metrics')[idx]) for m in metrics_list if m.get('metrics') and idx < len(m.get('metrics')) and m.get('metrics')[idx] is not None]
+                                if powers:
+                                    a['extracted_avg_p'] = round(sum(powers) / len(powers))
+                                    a['extracted_max_p'] = max(powers)
+                    except Exception: pass
                 
                 # Fetch exercise sets for strength training
                 if a.get('activityType', {}).get('typeKey', '').lower() == 'strength_training':
-                    ex_data = mgr.client.get_activity_exercise_sets(aid)
-                    if ex_data and 'exerciseSets' in ex_data:
-                        a['exercise_sets'] = ex_data['exerciseSets']
+                    try:
+                        mgr._throttle_api()
+                        ex_data = mgr.client.get_activity_exercise_sets(aid)
+                        if ex_data and 'exerciseSets' in ex_data:
+                            a['exercise_sets'] = ex_data['exerciseSets']
+                    except Exception: pass
                             
             except Exception as e:
                 logger.warning(f"Failed to enrich activity {a.get('activityId')}: {e}")
@@ -1575,9 +1674,9 @@ def generate_insights_logic():
         # acts_hist is chronological (oldest-to-newest). We take the last 15 (most recent).
         acts_raw = acts_hist[-15:] if acts_hist else []
         
-        # Enrichment: Fetch full activity objects for the most recent activities
+        # Enrichment: Fetch full activity objects for the most recent activities (limited concurrency)
         if acts_raw:
-            with ThreadPoolExecutor(max_workers=5) as executor:
+            with ThreadPoolExecutor(max_workers=2) as executor:
                 acts_raw = list(executor.map(fetch_full_act, acts_raw))
 
         # Sort newest first so the AI sees today's workout at the top of the list
@@ -1686,11 +1785,51 @@ def generate_insights_logic():
 
                 training_history_for_ai.append(session_summary)
 
-        # ── 5. ASSEMBLE DATA PAYLOAD FOR GEMINI ──────────────────────────────────
-        # Edit the sections below to change what data is sent to the AI.
+        # ── 5. ASSEMBLE ENRICHED DATA PAYLOAD FOR GEMINI ─────────────────────────
+        now_est = datetime.now(EST)
+        current_time_str = now_est.strftime("%I:%M %p")
+        day_of_week = now_est.strftime("%A")
+        current_hour = now_est.hour
+        
+        if current_hour < 11:
+            day_phase = "Morning (Day starting; steps, active calories, and hydration are early in accumulation)"
+        elif current_hour < 17:
+            day_phase = "Midday / Afternoon (Mid-day progression; check on fuel, pacing, and remaining targets)"
+        elif current_hour < 21:
+            day_phase = "Evening (Day winding down; post-workout recovery and primary nutrition evaluation)"
+        else:
+            day_phase = "Late Night (Day concluding; review final totals and sleep/recovery prep)"
+
+        # Workout status for today
+        today_acts = [a for a in acts_raw if a.get('startTimeLocal', '').startswith(today_str)]
+        today_has_completed_workout = len(today_acts) > 0
+
+        # Week-to-date (Monday to today)
+        start_of_week = today - timedelta(days=today.weekday())
+        wtd_activities = mgr.get_range('activities', start_of_week, today)
+        wtd_run_mi = sum(n(a.get('distance', 0)) * 0.000621371 for a in wtd_activities if is_running_activity(a))
+        wtd_cycle_mi = sum(n(a.get('distance', 0)) * 0.000621371 for a in wtd_activities if is_cycling_activity(a))
+
         context = {
-            # Today's date
-            "today_date": today_str,
+            # Time & Day Context
+            "time_context": {
+                "date": today_str,
+                "day_of_week": day_of_week,
+                "current_time_est": current_time_str,
+                "day_phase": day_phase,
+                "workout_completed_today": today_has_completed_workout,
+                "workouts_today_count": len(today_acts)
+            },
+
+            # Week-to-Date Volume
+            "week_to_date_progress": {
+                "week_start": start_of_week.isoformat(),
+                "running_miles": round(wtd_run_mi, 1),
+                "cycling_miles": round(wtd_cycle_mi, 1),
+                "intensity_minutes_logged": im_total,
+                "intensity_minutes_goal": im_goal,
+                "intensity_minutes_pct": round(im_total / im_goal * 100) if im_goal else 0
+            },
 
             # ── TODAY'S SNAPSHOT ─────────────────────────────────────────────
             "today_steps": {
@@ -1756,7 +1895,8 @@ def generate_insights_logic():
         }
 
         logger.info(
-            f"AI PAYLOAD SUMMARY | Steps: {steps_today}/{steps_goal} "
+            f"AI PAYLOAD SUMMARY | Time: {current_time_str} ({day_phase}) "
+            f"| Steps: {steps_today}/{steps_goal} "
             f"| Sleep: {sleep_hours_today}h score={sleep_score_today} "
             f"| HRV: {hrv_avg_today} ({hrv_status_today}) "
             f"| Hydration: {hydration_intake_oz}/{hydration_goal_oz}oz ({hydration_pct_today}%) "
@@ -1766,16 +1906,37 @@ def generate_insights_logic():
             f"| Sessions: {len(sessions)}"
         )
 
-        # ── 6. GEMINI CALL WITH RETRY LOGIC ─────────────────────────────────────
+        # ── 6. GEMINI CALL WITH STRUCTURED SYSTEM INSTRUCTION & RETRY ───────────
         ai_client  = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         settings   = load_settings()
-        model_name = settings.get('ai_model', 'gemma-3-27b-it')
+        model_name = settings.get('ai_model', 'gemini-3.7-flash')
 
-        def call_gemini_with_retry(client, model, prompt_text, max_retries=3):
-            """Call Gemini with exponential backoff for 503/504/overloaded errors."""
+        system_instruction = (
+            "You are Athlete Intelligence, an elite, disciplined, and supportive sports performance coach.\n"
+            "Analyze the athlete's biometric, training, and nutritional data with precision and actionable directives.\n\n"
+            "CORE COACHING DIRECTIVES:\n"
+            "1. Cause and Effect: Connect the dots between sleep/HRV, stress, nutrition, and workout output.\n"
+            "2. Time Awareness: Always check time_context (time of day and day_phase). Do NOT scold morning/midday metrics as missed goals; frame them as remaining fuel and targets.\n"
+            "3. Strict & Data-Backed: Avoid generic cheerleading ('Great job!'). Dive straight into data-backed observations with specific numbers.\n"
+            "4. Specific Units: Weight in lbs, hydration in oz, running pace in min/mi, cycling power in watts, cycling speed in mph.\n"
+            "5. Baseline Comparisons: Measure every workout against the athlete's 30-day baselines and personal bests.\n"
+            "6. Strength Workouts: For strength sessions, evaluate total volume (reps x weight) and muscle balance.\n"
+            "7. Formatting: Format daily_summary with clean HTML elements (<ul>, <li>, <strong>, <br>)."
+        )
+
+        def call_gemini_with_retry(client, model, sys_inst, prompt_text, max_retries=3):
+            """Call Gemini with system_instruction and exponential backoff for transient errors."""
             for attempt in range(max_retries):
                 try:
-                    return client.models.generate_content(model=model, contents=prompt_text)
+                    return client.models.generate_content(
+                        model=model,
+                        contents=prompt_text,
+                        config={
+                            'system_instruction': sys_inst,
+                            'response_mime_type': 'application/json',
+                            'temperature': 0.4
+                        }
+                    )
                 except Exception as e:
                     err_str = str(e)
                     is_transient = any(code in err_str for code in
@@ -1792,43 +1953,25 @@ def generate_insights_logic():
                         raise
 
         # ═══════════════════════════════════════════════════════════════════════
-        # 7. THE PROMPT — Edit this section to change the AI's tone and focus.
-        #    The daily_summary and top_highlights fields power the top bar.
-        #    The activity_insights field powers the activity cards below.
+        # 7. THE PROMPT
         # ═══════════════════════════════════════════════════════════════════════
         prompt = f"""
-You are my personal health assistant, acting as a supportive but strict sports coach. You've just reviewed all of my Garmin data for today ({today_str})
-and the past 30 days. Give me a debrief that spots patterns, calls out what actually matters, and provides actionable advice.
-
-FOCUS & ACTIONABLE ADVICE:
-- Connect the dots: explicitly state cause and effect (e.g., "Your sleep score dropped to 60 because you worked out late and had a late meal").
-- Suggest actionable advice based on today's stress, HRV, and activities (e.g., "Given your high stress, focus on active recovery tomorrow").
-- If there are food logs, explicitly state how they fueled my workouts today.
-- For STRENGTH activities (see strength_active_sets), summarize volume (reps x weight) compared to what I usually do.
-- For all other activities, explicitly reference my 30-day baselines (activity_baselines_30d) and point out if I pushed harder, went further, or had lower HR for the same pace/power.
-
-TONE:
-- Act like a supportive but sometimes strict sports coach. Do not be overly gentle if I am slacking.
-- Don't start with "Great job!" or "Hey there!" Just get to the point.
-- Be specific with numbers. Don't say "your sleep was good" — say "7.5h with a score of 82".
-- Weight in lbs, hydration in oz, pace in min/mi, power in watts, speed in mph.
-- HRV status meanings: BALANCED=good, UNBALANCED=elevated stress signal, LOW=needs attention.
-- Stress scale: 0-25=low/resting, 26-50=moderate, 51-75=high, 76+=very high.
+Review the athlete's Garmin and nutrition data below and generate the structured JSON performance debrief.
 
 DATA:
 {json.dumps(context)}
 
 ACTIVITY RULES:
 - Sessions with "cached_insight" already have an analysis — reuse it as-is.
-- For new sessions: generate a "Strava-style" coaching observation explicitly referencing my 30-day baselines.
+- For new sessions: generate a "Strava-style" coaching observation explicitly referencing the 30-day baselines.
 - Every session in 'training_history' MUST appear in 'activity_insights'.
 - Compare to activity_baselines_30d for context. Use ytd_run_max_dist_mi / ytd_cycle_max_power_w for YTD records.
 
-Return ONLY valid JSON (no markdown block wrapper around it, but you MUST use HTML tags like <ul>, <li>, <strong>, <br> inside the strings to properly format the daily_summary).
+JSON SCHEMA REQUIREMENT:
 {{
   "daily_summary": "<ul><li><strong>📊 Readiness:</strong> ...</li><li><strong>🚴 Performance:</strong> ...</li><li><strong>💡 Action Plan:</strong> ...</li></ul>",
   "top_highlights": [
-    "Emoji + strict/supportive callout. Focus STRICTLY on unusual data points, records, or significant streak deviations against exactly my 30-day baselines."
+    "Emoji + strict/supportive callout. Focus STRICTLY on unusual data points, records, or significant streak deviations against exactly the 30-day baselines."
   ],
   "yesterday_summary": "1-2 sentences recap of yesterday's key metrics. Bridge the story if today's data is incoming.",
   "suggestions": ["One concrete, actionable tip.", "Another tip."],
@@ -1836,7 +1979,7 @@ Return ONLY valid JSON (no markdown block wrapper around it, but you MUST use HT
     "session_id": "...",
     "name": "...",
     "highlight": "**BOLD headline** (the one thing that stood out)",
-    "was": "Strava-style coaching observation. Explicitly compare this specific effort to my 30-day baseline. Use **bold** for key numbers.",
+    "was": "Strava-style coaching observation. Explicitly compare this specific effort to the 30-day baseline. Use **bold** for key numbers.",
     "worked_on": "e.g. Aerobic Endurance",
     "better_next": "One strict, specific improvement or recovery suggestion."
   }}]
@@ -1844,7 +1987,7 @@ Return ONLY valid JSON (no markdown block wrapper around it, but you MUST use HT
 """
         # ═══════════════════════════════════════════════════════════════════════
 
-        response = call_gemini_with_retry(ai_client, model_name, prompt)
+        response = call_gemini_with_retry(ai_client, model_name, system_instruction, prompt)
         raw_text = response.text
         
         # Robust JSON extraction
@@ -2224,6 +2367,359 @@ def get_ytd_mileage_comparison():
         logger.error(f"Error fetching YTD mileage comparison: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/dashboard_bootstrap')
+@login_required
+def get_dashboard_bootstrap():
+    """Consolidated endpoint delivering entire dashboard initial state in one fast call."""
+    try:
+        mgr = get_sync_manager()
+        today = get_today()
+        today_str = today.isoformat()
+        
+        # 1. Stats & Metrics
+        cal_data = mgr.get_metric_for_date('stats', today_str) or {}
+        sleep_data = mgr.get_metric_for_date('sleep', today_str) or {}
+        hrv_data = mgr.get_metric_for_date('hrv', today_str) or {}
+        
+        if mgr.client is None and not cal_data.get('steps'):
+            yesterday_str = (today - timedelta(days=1)).isoformat()
+            cal_data = mgr.get_metric_for_date('stats', yesterday_str) or {}
+            sleep_data = mgr.get_metric_for_date('sleep', yesterday_str) or {}
+            hrv_data = mgr.get_metric_for_date('hrv', yesterday_str) or {}
+            
+        start_date_7d = today - timedelta(days=7)
+        start_date_30d = today - timedelta(days=30)
+        
+        acts_raw = mgr.get_range('activities', start_date_7d, today)
+        sessions = group_activities_into_sessions(acts_raw)
+        
+        ui_activities = []
+        for s in sessions:
+            if len(s) == 1:
+                ui_activities.append(s[0])
+            else:
+                total_dist = sum(n(a.get('distance', 0)) for a in s)
+                total_dur = sum(n(a.get('duration', 0)) for a in s)
+                total_cals = sum(n(a.get('calories') or a.get('summaryDTO', {}).get('calories')) for a in s)
+                primary = max(s, key=lambda x: n(x.get('distance', 0))) if s else s[0]
+                grouped = primary.copy()
+                grouped['distance'] = total_dist
+                grouped['duration'] = total_dur
+                grouped['calories'] = total_cals
+                grouped['activityName'] = f"Grouped Session: {len(s)} Stages"
+                grouped['is_grouped'] = True
+                grouped['grouped_ids'] = [str(a.get('activityId')) for a in s]
+                grouped['grouped_activities'] = s
+                ui_activities.append(grouped)
+
+        weight_doc = mgr.get_metric_for_date('weight', today_str) or {}
+        weight_grams = weight_doc.get('weight', 0)
+        if not weight_grams:
+            for i in range(1, 6):
+                prev_date = (today - timedelta(days=i)).isoformat()
+                prev_weight = mgr.get_metric_for_date('weight', prev_date) or {}
+                if prev_weight.get('weight'):
+                    weight_grams = prev_weight['weight']
+                    break
+        if not weight_grams:
+            # Look back across past year for the most recent logged weight
+            all_cached_weights = mgr.get_range('weight', today - timedelta(days=365), today)
+            valid_w = [x for x in all_cached_weights if x.get('weight')]
+            if valid_w:
+                weight_grams = valid_w[-1]['weight']
+                    
+        stats_payload = {
+            'offline_mode': mgr.client is None,
+            'steps': cal_data.get('steps', 0),
+            'steps_goal': cal_data.get('steps_goal', 10000),
+            'resting_hr': cal_data.get('resting_hr', 0),
+            'max_hr': cal_data.get('max_hr', 0),
+            'stress_avg': cal_data.get('stress_avg', 0),
+            'sleep_seconds': n(sleep_data.get('sleepTimeSeconds')),
+            'sleep_score': n(
+                sleep_data.get('sleepScore') or 
+                sleep_data.get('score') or 
+                sleep_data.get('sleepScores', {}).get('overall', {}).get('value')
+            ),
+            'hrv': hrv_data,
+            'activities': ui_activities[:10],
+            'weight_grams': weight_grams,
+            'calories': {
+                'total': cal_data.get('total', 0),
+                'active': cal_data.get('active', 0),
+                'resting': cal_data.get('resting', 0)
+            }
+        }
+        
+        # 2. Goals Config & Longterm Actuals
+        start_of_month = today.replace(day=1)
+        start_of_year = today.replace(month=1, day=1)
+        all_activities_year = mgr.get_range('activities', start_of_year, today)
+        
+        def calc_mileage(acts, s_date):
+            r, c = 0, 0
+            for a in acts:
+                sl = a.get('startTimeLocal', '')
+                if not sl: continue
+                try:
+                    ad = datetime.strptime(sl.split(' ')[0], '%Y-%m-%d').date()
+                    if ad < s_date: continue
+                except: continue
+                dist_mi = n(a.get('distance', 0)) * 0.000621371
+                if is_running_activity(a): r += dist_mi
+                elif is_cycling_activity(a): c += dist_mi
+            return r, c
+            
+        m_run, m_cycle = calc_mileage(all_activities_year, start_of_month)
+        y_run, y_cycle = calc_mileage(all_activities_year, start_of_year)
+        
+        goals_config_payload = {
+            'monthly': {
+                'running': float(os.getenv('MONTHLY_RUNNING_GOAL', 20)),
+                'cycling': float(os.getenv('MONTHLY_CYCLING_GOAL', 200)),
+                'running_actual': m_run,
+                'cycling_actual': m_cycle
+            },
+            'yearly': {
+                'running': float(os.getenv('YEARLY_RUNNING_GOAL', 365)),
+                'cycling': float(os.getenv('YEARLY_CYCLING_GOAL', 5000)),
+                'running_actual': y_run,
+                'cycling_actual': y_cycle
+            }
+        }
+        
+        longterm_stats_payload = {
+            'month': {'running': m_run, 'cycling': m_cycle},
+            'year': {'running': y_run, 'cycling': y_cycle}
+        }
+        
+        # 3. YTD comparison
+        current_day_of_year = today.timetuple().tm_yday
+        cycling_daily_data = {}
+        running_daily_data = {}
+        target_years = [2024, 2025, 2026]
+        
+        for yr in target_years:
+            s_date = date(yr, 1, 1)
+            if yr == today.year: e_fetch = today
+            elif yr > today.year:
+                cycling_daily_data[str(yr)] = [0] * current_day_of_year
+                running_daily_data[str(yr)] = [0] * current_day_of_year
+                continue
+            else: e_fetch = date(yr, 12, 31)
+            
+            try:
+                yr_acts = mgr.get_range('activities', s_date, e_fetch)
+                d_map_c, d_map_r = {}, {}
+                for act in yr_acts:
+                    sl = act.get('startTimeLocal')
+                    if not sl: continue
+                    try:
+                        d = date.fromisoformat(sl.split(' ')[0])
+                        if d.year != yr: continue
+                        dn = d.timetuple().tm_yday
+                        dist_m = n(act.get('distance', 0))
+                        if is_cycling_activity(act): d_map_c[dn] = d_map_c.get(dn, 0) + dist_m
+                        elif is_running_activity(act): d_map_r[dn] = d_map_r.get(dn, 0) + dist_m
+                    except: continue
+                c_cum, r_cum = [], []
+                cm, rm = 0, 0
+                for d_idx in range(1, current_day_of_year + 1):
+                    cm += d_map_c.get(d_idx, 0)
+                    rm += d_map_r.get(d_idx, 0)
+                    c_cum.append(round(cm * 0.000621371, 1))
+                    r_cum.append(round(rm * 0.000621371, 1))
+                cycling_daily_data[str(yr)] = c_cum
+                running_daily_data[str(yr)] = r_cum
+            except Exception:
+                cycling_daily_data[str(yr)] = [0] * current_day_of_year
+                running_daily_data[str(yr)] = [0] * current_day_of_year
+                
+        c_goal = float(os.getenv('YEARLY_CYCLING_GOAL', 5000))
+        r_goal = float(os.getenv('YEARLY_RUNNING_GOAL', 365))
+        c_goal_line = [round((c_goal / 365) * (i + 1), 1) for i in range(current_day_of_year)]
+        r_goal_line = [round((r_goal / 365) * (i + 1), 1) for i in range(current_day_of_year)]
+        
+        ytd_payload = {
+            'labels': [f"Day {i+1}" for i in range(current_day_of_year)],
+            'cycling': {'years': cycling_daily_data, 'goal_line': c_goal_line, 'yearly_goal': c_goal},
+            'running': {'years': running_daily_data, 'goal_line': r_goal_line, 'yearly_goal': r_goal}
+        }
+        
+        # 4. History data for immediate chart rendering
+        # Steps (7d + streak)
+        all_steps = mgr.get_range('steps', start_date_7d, today)
+        all_steps.sort(key=lambda x: x['calendarDate'], reverse=True)
+        streak_data = mgr.get_range('steps', today - timedelta(days=90), today)
+        streak_data.sort(key=lambda x: x['calendarDate'], reverse=True)
+        streak = 0
+        temp_exp = today
+        for day in streak_data:
+            ds = day.get('calendarDate')
+            if not ds: continue
+            cd = date.fromisoformat(ds)
+            if (temp_exp - cd).days > 1: break
+            st = n(day.get('totalSteps'))
+            gl = n(day.get('stepGoal') or day.get('steps_goal') or 10000)
+            if ds == today_str:
+                if st >= gl: streak += 1
+                temp_exp = cd; continue
+            if st >= gl: streak += 1; temp_exp = cd
+            else: break
+        steps_history = list(reversed([d for d in all_steps if d['calendarDate'] <= today_str][:7]))
+        
+        # HR (7d)
+        stats_7d = mgr.get_range('stats', start_date_7d, today)
+        hr_history = []
+        for day in stats_7d:
+            hr_history.append({
+                'date': day.get('date'),
+                'rhr': day.get('resting_hr', 0),
+                'max': day.get('max_hr', 0),
+                'min': day.get('min_hr', 0)
+            })
+        client = mgr.client
+        max_hr = get_user_max_hr(client)
+        zones = [round(max_hr * (0.5 + i*0.1)) for i in range(5)]
+        
+        # Stress (7d)
+        stress_history = mgr.get_range('stress', start_date_7d, today)
+        
+        # Sleep (7d)
+        sleep_raw = mgr.get_range('sleep', start_date_7d, today)
+        sleep_history = []
+        for day in sleep_raw:
+            scores = day.get('sleepScores', {})
+            sleep_history.append({
+                'date': day.get('calendarDate'),
+                'score': scores.get('overall', {}).get('value') if isinstance(scores, dict) else None,
+                'total': day.get('sleepTimeSeconds'),
+                'deep': day.get('deepSleepSeconds'),
+                'light': day.get('lightSleepSeconds'),
+                'rem': day.get('remSleepSeconds'),
+                'awake': day.get('awakeSleepSeconds')
+            })
+            
+        # Weight (30d, fallback to 1y for summary if needed)
+        weight_raw = mgr.get_range('weight', start_date_30d, today)
+        weight_history = []
+        for day in weight_raw:
+            val = day.get('weight')
+            if val:
+                kg = val / 1000
+                weight_history.append({
+                    'date': day['date'],
+                    'weight_kg': round(kg, 1),
+                    'weight_lbs': round(kg * 2.20462, 1)
+                })
+        weight_summary = {}
+        if weight_history:
+            latest_w = weight_history[-1]
+            weight_summary['latest_lbs'] = latest_w['weight_lbs']
+            weight_summary['latest_kg'] = latest_w['weight_kg']
+            weight_summary['date'] = latest_w['date']
+            if len(weight_history) > 7:
+                weight_summary['delta_lbs'] = round(latest_w['weight_lbs'] - weight_history[-8]['weight_lbs'], 1)
+        elif weight_grams:
+            kg = weight_grams / 1000
+            weight_summary['latest_lbs'] = round(kg * 2.20462, 1)
+            weight_summary['latest_kg'] = round(kg, 1)
+                
+        # Hydration (7d)
+        hydration_history = mgr.get_range('hydration', start_date_7d, today)
+        
+        # HRV (7d)
+        hrv_history = mgr.get_range('hrv', start_date_7d, today)
+        
+        # Intensity Minutes (7d)
+        im_history = mgr.get_range('intensity_minutes', start_date_7d, today)
+
+        today_sleep_1d = {
+            'range': '1d',
+            'summary': {
+                'score': sleep_data.get('sleepScores', {}).get('overall', {}).get('value') if isinstance(sleep_data.get('sleepScores'), dict) else (sleep_data.get('sleepScore') or sleep_data.get('score')),
+                'total': sleep_data.get('sleepTimeSeconds'),
+                'deep': sleep_data.get('deepSleepSeconds'),
+                'light': sleep_data.get('lightSleepSeconds'),
+                'rem': sleep_data.get('remSleepSeconds'),
+                'awake': sleep_data.get('awakeSleepSeconds')
+            }
+        }
+        today_hydration_1d = {
+            'range': '1d',
+            'summary': {
+                'intake': cal_data.get('hydration_intake', 0),
+                'goal': cal_data.get('hydration_goal', 2000)
+            }
+        }
+        today_hrv_1d = {
+            'range': '1d',
+            'hrvSummary': hrv_data,
+            'summary': hrv_data
+        }
+        hr_data_today = mgr.get_metric_for_date('hr', today_str) or {}
+        today_hr_1d = {
+            'range': '1d',
+            'summary': {
+                'rhr': cal_data.get('resting_hr') or hr_data_today.get('restingHeartRate') or hr_data_today.get('sleepingRestingHeartRate'),
+                'max': cal_data.get('max_hr') or hr_data_today.get('maxHeartRate'),
+                'min': cal_data.get('min_hr') or hr_data_today.get('minHeartRate')
+            },
+            'samples': hr_data_today.get('heartRateValues') or [],
+            'zones': zones,
+            'max_hr': max_hr
+        }
+        stress_data_today = mgr.get_metric_for_date('stress', today_str) or {}
+        today_stress_1d = {
+            'range': '1d',
+            'summary': {
+                'avg': cal_data.get('stress_avg') or stress_data_today.get('avg'),
+                'max': stress_data_today.get('max')
+            },
+            'samples': stress_data_today.get('stressValuesArray') or []
+        }
+        im_data_today = mgr.get_metric_for_date('intensity_minutes', today_str) or {}
+        today_im_1d = {
+            'range': '1d',
+            'summary': {
+                'total': im_data_today.get('total', 0),
+                'moderate': im_data_today.get('moderate', 0),
+                'vigorous': im_data_today.get('vigorous', 0),
+                'goal': im_data_today.get('goal', 150) or 150,
+                'startDayMinutes': im_data_today.get('startDayMinutes', 0),
+                'weeklyTotal': (im_data_today.get('startDayMinutes', 0) or 0) + (im_data_today.get('total', 0) or 0)
+            },
+            'samples': im_data_today.get('imValuesArray') or []
+        }
+
+        return jsonify({
+            'stats': stats_payload,
+            'goals_config': goals_config_payload,
+            'longterm_stats': longterm_stats_payload,
+            'ytd': ytd_payload,
+            'today_1d': {
+                'sleep': today_sleep_1d,
+                'hydration': today_hydration_1d,
+                'hrv': today_hrv_1d,
+                'hr': today_hr_1d,
+                'stress': today_stress_1d,
+                'intensity_minutes': today_im_1d
+            },
+            'history': {
+                'steps': {'history': steps_history, 'streak': streak, 'range': '1w'},
+                'hr': {'history': hr_history, 'zones': zones, 'max_hr': max_hr, 'range': '1w'},
+                'stress': {'history': stress_history, 'range': '1w'},
+                'sleep': {'history': sleep_history, 'range': '1w'},
+                'weight': {'history': weight_history, 'summary': weight_summary, 'range': '1m'},
+                'hydration': {'history': hydration_history, 'range': '1w'},
+                'hrv': {'history': hrv_history, 'range': '1w'},
+                'intensity_minutes': {'history': im_history, 'range': '1w'}
+            }
+        })
+    except Exception as e:
+        logger.error(f"Error in dashboard bootstrap: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/steps_history')
 @login_required
 def get_steps_history():
@@ -2350,13 +2846,12 @@ def get_hr_history():
                 max_v = day.get('max_hr') or 0
                 rhr_v = day.get('resting_hr') or 0
                 
-                # If stats are missing HR info, try peeking at the 'hr' detail summary
+                # If stats are missing HR info, check cached 'hr' detail without making live API calls
                 if not max_v or not rhr_v:
-                    logger.info(f"Deep backfill HR for {d_str}: current max={max_v}, rhr={rhr_v}")
-                    hr_detail = mgr.get_metric_for_date('hr', d_str) or {}
+                    month_hr = GarminPersistence.load_month('hr', d_str)
+                    hr_detail = month_hr.get(d_str, {})
                     if not max_v: max_v = hr_detail.get('maxHeartRate') or 0
                     if not rhr_v: rhr_v = hr_detail.get('sleepingRestingHeartRate') or hr_detail.get('restingHeartRate') or 0
-                    logger.info(f"Deep backfill HR for {d_str} result: max={max_v}, rhr={rhr_v}")
                 
                 history.append({
                     'date': d_str,
@@ -2474,7 +2969,7 @@ def get_calorie_history():
     try:
         range_val = request.args.get('range', '1w')
         end_date_str = request.args.get('end_date')
-        client = get_garmin_client()
+        mgr = get_sync_manager()
         
         if end_date_str:
             end_date = date.fromisoformat(end_date_str)
@@ -2487,10 +2982,20 @@ def get_calorie_history():
         elif range_val == '1m': days = 31
         elif range_val == '1y': days = 365
         
-        dates_to_fetch = [end_date - timedelta(days=i) for i in range(days)]
-        dates_to_fetch = sorted(dates_to_fetch)
+        start_date = end_date - timedelta(days=days - 1)
+        dates_to_fetch = [start_date + timedelta(days=i) for i in range(days)]
         
         logs = load_json(FOOD_LOGS_FILE, [])
+        stats_list = mgr.get_range('stats', start_date, end_date)
+        weight_list = mgr.get_range('weight', start_date, end_date)
+        
+        stats_by_date = {s['date']: s for s in stats_list if 'date' in s}
+        weight_by_date = {}
+        for w in weight_list:
+            d_str = w.get('date') or w.get('calendarDate')
+            val = w.get('weight')
+            if d_str and val:
+                weight_by_date[d_str] = round((val / 1000) * 2.20462, 1)
         
         # Build daily nutrition sums
         def get_day_nutrition(d_str):
@@ -2505,64 +3010,28 @@ def get_calorie_history():
                 'caffeine_mg': sum(l.get('caffeine_mg', 0) for l in day_logs),
             }
         
-        # Get weight history for range
-        weight_by_date = {}
-        try:
-            start_date = dates_to_fetch[0]
-            res = client.get_weigh_ins(start_date.isoformat(), end_date.isoformat())
-            summaries = res if isinstance(res, list) else res.get('dailyWeightSummaries', [])
-            for day in summaries:
-                d_str = day.get('summaryDate')
-                if d_str and 'latestWeight' in day and day['latestWeight'].get('weight'):
-                    kg = day['latestWeight']['weight'] / 1000
-                    weight_by_date[d_str] = round(kg * 2.20462, 1)
-        except Exception as e:
-            logger.warning(f"Weight fetch for calorie history: {e}")
-        
-        from concurrent.futures import ThreadPoolExecutor
-        
-        def fetch_day(d):
+        history = []
+        for d in dates_to_fetch:
             d_str = d.isoformat()
-            try:
-                cal_data = get_calorie_data(client, d_str)
-                nut = get_day_nutrition(d_str)
-                total_burned = cal_data['total']
-                consumed = nut['consumed']
-                weight = weight_by_date.get(d_str)
-                return {
-                    'date': d_str,
-                    'active_calories': cal_data['active'],
-                    'resting_calories': cal_data['resting'],
-                    'total_calories': total_burned,
-                    'consumed': consumed,
-                    'net_energy': consumed - total_burned,
-                    'cholesterol_mg': nut['cholesterol_mg'],
-                    'protein_g': nut['protein_g'],
-                    'carbs_g': nut['carbs_g'],
-                    'sugar_g': nut['sugar_g'],
-                    'fat_g': nut['fat_g'],
-                    'caffeine_mg': nut['caffeine_mg'],
-                    'weight_lbs': weight
-                }
-            except Exception as e:
-                logger.warning(f"Calorie history day {d_str}: {e}")
-                nut = get_day_nutrition(d_str)
-                return {
-                    'date': d_str,
-                    'active_calories': 0,
-                    'resting_calories': 0,
-                    'total_calories': 0,
-                    'consumed': nut['consumed'],
-                    'net_energy': nut['consumed'],
-                    'cholesterol_mg': nut['cholesterol_mg'],
-                    'protein_g': nut['protein_g'],
-                    'carbs_g': nut['carbs_g'],
-                    'fat_g': nut['fat_g'],
-                    'weight_lbs': weight_by_date.get(d_str)
-                }
-        
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            history = list(executor.map(fetch_day, dates_to_fetch))
+            cal_data = stats_by_date.get(d_str, {'total': 0, 'active': 0, 'resting': 0})
+            nut = get_day_nutrition(d_str)
+            total_burned = cal_data.get('total', 0)
+            consumed = nut['consumed']
+            history.append({
+                'date': d_str,
+                'active_calories': cal_data.get('active', 0),
+                'resting_calories': cal_data.get('resting', 0),
+                'total_calories': total_burned,
+                'consumed': consumed,
+                'net_energy': consumed - total_burned,
+                'cholesterol_mg': nut['cholesterol_mg'],
+                'protein_g': nut['protein_g'],
+                'carbs_g': nut['carbs_g'],
+                'sugar_g': nut['sugar_g'],
+                'fat_g': nut['fat_g'],
+                'caffeine_mg': nut['caffeine_mg'],
+                'weight_lbs': weight_by_date.get(d_str)
+            })
         
         return jsonify({'history': history, 'range': range_val})
     except Exception as e:
@@ -2620,6 +3089,16 @@ def get_weight_history():
             if len(history) > 7:
                 old = history[-8]
                 summary['delta_lbs'] = round(latest['weight_lbs'] - old['weight_lbs'], 1)
+        else:
+            all_cached_weights = mgr.get_range('weight', end_date - timedelta(days=365), end_date)
+            valid_w = [x for x in all_cached_weights if x.get('weight')]
+            if valid_w:
+                latest = valid_w[-1]
+                kg = latest['weight'] / 1000
+                lbs = kg * 2.20462
+                summary['latest_lbs'] = round(lbs, 1)
+                summary['latest_kg'] = round(kg, 1)
+                summary['date'] = latest.get('date') or latest.get('calendarDate')
             
         return jsonify({'history': history, 'summary': summary})
     except Exception as e:
@@ -3773,27 +4252,11 @@ def get_activity_heatmap():
             return jsonify(activity_heatmap_cache['data'])
 
     try:
-        client = get_garmin_client()
+        mgr = get_sync_manager()
         today = get_today()
         start_date = today - timedelta(days=366)
         
-        # 1. Attempt date-range fetch (more precise for exactly 1 year)
-        start_str = start_date.isoformat()
-        end_str = today.isoformat()
-        logger.info(f"Heatmap: Attempting date-range fetch from {start_str} to {end_str}")
-        
-        activities = []
-        try:
-            activities = garmin_request(client.get_activities_by_date, start_str, end_str)
-        except Exception as e:
-            logger.warning(f"Heatmap: get_activities_by_date failed: {e}. Falling back...")
-
-        # 2. Fallback to count-based fetch if empty or failed
-        if not activities:
-            logger.info("Heatmap: No activities from date-range. Fetching last 1000...")
-            activities = garmin_request(client.get_activities, 0, 1000)
-        
-        logger.info(f"Heatmap: Found {len(activities) if activities else 0} total activities to process.")
+        activities = mgr.get_range('activities', start_date, today)
         
         heatmap = {}
         for activity in activities:
@@ -3821,11 +4284,6 @@ def get_activity_heatmap():
                     'dur': dur_m
                 })
 
-        # Debug: Log a few keys to verify format
-        if heatmap:
-            sample_keys = list(heatmap.keys())[:3]
-            logger.info(f"Heatmap: Generated {len(heatmap)} date keys. Samples: {sample_keys}")
-
         # Final Cache Commit
         activity_heatmap_cache['data'] = heatmap
         activity_heatmap_cache['timestamp'] = now
@@ -3839,14 +4297,16 @@ def get_activity_heatmap():
 @login_required
 def get_calendar_activities():
     try:
-        client = get_garmin_client()
+        mgr = get_sync_manager()
         start = request.args.get('start_date')
         end = request.args.get('end_date')
         
         if not start or not end:
             return jsonify({'error': 'Start and End dates required'}), 400
             
-        activities = client.get_activities_by_date(start, end)
+        start_dt = date.fromisoformat(start)
+        end_dt = date.fromisoformat(end)
+        activities = mgr.get_range('activities', start_dt, end_dt)
         return jsonify(activities)
 
     except Exception as e:
@@ -3867,7 +4327,8 @@ def get_heatmap_data():
             return jsonify(heatmap_cache['data'])
 
     try:
-        client = get_garmin_client()
+        mgr = get_sync_manager()
+        client = mgr.client
         
         today = get_today()
         if range_val == 'this_year':
@@ -3880,9 +4341,9 @@ def get_heatmap_data():
             start_date = date(end_date.year, end_date.month, 1)
         elif range_val == 'last_year':
             start_date = date(today.year - 1, 1, 1)
-            end_date = date(today.year - 1, 12, 31) # Correctly set end date
+            end_date = date(today.year - 1, 12, 31)
         elif range_val == 'all':
-            start_date = date(2010, 1, 1) # Start from 2010 per user request
+            start_date = date(2010, 1, 1)
         else:
             start_date = today - timedelta(days=90)
             
@@ -3890,11 +4351,8 @@ def get_heatmap_data():
         if range_val not in ['last_year', 'last_month']:
             end_date = today
 
-        # 1. Fetch Activity List (Summary)
-        # Note: get_activities matches by count, get_activities_by_date matches by date
-        # We use by_date which is more robust for "This Year"
-        logger.info(f"Fetching activities for heatmap: {start_date} to {end_date}")
-        activities = client.get_activities_by_date(start_date.isoformat(), end_date.isoformat())
+        # 1. Fetch Activity List via Sync Manager (Local Cache Priority)
+        activities = mgr.get_range('activities', start_date, end_date)
         
         # 2. Identify missing Cached Polylines
         missing_ids = []
