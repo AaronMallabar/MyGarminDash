@@ -328,10 +328,30 @@ window.performUpdate = async function () {
         const data = await res.json();
 
         if (data.success) {
-            info.textContent = 'Reloading in 10s...';
-            setTimeout(() => {
-                window.location.reload();
-            }, 10000);
+            info.textContent = 'Updating code & restarting service...';
+            
+            // Poll for server to come back up
+            let attempts = 0;
+            const pollInterval = setInterval(async () => {
+                attempts++;
+                info.textContent = `Restarting (${attempts}s)...`;
+                try {
+                    const ping = await fetch('/api/stats', { cache: 'no-store' });
+                    if (ping.ok) {
+                        clearInterval(pollInterval);
+                        info.textContent = '✅ Update complete! Reloading...';
+                        info.style.color = 'var(--success-color)';
+                        setTimeout(() => window.location.reload(), 1200);
+                    }
+                } catch (e) {
+                    // Server is restarting, keep waiting
+                }
+                if (attempts > 30) {
+                    clearInterval(pollInterval);
+                    info.textContent = 'Reloading now...';
+                    setTimeout(() => window.location.reload(), 1500);
+                }
+            }, 1000);
         } else {
             info.textContent = 'Failed: ' + (data.error || 'Unknown');
             info.style.color = '#f87171';
@@ -339,11 +359,9 @@ window.performUpdate = async function () {
             checkBtn.disabled = false;
         }
     } catch (err) {
-        console.error('Update failed:', err);
-        info.textContent = 'Reconnecting...';
-        setTimeout(() => {
-            window.location.reload();
-        }, 5000);
+        console.error('Update fetch error:', err);
+        info.textContent = 'Service restarting. Reconnecting...';
+        setTimeout(() => window.location.reload(), 6000);
     }
 }
 

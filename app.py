@@ -1310,6 +1310,20 @@ def perform_update():
         logger.error(f"Error performing update: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/update_log', methods=['GET'])
+@login_required
+def get_update_log():
+    """Retrieve output of the last update attempt."""
+    log_file = os.path.join(GarminPersistence.BASE_DIR, "update.log")
+    if os.path.exists(log_file):
+        try:
+            with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()
+                return jsonify({'log': "".join(lines[-100:])})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    return jsonify({'log': 'No update log found yet.'})
+
 @app.route('/api/ai_insights')
 @login_required
 def get_ai_insights():

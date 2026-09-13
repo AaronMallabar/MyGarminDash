@@ -18,11 +18,14 @@ pip install --upgrade pip
 pip install -r requirements.txt
 pip install gunicorn
 
-# 4. Setup Service
+# 4. Setup Service & Sudoers Permission for Self-Update
 echo "⚙️ Configuring Systemd Service..."
 sudo cp garmin.service /etc/systemd/system/garmin.service
 sudo systemctl daemon-reload
 sudo systemctl enable garmin.service
+
+echo "ubuntu ALL=(ALL) NOPASSWD: /bin/systemctl restart garmin.service, /usr/bin/systemctl restart garmin.service" | sudo tee /etc/sudoers.d/garmin_update
+sudo chmod 0440 /etc/sudoers.d/garmin_update
 
 # 5. Setup Nginx
 echo "🌐 Configuring Nginx..."
