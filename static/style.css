@@ -1840,4 +1840,32 @@ h1 {
 
 .leaflet-tile-pane {
     filter: brightness(0.95) contrast(1.05);
+}
+
+/* Skeleton Loading Shimmer Effects */
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer {
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.03) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite ease-in-out;
+    border-radius: 0.5rem;
+}
+
+/* Mobile Safe Area & Standalone PWA adjustments */
+@supports (padding-top: env(safe-area-inset-top)) {
+    body {
+        padding-top: max(1.5rem, env(safe-area-inset-top));
+        padding-bottom: max(2rem, env(safe-area-inset-bottom));
+        padding-left: max(1rem, env(safe-area-inset-left));
+        padding-right: max(1rem, env(safe-area-inset-right));
+    }
+}
+
+/* Native Tap Highlight Removal */
+* {
+    -webkit-tap-highlight-color: transparent;
 }

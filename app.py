@@ -951,6 +951,10 @@ def server_warmup():
             mgr.get_metric_for_date('stats', d_str)
             mgr.get_metric_for_date('sleep', d_str)
             mgr.get_metric_for_date('weight', d_str)
+            mgr.get_metric_for_date('hr', d_str)
+            mgr.get_metric_for_date('stress', d_str)
+            mgr.get_metric_for_date('hrv', d_str)
+            mgr.get_metric_for_date('intensity_minutes', d_str)
         
         # Pre-fetch activity heatmap (lightweight, but slow to build)
         # Check if disk cache is expired or missing

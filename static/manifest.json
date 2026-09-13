@@ -1,0 +1,23 @@
+{
+  "name": "Aaron's Fitness Dashboard",
+  "short_name": "GarminDash",
+  "description": "Personal Garmin Health, Performance, Nutrition & AI Insights Dashboard",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1120",
+  "theme_color": "#0b1120",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": [
+    "fitness",
+    "health",
+    "lifestyle"
+  ]
+}
