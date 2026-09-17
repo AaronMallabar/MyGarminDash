@@ -12,6 +12,62 @@ window.openModal = function (id) {
     }
 }
 
+window.openMetricDetail = function (metricKey) {
+    const modal = document.getElementById('metricDetailModal');
+    if (!modal) return;
+
+    // Hide all metric detail panes
+    document.querySelectorAll('.metric-detail-pane').forEach(pane => {
+        pane.style.display = 'none';
+    });
+
+    // Show selected pane
+    const targetPane = document.getElementById(`modal-pane-${metricKey}`);
+    if (targetPane) {
+        targetPane.style.display = 'block';
+    }
+
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+
+    // Highlight current active button for this pane
+    const activeRange = metricKey === 'weight' ? (window.currentWeightRange || '1m') : (window[`current${metricKey.toUpperCase()}Range`] || '1w');
+    if (targetPane) {
+        targetPane.querySelectorAll('.drilldown-range-btn').forEach(btn => {
+            if (btn.getAttribute('onclick')?.includes(`'${activeRange}'`)) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }
+
+    if (window.updateMetricDatePill) {
+        const endDate = metricKey === 'weight' ? window.currentWeightEndDate : window[`current${metricKey.toUpperCase()}EndDate`];
+        window.updateMetricDatePill(metricKey, activeRange, endDate || new Date());
+    }
+
+    // Trigger Chart reload for this metric with active range
+    setTimeout(() => {
+        if (metricKey === 'im' && window.updateIMRange) window.updateIMRange(window.currentIMRange || '1w');
+        else if (metricKey === 'steps' && window.updateStepsRange) window.updateStepsRange(window.currentStepsRange || '1w');
+        else if (metricKey === 'sleep' && window.updateSleepRange) window.updateSleepRange(window.currentSleepRange || '1w');
+        else if (metricKey === 'hrv' && window.updateHRVRange) window.updateHRVRange(window.currentHRVRange || '1w');
+        else if (metricKey === 'hr' && window.updateHRRange) window.updateHRRange(window.currentHRRange || '1w');
+        else if (metricKey === 'stress' && window.updateStressRange) window.updateStressRange(window.currentStressRange || '1w');
+        else if (metricKey === 'weight' && window.updateWeightRange) window.updateWeightRange(window.currentWeightRange || '1m');
+        else if (metricKey === 'hydration' && window.updateHydrationRange) window.updateHydrationRange(window.currentHydrationRange || '1w');
+
+        if (window.chartInstances) {
+            Object.values(window.chartInstances).forEach(chart => {
+                if (chart && typeof chart.resize === 'function') {
+                    chart.resize();
+                }
+            });
+        }
+    }, 50);
+};
+
 window.closeModal = function (id) {
     if (!id) {
         document.querySelectorAll('.modal.active').forEach(m => m.classList.remove('active'));

@@ -619,739 +619,699 @@
 
         </div>
 
-        <!-- AI Training Insights -->
-        <div class="ai-insights-container" id="ai-insights-section" style="display: none;">
-            <div class="ai-card">
-                <div class="ai-header">
-                    <div class="ai-badge">
-                        <div class="pulse-dot"></div>
-                        <span id="ai-insight-title">AI Training Insight</span>
-                    </div>
-                    <div id="ai-model-name"
-                        style="font-size: 0.7rem; color: var(--text-secondary); font-style: italic;"></div>
+        <!-- Daily Readiness & AI Coach Hero -->
+        <div class="readiness-hero" id="readiness-hero-section">
+            <div class="readiness-score-box">
+                <div class="readiness-gauge">
+                    <svg viewBox="0 0 36 36">
+                        <path class="readiness-gauge-circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path id="readiness-gauge-circle" class="readiness-gauge-circle-val" stroke-dasharray="85, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    </svg>
+                    <span class="readiness-number" id="ai-readiness-score">--</span>
                 </div>
-                <div class="ai-grid" id="ai-content-grid">
-                    <div class="insight-section">
-                        <h3>Daily Summary</h3>
-                        <div class="insight-content" id="ai-daily-summary">
-                            Generating your daily summary...
-                        </div>
-                        <!-- Quick-scan highlight chips (populated by fetchAIInsights) -->
-                        <div id="ai-top-highlights"
-                            style="display: none; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem;"></div>
-                    </div>
-                    <div class="insight-section">
-                        <h3>Yesterday's Recap</h3>
-                        <div class="insight-content" id="ai-yesterday-summary">
-                            Summarizing yesterday...
-                        </div>
-                    </div>
-                    <div class="insight-section">
-                        <h3>Optimization Suggestions</h3>
-                        <div class="insight-content" id="ai-suggestions">
-                            Analyzing your metrics for improvements...
-                        </div>
-                    </div>
+                <div class="readiness-badge" id="ai-readiness-category">Optimal</div>
+            </div>
+            <div class="readiness-content">
+                <div class="readiness-title">
+                    <span>⚡ Daily Readiness & Coach Briefing</span>
+                    <span id="ai-model-name" style="font-size: 0.7rem; color: var(--text-secondary); font-style: italic;"></span>
                 </div>
-
-                <!-- Thinking State -->
-                <div id="ai-thinking" class="ai-think-container">
-                    <div class="ai-scan-line"></div>
-                    <div class="ai-message" id="ai-loading-msg">Processing biometric data streams...</div>
-                    <div style="font-size: 0.8rem; color: var(--text-secondary);">Athlete Intelligence is optimizing
-                        your performance profile.</div>
+                <div class="readiness-headline" id="ai-headline">
+                    Analyzing recovery, HRV, and sleep metrics...
                 </div>
-
-                <!-- Error State -->
-                <div id="ai-error" class="ai-error-container">
-                    <div class="ai-error-icon">⚠️</div>
-                    <div class="ai-error-title" id="ai-err-title">Analysis Interrupted</div>
-                    <div class="ai-error-details" id="ai-err-details">Something went wrong while connecting to the elite
-                        analyst core.</div>
-                    <button onclick="fetchAIInsights(true)"
-                        style="margin-top: 1rem; background: var(--accent-color); color: white; border: none; padding: 0.5rem 1.5rem; border-radius: 0.5rem; cursor: pointer; font-weight: 600;">Retry
-                        Analysis</button>
+                <div class="readiness-prescription" id="ai-prescription-box" style="display: none;">
+                    <span>🎯</span> <span id="ai-recommended-workout">Rest or Active Recovery</span>
                 </div>
+            </div>
+            <div class="readiness-actions">
+                <button id="ai-full-drawer-btn" class="range-btn" onclick="openModal('aiBriefingModal')" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: rgba(255,255,255,0.08);">
+                    📋 Full Briefing
+                </button>
+                <button id="ai-refresh-btn" class="range-btn" onclick="fetchAIInsights(true)" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-color: rgba(56,189,248,0.3);">
+                    ↻ Refresh
+                </button>
             </div>
         </div>
 
         <h2 style="margin-bottom: 1.5rem; font-size: 1.5rem;">Daily Health</h2>
 
-        <div class="health-grid">
+        <!-- Garmin At-a-Glance Section -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+            <h2 style="font-size: 1.5rem; margin: 0; font-family: 'Lexend', sans-serif;">At a Glance</h2>
+            <span style="font-size: 0.85rem; color: var(--accent-color); cursor: pointer; font-weight: 600;" onclick="openModal('aiBriefingModal')">See Full AI Briefing ↗</span>
+        </div>
 
-            <!-- Steps -->
+        <div class="glance-grid">
 
-            <div class="card">
-
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-
-                    <div>
-
-                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Steps</h2>
-
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-
-                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-                                    id="steps">--</span></div>
-
-                            <div class="metric-unit" id="steps-goal-text" style="font-size: 0.8rem;">/ 10k</div>
-
-                        </div>
-
+            <!-- 1. Heart Rate Glance Card -->
+            <div class="card glance-card" onclick="openMetricDetail('hr')" title="Click for continuous heart rate timeline & resting trends">
+                <div class="glance-card-header">
+                    <div class="glance-card-title"><span>❤️</span> <span>Heart Rate</span></div>
+                </div>
+                <div style="margin-bottom: 0.35rem;">
+                    <div class="glance-stat-primary">
+                        <span class="glance-val-lg" id="hr-7d-avg">--</span>
+                        <span class="glance-val-sub">bpm Avg 7d Resting</span>
                     </div>
+                    <div class="glance-stat-primary" style="margin-top: 0.35rem;">
+                        <span class="glance-val-sm" id="rhr">--</span>
+                        <span class="glance-val-sub">bpm Resting</span>
+                    </div>
+                </div>
+                <div class="glance-sparkline-box">
+                    <canvas id="glance-hr-sparkline" class="glance-sparkline-canvas"></canvas>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="streak-caption">Last 4h</span>
+                    <span id="hr-max-val" style="font-size: 0.75rem; color: var(--danger-color); font-weight: 600;">Max: --</span>
+                </div>
+                <div class="glance-ai-pill" id="ai-pill-hr" style="display: none;">
+                    <span>✨</span> <span id="ai-blurb-hr">Analyzing resting heart rate...</span>
+                </div>
+            </div>
 
+            <!-- 2. Weight Glance Card -->
+            <div class="card glance-card" onclick="openMetricDetail('weight')" title="Click for weight history and trend analytics">
+                <div class="glance-card-header">
+                    <div class="glance-card-title"><span>⚖️</span> <span>Weight</span></div>
+                    <button class="glance-quick-btn" onclick="event.stopPropagation(); openModal('weightModal')" title="Log new weight entry">+</button>
+                </div>
+                <div>
+                    <div class="glance-stat-primary">
+                        <span class="glance-val-lg" id="weight">--</span>
+                        <span class="glance-val-sub">lbs</span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); margin: 0.15rem 0 0.35rem 0;">Goal: <span id="weight-goal-val">185.0</span></div>
+                    <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 0.25rem;">
+                        <span id="weight-diff-badge" class="glance-sub-badge" style="color: var(--accent-color);">-- lbs Change</span>
+                        <span style="font-size: 0.8rem; color: var(--text-secondary);">BMI: <strong id="weight-bmi-val" style="color: #fff;">--</strong></span>
+                    </div>
+                </div>
+                <div class="glance-sparkline-box">
+                    <canvas id="glance-weight-sparkline" class="glance-sparkline-canvas"></canvas>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="streak-caption" id="weight-updated-date">Updated Today</span>
+                    <span class="streak-caption">7d Avg: <strong id="weight-7d-avg" style="color: #fff;">--</strong></span>
+                </div>
+                <div class="glance-ai-pill" id="ai-pill-weight" style="display: none;">
+                    <span>✨</span> <span id="ai-blurb-weight">Analyzing weight trends...</span>
+                </div>
+            </div>
+
+            <!-- 3. Intensity Minutes Glance Card -->
+            <div class="card glance-card" onclick="openMetricDetail('im')" title="Click for weekly intensity minutes progression">
+                <div class="glance-card-header">
+                    <div class="glance-card-title"><span>⏱️</span> <span>Intensity Minutes</span></div>
+                </div>
+                <div class="glance-ring-container">
+                    <div class="glance-donut-meter" id="glance-im-donut" style="--ring-color: #4ade80; --ring-pct: 0;">
+                        <div class="glance-donut-content">
+                            <span class="glance-donut-val" id="im-val">--</span>
+                            <span class="glance-donut-sub" id="im-goal-caption">Goal: 420</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="week-streak-row" id="glance-im-streak">
+                    <div class="week-streak-days" id="im-streak-days">
+                        <span class="streak-dot">M</span>
+                        <span class="streak-dot">T</span>
+                        <span class="streak-dot">W</span>
+                        <span class="streak-dot">T</span>
+                        <span class="streak-dot">F</span>
+                        <span class="streak-dot">S</span>
+                        <span class="streak-dot">S</span>
+                    </div>
+                    <span class="streak-caption">Last 7d</span>
+                </div>
+                <div class="glance-ai-pill" id="ai-pill-im" style="display: none;">
+                    <span>✨</span> <span id="ai-blurb-im">Analyzing intensity minutes...</span>
+                </div>
+            </div>
+
+            <!-- 4. Steps Glance Card -->
+            <div class="card glance-card" onclick="openMetricDetail('steps')" title="Click for daily steps history and streaks">
+                <div class="glance-card-header">
+                    <div class="glance-card-title"><span>👟</span> <span>Steps</span></div>
+                </div>
+                <div class="glance-ring-container">
+                    <div class="glance-donut-meter" id="glance-steps-donut" style="--ring-color: #38bdf8; --ring-pct: 0;">
+                        <div class="glance-donut-content">
+                            <span class="glance-donut-val" id="steps">--</span>
+                            <span class="glance-donut-sub" id="steps-goal-caption">Goal: 10,000</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="week-streak-row" id="glance-steps-streak">
+                    <div class="week-streak-days" id="steps-streak-days">
+                        <span class="streak-dot">M</span>
+                        <span class="streak-dot">T</span>
+                        <span class="streak-dot">W</span>
+                        <span class="streak-dot">T</span>
+                        <span class="streak-dot">F</span>
+                        <span class="streak-dot">S</span>
+                        <span class="streak-dot">S</span>
+                    </div>
+                    <span class="streak-caption">🔥 <span id="steps-streak">--</span></span>
+                </div>
+                <div class="glance-ai-pill" id="ai-pill-steps" style="display: none;">
+                    <span>✨</span> <span id="ai-blurb-steps">Analyzing steps pacing...</span>
+                </div>
+            </div>
+
+            <!-- 5. Hydration Glance Card -->
+            <div class="card glance-card" onclick="openMetricDetail('hydration')" title="Click for hydration history and intake log">
+                <div class="glance-card-header">
+                    <div class="glance-card-title"><span>💧</span> <span>Hydration</span></div>
+                    <button class="glance-quick-btn" onclick="event.stopPropagation(); openModal('hydrationModal')" title="Quick log water intake">+</button>
+                </div>
+                <div class="glance-ring-container">
+                    <div class="glance-donut-meter" id="glance-hydration-donut" style="--ring-color: #06b6d4; --ring-pct: 0;">
+                        <div class="glance-donut-content">
+                            <span class="glance-donut-val" id="hydration-val">--</span>
+                            <span class="glance-donut-sub" id="hydration-goal-caption">Goal: 96 oz</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="week-streak-row" id="glance-hydration-streak">
+                    <div class="week-streak-days" id="hydration-streak-days">
+                        <span class="streak-dot">M</span>
+                        <span class="streak-dot">T</span>
+                        <span class="streak-dot">W</span>
+                        <span class="streak-dot">T</span>
+                        <span class="streak-dot">F</span>
+                        <span class="streak-dot">S</span>
+                        <span class="streak-dot">S</span>
+                    </div>
+                    <span class="streak-caption">Last 7d</span>
+                </div>
+                <div class="glance-ai-pill" id="ai-pill-hydration" style="display: none;">
+                    <span>✨</span> <span id="ai-blurb-hydration">Analyzing fluid intake...</span>
+                </div>
+            </div>
+
+            <!-- 6. Sleep Score Glance Card -->
+            <div class="card glance-card" onclick="openMetricDetail('sleep')" title="Click for sleep stages & recovery breakdown">
+                <div class="glance-card-header">
+                    <div class="glance-card-title"><span>😴</span> <span>Sleep Score</span></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem;">
+                    <div class="glance-stat-primary">
+                        <span class="glance-val-lg" id="sleep-score-val" style="color: #38bdf8;">--</span>
+                        <span class="glance-val-sub">Score</span>
+                    </div>
                     <div style="text-align: right;">
-
-                        <div style="font-size: 0.7rem; color: var(--text-secondary);">Streak</div>
-
-                        <div style="font-size: 1.2rem; font-weight: 700; color: var(--success-color);"><span
-                                id="steps-streak">--</span></div>
-
+                        <span class="glance-val-sm" id="sleep">--</span>
+                        <span class="glance-val-sub">hrs Duration</span>
                     </div>
-
                 </div>
-
-                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
-
-                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
-
-                        <button class="range-btn active" onclick="updateStepsRange('1d', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
-
-                        <button class="range-btn" onclick="updateStepsRange('1w', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
-
-                        <button class="range-btn" onclick="updateStepsRange('1m', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
-
-                        <button class="range-btn" onclick="updateStepsRange('1y', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
-
-                    </div>
-
-                    <div style="flex-grow:1"></div>
-
-                    <button class="nav-btn" id="steps-prev" onclick="shiftStepsDate(-1)"
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="15 18 9 12 15 6"></polyline>
-
-                        </svg></button>
-
-                    <button class="nav-btn" id="steps-next" onclick="shiftStepsDate(1)" disabled
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="9 18 15 12 9 6"></polyline>
-
-                        </svg></button>
-
+                <div class="glance-sleep-timeline" id="glance-sleep-bars">
+                    <div class="sleep-stage-bar stage-awake" style="flex: 1;"></div>
+                    <div class="sleep-stage-bar stage-light" style="flex: 3;"></div>
+                    <div class="sleep-stage-bar stage-deep" style="flex: 2;"></div>
+                    <div class="sleep-stage-bar stage-rem" style="flex: 2;"></div>
+                    <div class="sleep-stage-bar stage-light" style="flex: 3;"></div>
+                    <div class="sleep-stage-bar stage-deep" style="flex: 2;"></div>
+                    <div class="sleep-stage-bar stage-rem" style="flex: 2;"></div>
+                    <div class="sleep-stage-bar stage-light" style="flex: 2;"></div>
                 </div>
-
-                <div id="steps-visual-container" class="chart-container"
-                    style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
-
-                    <canvas id="stepsHistoryChart"></canvas>
-
-                    <div id="steps-donut-container"
-                        style="display: none; width: 100%; height: 100%; position: relative;">
-
-                        <!-- Donut logic kept, just resized via CSS or inline -->
-
-                        <div class="donut-chart" id="steps-day-chart"
-                            style="width: 140px; height: 140px; margin: 0 auto;">
-
-                            <div class="donut-inner" style="width: 110px; height: 110px;">
-
-                                <span class="donut-percent" id="steps-day-percent" style="font-size: 1.5rem;">0%</span>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
+                <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-secondary);">
+                    <span id="sleep-start-time">--</span>
+                    <span id="sleep-end-time">--</span>
                 </div>
-
+                <div class="glance-ai-pill" id="ai-pill-sleep" style="display: none;">
+                    <span>✨</span> <span id="ai-blurb-sleep">Analyzing sleep quality...</span>
+                </div>
             </div>
 
-            <!-- Sleep -->
-
-            <div class="card">
-
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-
-                    <div>
-
-                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Sleep</h2>
-
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-
-                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-                                    id="sleep">--</span><span class="metric-unit">h</span></div>
-
-                            <div class="metric-unit">Score: <span id="sleep-score-val">--</span></div>
-
-                        </div>
-
+            <!-- 7. HRV Status Glance Card -->
+            <div class="card glance-card" onclick="openMetricDetail('hrv')" title="Click for HRV baseline trends & autonomic recovery">
+                <div class="glance-card-header">
+                    <div class="glance-card-title"><span>🫀</span> <span>HRV Status</span></div>
+                    <div id="hrv-status-badge" class="badge" style="font-size: 0.75rem;">--</div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.35rem;">
+                    <div class="glance-stat-primary">
+                        <span class="glance-val-lg" id="hrv-val">--</span>
+                        <span class="glance-val-sub">ms 7d Avg</span>
                     </div>
-
+                    <span style="font-size: 0.75rem; color: var(--text-secondary);" id="hrv-last-night-caption">Overnight: -- ms</span>
                 </div>
-
-                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
-
-                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
-
-                        <button class="range-btn active" onclick="updateSleepRange('1d', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
-
-                        <button class="range-btn" onclick="updateSleepRange('1w', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
-
-                        <button class="range-btn" onclick="updateSleepRange('1m', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
-
-                        <button class="range-btn" onclick="updateSleepRange('1y', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
-
-                    </div>
-
-                    <div style="flex-grow:1"></div>
-
-                    <button class="nav-btn" id="sleep-prev" onclick="shiftSleepDate(-1)"
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="15 18 9 12 15 6"></polyline>
-
-                        </svg></button>
-
-                    <button class="nav-btn" id="sleep-next" onclick="shiftSleepDate(1)" disabled
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="9 18 15 12 9 6"></polyline>
-
-                        </svg></button>
-
+                <div class="hrv-gauge-container" style="height: 6px; background: rgba(255,255,255,0.08); border-radius: 999px; position: relative; margin: 0.6rem 0 0.5rem 0;">
+                    <div id="hrv-baseline-zone" style="position: absolute; height: 100%; background: rgba(74, 222, 128, 0.4); border-radius: 999px; left: 30%; width: 40%;"></div>
+                    <div id="hrv-marker" style="position: absolute; height: 14px; width: 4px; background: #ffffff; border-radius: 2px; top: -4px; left: 50%; transition: left 0.5s ease; box-shadow: 0 0 8px rgba(255,255,255,0.9); z-index: 2;"></div>
                 </div>
-
-                <div id="sleep-visual-container" class="chart-container"
-                    style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
-
-                    <canvas id="sleepHistoryChart"></canvas>
-
+                <div class="glance-sparkline-box" style="height: 40px; margin: 0.25rem 0;">
+                    <canvas id="glance-hrv-sparkline" class="glance-sparkline-canvas" style="height: 40px !important;"></canvas>
                 </div>
-
+                <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-secondary);">
+                    <span>Last 4w</span>
+                    <span>Baseline: <strong id="hrv-baseline-low">--</strong>–<strong id="hrv-baseline-high">--</strong> ms</span>
+                </div>
+                <div class="glance-ai-pill" id="ai-pill-hrv" style="display: none;">
+                    <span>✨</span> <span id="ai-blurb-hrv">Analyzing autonomic balance...</span>
+                </div>
             </div>
 
-            <!-- Hydration -->
-
-            <div class="card">
-
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-
-                    <div>
-
-                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Hydration</h2>
-
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-
-                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-                                    id="hydration-val">--</span></div>
-
-                            <div class="metric-unit">oz</div>
-
-                        </div>
-
-                    </div>
-
-                    <div style="text-align: right;">
-
-                        <div id="hydration-goal" style="font-size: 0.8rem; color: var(--text-secondary);">Goal: -- oz
-
-                        </div>
-
-                    </div>
-
+            <!-- 8. Stress Glance Card -->
+            <div class="card glance-card" onclick="openMetricDetail('stress')" title="Click for all-day stress profile & restful periods">
+                <div class="glance-card-header">
+                    <div class="glance-card-title"><span>🧘</span> <span>Stress</span></div>
+                    <div class="glance-sub-badge" style="color: #a855f7;" id="stress-level-badge">Daily Level</div>
                 </div>
-
-                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
-
-                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
-
-                        <button class="range-btn active" onclick="updateHydrationRange('1d', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
-
-                        <button class="range-btn" onclick="updateHydrationRange('1w', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
-
-                        <button class="range-btn" onclick="updateHydrationRange('1m', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
-
-                        <button class="range-btn" onclick="updateHydrationRange('1y', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
-
-                    </div>
-
-                    <div style="flex-grow:1"></div>
-
-                    <button class="nav-btn" id="hydration-prev" onclick="shiftHydrationDate(-1)"
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="15 18 9 12 15 6"></polyline>
-
-                        </svg></button>
-
-                    <button class="nav-btn" id="hydration-next" onclick="shiftHydrationDate(1)" disabled
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="9 18 15 12 9 6"></polyline>
-
-                        </svg></button>
-
+                <div class="glance-stat-primary" style="margin-bottom: 0.35rem;">
+                    <span class="glance-val-lg" id="stress">--</span>
+                    <span class="glance-val-sub">Avg Daily Stress</span>
                 </div>
-
-                <div id="hydration-visual-container" class="chart-container"
-                    style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
-
-                    <canvas id="hydrationHistoryChart"></canvas>
-
-                    <div id="hydration-donut-container"
-                        style="display: none; width: 100%; height: 100%; position: relative;">
-
-                        <div class="donut-chart" id="hydration-chart"
-                            style="width: 140px; height: 140px; margin: 0 auto;">
-
-                            <div class="donut-inner" style="width: 110px; height: 110px;">
-
-                                <span class="donut-percent" id="hydration-percent" style="font-size: 1.5rem;">0%</span>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
+                <div class="glance-sparkline-box">
+                    <canvas id="glance-stress-sparkline" class="glance-sparkline-canvas"></canvas>
                 </div>
-
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.7rem; color: var(--text-secondary);">
+                    <span>Last 4h</span>
+                    <span>Restful | Low | Med | High</span>
+                </div>
+                <div class="glance-ai-pill" id="ai-pill-stress" style="display: none;">
+                    <span>✨</span> <span id="ai-blurb-stress">Analyzing stress levels...</span>
+                </div>
             </div>
 
-            <!-- Heart Rate -->
+        </div>
 
-            <div class="card">
+        <!-- Garmin Interactive Drill-Down Modal -->
+        <div id="metricDetailModal" class="modal">
+            <div class="modal-content drilldown-modal-content">
+                <button class="modal-close" onclick="closeModal('metricDetailModal')">&times;</button>
 
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-
-                    <div>
-
-                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Heart Rate</h2>
-
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-
-                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-                                    id="rhr">--</span></div>
-
-                            <div class="metric-unit">RHR</div>
-
+                <!-- Pane 1: Intensity Minutes Detail -->
+                <div id="modal-pane-im" class="metric-detail-pane" style="display: none;">
+                    <div class="drilldown-top-bar">
+                        <div class="drilldown-date-nav">
+                            <button class="nav-btn" id="im-prev" onclick="shiftIMDate(-1)"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                            <button class="nav-btn" id="im-next" onclick="shiftIMDate(1)" disabled><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+                            <div class="drilldown-date-pill" id="im-date-range-pill">📅 Recent Week</div>
                         </div>
-
-                    </div>
-
-                    <div style="text-align: right;">
-
-                        <div style="font-size: 0.7rem; color: var(--text-secondary);">Max</div>
-
-                        <div style="font-size: 1.2rem; font-weight: 700; color: var(--danger-color);"><span
-                                id="hr-max-val">--</span></div>
-
-                    </div>
-
-                </div>
-
-                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
-
-                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
-
-                        <button class="range-btn active" onclick="updateHRRange('1d', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
-
-                        <button class="range-btn" onclick="updateHRRange('1w', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
-
-                        <button class="range-btn" onclick="updateHRRange('1m', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
-
-                        <button class="range-btn" onclick="updateHRRange('1y', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
-
-                    </div>
-
-                    <div style="flex-grow:1"></div>
-
-                    <button class="nav-btn" id="hr-prev" onclick="shiftHRDate(-1)" style="width:24px; height:24px;"><svg
-                            viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
-
-                            <polyline points="15 18 9 12 15 6"></polyline>
-
-                        </svg></button>
-
-                    <button class="nav-btn" id="hr-next" onclick="shiftHRDate(1)" disabled
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="9 18 15 12 9 6"></polyline>
-
-                        </svg></button>
-
-                </div>
-
-                <div id="hr-visual-container" class="chart-container"
-                    style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
-
-                    <canvas id="hrHistoryChart"></canvas>
-
-                </div>
-
-            </div>
-
-            <!-- Stress -->
-
-            <div class="card">
-
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-
-                    <div>
-
-                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Stress</h2>
-
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-
-                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-                                    id="stress">--</span></div>
-
-                            <div class="metric-unit">Avg</div>
-
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="font-size: 1.5rem;">⏱️</span>
+                            <h2 style="font-family: 'Lexend', sans-serif; margin: 0; font-size: 1.4rem;">Intensity Minutes</h2>
                         </div>
-
-                    </div>
-
-                </div>
-
-                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
-
-                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
-
-                        <button class="range-btn active" onclick="updateStressRange('1d', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
-
-                        <button class="range-btn" onclick="updateStressRange('1w', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
-
-                        <button class="range-btn" onclick="updateStressRange('1m', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
-
-                        <button class="range-btn" onclick="updateStressRange('1y', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
-
-                    </div>
-
-                    <div style="flex-grow:1"></div>
-
-                    <button class="nav-btn" id="stress-prev" onclick="shiftStressDate(-1)"
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="15 18 9 12 15 6"></polyline>
-
-                        </svg></button>
-
-                    <button class="nav-btn" id="stress-next" onclick="shiftStressDate(1)" disabled
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="9 18 15 12 9 6"></polyline>
-
-                        </svg></button>
-
-                </div>
-
-                <div style="height: 200px;">
-
-                    <canvas id="stressHistoryChart"></canvas>
-
-                </div>
-
-            </div>
-
-            <!-- HRV Status -->
-
-            <div class="card">
-
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-
-                    <div>
-
-                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">HRV Status</h2>
-
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-
-                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-                                    id="hrv-val">--</span></div>
-
-                            <div class="metric-unit">ms (Avg)</div>
-
+                        <div class="drilldown-range-segmented">
+                            <button class="drilldown-range-btn" onclick="updateIMRange('1d', this)">1 Day</button>
+                            <button class="drilldown-range-btn active" onclick="updateIMRange('1w', this)">7 Days</button>
+                            <button class="drilldown-range-btn" onclick="updateIMRange('1m', this)">4 Weeks</button>
+                            <button class="drilldown-range-btn" onclick="updateIMRange('1y', this)">1 Year</button>
                         </div>
-
                     </div>
-
-                    <div style="text-align: right;">
-
-                        <div id="hrv-status-badge" class="badge" style="margin-bottom: 0.25rem;">--</div>
-
-                        <div id="hrv-weekly-avg" style="font-size: 0.75rem; color: var(--text-secondary);">7d Avg: -- ms
+                    <div style="font-size: 1.1rem; font-weight: 700; color: #cbd5e1; margin-bottom: 0.75rem;">Daily Totals</div>
+                    <div class="drilldown-chart-wrapper">
+                        <canvas id="imHistoryChart"></canvas>
+                    </div>
+                    <div class="drilldown-stats-grid">
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Total Minutes</div>
+                            <div class="drilldown-stat-val" id="im-drilldown-total" style="color: #4ade80;">-- min</div>
                         </div>
-
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Moderate Minutes</div>
+                            <div class="drilldown-stat-val" id="im-drilldown-moderate">-- min</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Vigorous Minutes (2x)</div>
+                            <div class="drilldown-stat-val" id="im-drilldown-vigorous" style="color: #38bdf8;">-- min</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Weekly Goal</div>
+                            <div class="drilldown-stat-val" id="im-drilldown-goal">420 min</div>
+                        </div>
                     </div>
-
+                    <div class="drilldown-ai-box">
+                        <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8; margin-bottom: 0.35rem;">✨ AI Training Load Analysis</div>
+                        <div id="im-drilldown-ai-text" style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;">Maintaining consistent aerobic and anaerobic conditioning.</div>
+                    </div>
                 </div>
 
-                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
-
-                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
-
-                        <button class="range-btn active" onclick="updateHRVRange('1d', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
-
-                        <button class="range-btn" onclick="updateHRVRange('1w', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
-
-                        <button class="range-btn" onclick="updateHRVRange('1m', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
-
-                        <button class="range-btn" onclick="updateHRVRange('1y', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
-
-                    </div>
-
-                    <div style="flex-grow:1"></div>
-
-                    <button class="nav-btn" id="hrv-prev" onclick="shiftHRVDate(-1)"
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="15 18 9 12 15 6"></polyline>
-
-                        </svg></button>
-
-                    <button class="nav-btn" id="hrv-next" onclick="shiftHRVDate(1)" disabled
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="9 18 15 12 9 6"></polyline>
-
-                        </svg></button>
-
-                </div>
-
-                <div id="hrv-visual-container" class="chart-container"
-                    style="min-height: 200px; padding: 0; background: transparent; border: none; box-shadow: none;">
-
-                    <canvas id="hrvHistoryChart" style="display: none;"></canvas>
-
-                    <div id="hrv-status-container" style="margin-top: 1.5rem;">
-
-                        <div
-                            style="display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
-                            <span>Baseline: <span id="hrv-baseline-low">--</span> - <span
-                                    id="hrv-baseline-high">--</span>
-                                ms</span>
+                <!-- Pane 2: Steps Detail -->
+                <div id="modal-pane-steps" class="metric-detail-pane" style="display: none;">
+                    <div class="drilldown-top-bar">
+                        <div class="drilldown-date-nav">
+                            <button class="nav-btn" id="steps-prev" onclick="shiftStepsDate(-1)"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                            <button class="nav-btn" id="steps-next" onclick="shiftStepsDate(1)" disabled><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+                            <div class="drilldown-date-pill" id="steps-date-range-pill">📅 Recent Week</div>
                         </div>
-
-                        <div class="hrv-gauge-container"
-                            style="height: 12px; background: rgba(255,255,255,0.05); border-radius: 6px; position: relative; overflow: hidden; margin-bottom: 2rem;">
-                            <div id="hrv-baseline-zone"
-                                style="position: absolute; height: 100%; background: rgba(74, 222, 128, 0.2); left: 30%; width: 40%;">
-                            </div>
-                            <div id="hrv-marker"
-                                style="position: absolute; height: 100%; width: 4px; background: var(--text-primary); border-radius: 2px; left: 0; transition: left 0.5s ease; box-shadow: 0 0 10px rgba(255,255,255,0.5); z-index: 2;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="font-size: 1.5rem;">👟</span>
+                            <h2 style="font-family: 'Lexend', sans-serif; margin: 0; font-size: 1.4rem;">Steps & Activity</h2>
+                        </div>
+                        <div class="drilldown-range-segmented">
+                            <button class="drilldown-range-btn" onclick="updateStepsRange('1d', this)">1 Day</button>
+                            <button class="drilldown-range-btn active" onclick="updateStepsRange('1w', this)">7 Days</button>
+                            <button class="drilldown-range-btn" onclick="updateStepsRange('1m', this)">4 Weeks</button>
+                            <button class="drilldown-range-btn" onclick="updateStepsRange('1y', this)">1 Year</button>
+                        </div>
+                    </div>
+                    <div style="font-size: 1.1rem; font-weight: 700; color: #cbd5e1; margin-bottom: 0.75rem;">Daily Steps</div>
+                    <div class="drilldown-chart-wrapper">
+                        <canvas id="stepsHistoryChart"></canvas>
+                        <div id="steps-donut-container" style="display: none; width: 100%; height: 100%; position: relative;">
+                            <div class="donut-chart" id="steps-day-chart" style="width: 170px; height: 170px; margin: 0 auto;">
+                                <div class="donut-inner" style="width: 130px; height: 130px;">
+                                    <span class="donut-percent" id="steps-day-percent" style="font-size: 1.75rem;">0%</span>
+                                </div>
                             </div>
                         </div>
-
-                        <div id="hrv-feedback"
-                            style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4; min-height: 3em;">
-                            --
+                    </div>
+                    <div class="drilldown-stats-grid">
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Daily Average</div>
+                            <div class="drilldown-stat-val" id="steps-drilldown-avg" style="color: #38bdf8;">--</div>
                         </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-            <!-- Intensity Minutes -->
-
-            <div class="card">
-
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-
-                    <div>
-
-                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Intensity Minutes</h2>
-
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-
-                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-                                    id="im-val">--</span></div>
-
-                            <div class="metric-unit">min</div>
-
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Goal Streak</div>
+                            <div class="drilldown-stat-val" id="steps-drilldown-streak" style="color: #4ade80;">-- days</div>
                         </div>
-
-                    </div>
-
-                    <div style="text-align: right;">
-
-                        <div style="font-size: 0.7rem; color: var(--text-secondary);">Goal</div>
-
-                        <div style="font-size: 1.2rem; font-weight: 700; color: var(--accent-color);"><span
-                                id="im-goal">--</span></div>
-
-                    </div>
-
-                </div>
-
-                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
-
-                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
-
-                        <button class="range-btn active" onclick="updateIMRange('1d', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1d</button>
-
-                        <button class="range-btn" onclick="updateIMRange('1w', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1w</button>
-
-                        <button class="range-btn" onclick="updateIMRange('1m', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
-
-                        <button class="range-btn" onclick="updateIMRange('6m', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">6m</button>
-
-                        <button class="range-btn" onclick="updateIMRange('1y', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
-
-                    </div>
-
-                    <div style="flex-grow:1"></div>
-
-                    <button class="nav-btn" id="im-prev" onclick="shiftIMDate(-1)" style="width:24px; height:24px;"><svg
-                            viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
-
-                            <polyline points="15 18 9 12 15 6"></polyline>
-
-                        </svg></button>
-
-                    <button class="nav-btn" id="im-next" onclick="shiftIMDate(1)" disabled
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="9 18 15 12 9 6"></polyline>
-
-                        </svg></button>
-
-                </div>
-
-                <div style="height: 200px;">
-
-                    <canvas id="imHistoryChart"></canvas>
-
-                </div>
-
-            </div>
-
-            <!-- Weight -->
-
-            <div class="card">
-
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-
-                    <div>
-
-                        <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Weight</h2>
-
-                        <div style="display: flex; align-items: baseline; gap: 0.5rem;">
-
-                            <div class="metric-value" style="font-size: 2rem; margin-bottom: 0;"><span
-                                    id="weight">--</span></div>
-
-                            <div class="metric-unit">lbs</div>
-
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Estimated Distance</div>
+                            <div class="drilldown-stat-val" id="steps-drilldown-dist">-- mi</div>
                         </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Active Calories</div>
+                            <div class="drilldown-stat-val" id="steps-drilldown-cal" style="color: #fbbf24;">-- kcal</div>
+                        </div>
+                    </div>
+                    <div class="drilldown-ai-box">
+                        <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8; margin-bottom: 0.35rem;">✨ AI Steps Pacing Analysis</div>
+                        <div id="steps-drilldown-ai-text" style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;">Daily steps volume tracking strong against baseline.</div>
+                    </div>
+                </div>
 
-                        <div id="weight-sub-stats"
-                            style="display: flex; gap: 1rem; margin-top: 0.25rem; font-size: 0.75rem; color: var(--text-secondary);">
-                            <div id="weight-trend-box" style="display: none;"><span id="weight-trend-label">7d
-                                    Avg</span>: <span id="weight-7d-avg" style="color: var(--text-primary);">--</span>
+                <!-- Pane 3: Sleep Detail -->
+                <div id="modal-pane-sleep" class="metric-detail-pane" style="display: none;">
+                    <div class="drilldown-top-bar">
+                        <div class="drilldown-date-nav">
+                            <button class="nav-btn" id="sleep-prev" onclick="shiftSleepDate(-1)"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                            <button class="nav-btn" id="sleep-next" onclick="shiftSleepDate(1)" disabled><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+                            <div class="drilldown-date-pill" id="sleep-date-range-pill">📅 Recent Week</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="font-size: 1.5rem;">😴</span>
+                            <h2 style="font-family: 'Lexend', sans-serif; margin: 0; font-size: 1.4rem;">Sleep Architecture & Stages</h2>
+                        </div>
+                        <div class="drilldown-range-segmented">
+                            <button class="drilldown-range-btn" onclick="updateSleepRange('1d', this)">1 Day</button>
+                            <button class="drilldown-range-btn active" onclick="updateSleepRange('1w', this)">7 Days</button>
+                            <button class="drilldown-range-btn" onclick="updateSleepRange('1m', this)">4 Weeks</button>
+                            <button class="drilldown-range-btn" onclick="updateSleepRange('1y', this)">1 Year</button>
+                        </div>
+                    </div>
+                    <div style="font-size: 1.1rem; font-weight: 700; color: #cbd5e1; margin-bottom: 0.75rem;">Sleep Stages & Score</div>
+                    <div class="drilldown-chart-wrapper">
+                        <canvas id="sleepHistoryChart"></canvas>
+                    </div>
+                    <div class="drilldown-stats-grid">
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Sleep Score</div>
+                            <div class="drilldown-stat-val" id="sleep-drilldown-score" style="color: #38bdf8;">--</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Total Duration</div>
+                            <div class="drilldown-stat-val" id="sleep-drilldown-duration">-- hrs</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Deep Sleep</div>
+                            <div class="drilldown-stat-val" id="sleep-drilldown-deep" style="color: #60a5fa;">--</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">REM Sleep</div>
+                            <div class="drilldown-stat-val" id="sleep-drilldown-rem" style="color: #d946ef;">--</div>
+                        </div>
+                    </div>
+                    <div class="drilldown-ai-box">
+                        <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8; margin-bottom: 0.35rem;">✨ AI Sleep Quality Briefing</div>
+                        <div id="sleep-drilldown-ai-text" style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;">Solid deep and REM restorative cycles support recovery.</div>
+                    </div>
+                </div>
+
+                <!-- Pane 4: HRV Status Detail -->
+                <div id="modal-pane-hrv" class="metric-detail-pane" style="display: none;">
+                    <div class="drilldown-top-bar">
+                        <div class="drilldown-date-nav">
+                            <button class="nav-btn" id="hrv-prev" onclick="shiftHRVDate(-1)"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                            <button class="nav-btn" id="hrv-next" onclick="shiftHRVDate(1)" disabled><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+                            <div class="drilldown-date-pill" id="hrv-date-range-pill">📅 Recent Week</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="font-size: 1.5rem;">🫀</span>
+                            <h2 style="font-family: 'Lexend', sans-serif; margin: 0; font-size: 1.4rem;">HRV Status & Autonomic Balance</h2>
+                        </div>
+                        <div class="drilldown-range-segmented">
+                            <button class="drilldown-range-btn" onclick="updateHRVRange('1d', this)">1 Day</button>
+                            <button class="drilldown-range-btn active" onclick="updateHRVRange('1w', this)">7 Days</button>
+                            <button class="drilldown-range-btn" onclick="updateHRVRange('1m', this)">4 Weeks</button>
+                            <button class="drilldown-range-btn" onclick="updateHRVRange('1y', this)">1 Year</button>
+                        </div>
+                    </div>
+                    <div style="font-size: 1.1rem; font-weight: 700; color: #cbd5e1; margin-bottom: 0.75rem;">HRV History & Baseline Window</div>
+                    <div class="drilldown-chart-wrapper">
+                        <canvas id="hrvHistoryChart"></canvas>
+                        <div id="hrv-status-container" style="display: none; padding: 1.5rem 0;">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem;">
+                                <span>Baseline Window: <strong style="color: #fff;"><span id="hrv-drilldown-base-low">--</span> – <span id="hrv-drilldown-base-high">--</span> ms</strong></span>
+                                <span>Status: <strong style="color: #4ade80;" id="hrv-drilldown-status">Balanced</strong></span>
                             </div>
-                            <div id="weight-change-box" style="display: none;">Change: <span id="weight-range-change"
-                                    style="color: var(--text-primary);">--</span></div>
+                            <div class="hrv-gauge-container" style="height: 10px; background: rgba(255,255,255,0.08); border-radius: 999px; position: relative; margin: 1.5rem 0 1.5rem 0;">
+                                <div id="hrv-drilldown-zone" style="position: absolute; height: 100%; background: rgba(74, 222, 128, 0.4); border-radius: 999px; left: 30%; width: 40%;"></div>
+                                <div id="hrv-drilldown-marker" style="position: absolute; height: 18px; width: 4px; background: #ffffff; border-radius: 2px; top: -4px; left: 50%; transition: left 0.5s ease; box-shadow: 0 0 10px rgba(255,255,255,0.9); z-index: 2;"></div>
+                            </div>
+                            <div id="hrv-feedback" style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5; background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 0.75rem; border: 1px solid rgba(255,255,255,0.06);">
+                                --
+                            </div>
                         </div>
-
                     </div>
-
-                    <button class="range-btn" onclick="openModal('weightModal')"
-                        style="font-size: 0.8rem; padding: 0.25rem 0.5rem;">+ Log</button>
-
+                    <div class="drilldown-stats-grid">
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">7-Day Average</div>
+                            <div class="drilldown-stat-val" id="hrv-drilldown-7d" style="color: #4ade80;">-- ms</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Last Night Average</div>
+                            <div class="drilldown-stat-val" id="hrv-drilldown-night">-- ms</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Baseline Low</div>
+                            <div class="drilldown-stat-val" id="hrv-drilldown-low">-- ms</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Baseline High</div>
+                            <div class="drilldown-stat-val" id="hrv-drilldown-high">-- ms</div>
+                        </div>
+                    </div>
+                    <div class="drilldown-ai-box">
+                        <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8; margin-bottom: 0.35rem;">✨ AI Autonomic Recovery Briefing</div>
+                        <div id="hrv-drilldown-ai-text" style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;">Autonomic nervous system is balanced and recovered.</div>
+                    </div>
                 </div>
 
-                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
-
-                    <div class="range-selector" style="display: inline-flex; padding: 0.2rem;">
-
-                        <button class="range-btn" onclick="updateWeightRange('1m', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1m</button>
-
-                        <button class="range-btn" onclick="updateWeightRange('6m', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">6m</button>
-
-                        <button class="range-btn" onclick="updateWeightRange('1y', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">1y</button>
-
-                        <button class="range-btn" onclick="updateWeightRange('5y', this)"
-                            style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">5y</button>
-
+                <!-- Pane 5: Heart Rate Detail -->
+                <div id="modal-pane-hr" class="metric-detail-pane" style="display: none;">
+                    <div class="drilldown-top-bar">
+                        <div class="drilldown-date-nav">
+                            <button class="nav-btn" id="hr-prev" onclick="shiftHRDate(-1)"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                            <button class="nav-btn" id="hr-next" onclick="shiftHRDate(1)" disabled><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+                            <div class="drilldown-date-pill" id="hr-date-range-pill">📅 Recent Week</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="font-size: 1.5rem;">❤️</span>
+                            <h2 style="font-family: 'Lexend', sans-serif; margin: 0; font-size: 1.4rem;">Heart Rate & Resting HR</h2>
+                        </div>
+                        <div class="drilldown-range-segmented">
+                            <button class="drilldown-range-btn" onclick="updateHRRange('1d', this)">1 Day</button>
+                            <button class="drilldown-range-btn active" onclick="updateHRRange('1w', this)">7 Days</button>
+                            <button class="drilldown-range-btn" onclick="updateHRRange('1m', this)">4 Weeks</button>
+                            <button class="drilldown-range-btn" onclick="updateHRRange('1y', this)">1 Year</button>
+                        </div>
                     </div>
-
-                    <div style="flex-grow:1"></div>
-
-                    <button class="nav-btn" id="weight-prev" onclick="shiftWeightDate(-1)"
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="15 18 9 12 15 6"></polyline>
-
-                        </svg></button>
-
-                    <button class="nav-btn" id="weight-next" onclick="shiftWeightDate(1)" disabled
-                        style="width:24px; height:24px;"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-                            fill="none">
-
-                            <polyline points="9 18 15 12 9 6"></polyline>
-
-                        </svg></button>
-
+                    <div style="font-size: 1.1rem; font-weight: 700; color: #cbd5e1; margin-bottom: 0.75rem;">Resting Heart Rate History</div>
+                    <div class="drilldown-chart-wrapper">
+                        <canvas id="hrHistoryChart"></canvas>
+                    </div>
+                    <div class="drilldown-stats-grid">
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Current RHR</div>
+                            <div class="drilldown-stat-val" id="hr-drilldown-current" style="color: #38bdf8;">-- bpm</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">7-Day Avg RHR</div>
+                            <div class="drilldown-stat-val" id="hr-drilldown-7d">-- bpm</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Max Recorded HR</div>
+                            <div class="drilldown-stat-val" id="hr-drilldown-max" style="color: var(--danger-color);">-- bpm</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Min Recorded HR</div>
+                            <div class="drilldown-stat-val" id="hr-drilldown-min" style="color: #4ade80;">-- bpm</div>
+                        </div>
+                    </div>
+                    <div class="drilldown-ai-box">
+                        <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8; margin-bottom: 0.35rem;">✨ AI Cardiovascular Briefing</div>
+                        <div id="hr-drilldown-ai-text" style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;">Low resting heart rate indicates strong cardiovascular efficiency.</div>
+                    </div>
                 </div>
 
-                <div style="height: 200px;">
+                <!-- Pane 6: Stress Detail -->
+                <div id="modal-pane-stress" class="metric-detail-pane" style="display: none;">
+                    <div class="drilldown-top-bar">
+                        <div class="drilldown-date-nav">
+                            <button class="nav-btn" id="stress-prev" onclick="shiftStressDate(-1)"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                            <button class="nav-btn" id="stress-next" onclick="shiftStressDate(1)" disabled><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+                            <div class="drilldown-date-pill" id="stress-date-range-pill">📅 Recent Week</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="font-size: 1.5rem;">🧘</span>
+                            <h2 style="font-family: 'Lexend', sans-serif; margin: 0; font-size: 1.4rem;">All-Day Stress Profile</h2>
+                        </div>
+                        <div class="drilldown-range-segmented">
+                            <button class="drilldown-range-btn" onclick="updateStressRange('1d', this)">1 Day</button>
+                            <button class="drilldown-range-btn active" onclick="updateStressRange('1w', this)">7 Days</button>
+                            <button class="drilldown-range-btn" onclick="updateStressRange('1m', this)">4 Weeks</button>
+                            <button class="drilldown-range-btn" onclick="updateStressRange('1y', this)">1 Year</button>
+                        </div>
+                    </div>
+                    <div style="font-size: 1.1rem; font-weight: 700; color: #cbd5e1; margin-bottom: 0.75rem;">Daily Stress Timeline</div>
+                    <div class="drilldown-chart-wrapper">
+                        <canvas id="stressHistoryChart"></canvas>
+                    </div>
+                    <div class="drilldown-stats-grid">
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Average Stress</div>
+                            <div class="drilldown-stat-val" id="stress-drilldown-avg" style="color: #a855f7;">--</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Rest Duration</div>
+                            <div class="drilldown-stat-val" id="stress-drilldown-rest" style="color: #38bdf8;">-- hrs</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Low Stress</div>
+                            <div class="drilldown-stat-val" id="stress-drilldown-low">-- hrs</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">High Stress</div>
+                            <div class="drilldown-stat-val" id="stress-drilldown-high" style="color: #f87171;">-- hrs</div>
+                        </div>
+                    </div>
+                    <div class="drilldown-ai-box">
+                        <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8; margin-bottom: 0.35rem;">✨ AI Stress & Rest Briefing</div>
+                        <div id="stress-drilldown-ai-text" style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;">Sufficient rest intervals balancing physical and cognitive load.</div>
+                    </div>
+                </div>
 
-                    <canvas id="weightHistoryChart"></canvas>
+                <!-- Pane 7: Weight Detail -->
+                <div id="modal-pane-weight" class="metric-detail-pane" style="display: none;">
+                    <div class="drilldown-top-bar">
+                        <div class="drilldown-date-nav">
+                            <button class="nav-btn" id="weight-prev" onclick="shiftWeightDate(-1)"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                            <button class="nav-btn" id="weight-next" onclick="shiftWeightDate(1)" disabled><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+                            <div class="drilldown-date-pill" id="weight-date-range-pill">📅 Past Month</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="font-size: 1.5rem;">⚖️</span>
+                            <h2 style="font-family: 'Lexend', sans-serif; margin: 0; font-size: 1.4rem;">Weight & Body Composition</h2>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <button class="range-btn" onclick="openModal('weightModal')" style="font-size: 0.8rem; padding: 0.35rem 0.75rem; background: var(--accent-color); color: #0f172a; font-weight: 700;">+ Log Weight</button>
+                            <div class="drilldown-range-segmented">
+                                <button class="drilldown-range-btn active" onclick="updateWeightRange('1m', this)">1 Month</button>
+                                <button class="drilldown-range-btn" onclick="updateWeightRange('6m', this)">6 Months</button>
+                                <button class="drilldown-range-btn" onclick="updateWeightRange('1y', this)">1 Year</button>
+                                <button class="drilldown-range-btn" onclick="updateWeightRange('5y', this)">5 Years</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-size: 1.1rem; font-weight: 700; color: #cbd5e1; margin-bottom: 0.75rem;">Weight Trend & Moving Average</div>
+                    <div class="drilldown-chart-wrapper">
+                        <canvas id="weightHistoryChart"></canvas>
+                    </div>
+                    <div class="drilldown-stats-grid">
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Current Weight</div>
+                            <div class="drilldown-stat-val" id="weight-drilldown-current" style="color: #818cf8;">-- lbs</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Goal Target</div>
+                            <div class="drilldown-stat-val" id="weight-drilldown-goal">185.0 lbs</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">30-Day Change</div>
+                            <div class="drilldown-stat-val" id="weight-drilldown-change" style="color: #4ade80;">-- lbs</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">BMI</div>
+                            <div class="drilldown-stat-val" id="weight-drilldown-bmi">--</div>
+                        </div>
+                    </div>
+                    <div class="drilldown-ai-box">
+                        <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8; margin-bottom: 0.35rem;">✨ AI Body Composition Analysis</div>
+                        <div id="weight-drilldown-ai-text" style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;">Steady downward weight trend aligned with target goals.</div>
+                    </div>
+                </div>
 
+                <!-- Pane 8: Hydration Detail -->
+                <div id="modal-pane-hydration" class="metric-detail-pane" style="display: none;">
+                    <div class="drilldown-top-bar">
+                        <div class="drilldown-date-nav">
+                            <button class="nav-btn" id="hydration-prev" onclick="shiftHydrationDate(-1)"><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                            <button class="nav-btn" id="hydration-next" onclick="shiftHydrationDate(1)" disabled><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+                            <div class="drilldown-date-pill" id="hydration-date-range-pill">📅 Recent Week</div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="font-size: 1.5rem;">💧</span>
+                            <h2 style="font-family: 'Lexend', sans-serif; margin: 0; font-size: 1.4rem;">Hydration & Fluid Intake</h2>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <button class="range-btn" onclick="openModal('hydrationModal')" style="font-size: 0.8rem; padding: 0.35rem 0.75rem; background: var(--accent-color); color: #0f172a; font-weight: 700;">+ Log Intake</button>
+                            <div class="drilldown-range-segmented">
+                                <button class="drilldown-range-btn" onclick="updateHydrationRange('1d', this)">1 Day</button>
+                                <button class="drilldown-range-btn active" onclick="updateHydrationRange('1w', this)">7 Days</button>
+                                <button class="drilldown-range-btn" onclick="updateHydrationRange('1m', this)">4 Weeks</button>
+                                <button class="drilldown-range-btn" onclick="updateHydrationRange('1y', this)">1 Year</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-size: 1.1rem; font-weight: 700; color: #cbd5e1; margin-bottom: 0.75rem;">Daily Fluid Volume</div>
+                    <div class="drilldown-chart-wrapper">
+                        <canvas id="hydrationHistoryChart"></canvas>
+                        <div id="hydration-donut-container" style="display: none; width: 100%; height: 100%; position: relative;">
+                            <div class="donut-chart" id="hydration-chart" style="width: 170px; height: 170px; margin: 0 auto;">
+                                <div class="donut-inner" style="width: 130px; height: 130px;">
+                                    <span class="donut-percent" id="hydration-percent" style="font-size: 1.75rem;">0%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="drilldown-stats-grid">
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Daily Intake</div>
+                            <div class="drilldown-stat-val" id="hydration-drilldown-intake" style="color: #06b6d4;">-- oz</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Daily Target</div>
+                            <div class="drilldown-stat-val" id="hydration-drilldown-goal">96 oz</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">7-Day Average</div>
+                            <div class="drilldown-stat-val" id="hydration-drilldown-avg">-- oz</div>
+                        </div>
+                        <div class="drilldown-stat-card">
+                            <div class="drilldown-stat-label">Goal Adherence</div>
+                            <div class="drilldown-stat-val" id="hydration-drilldown-adherence" style="color: #4ade80;">--%</div>
+                        </div>
+                    </div>
+                    <div class="drilldown-ai-box">
+                        <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8; margin-bottom: 0.35rem;">✨ AI Hydration & Fluid Balance</div>
+                        <div id="hydration-drilldown-ai-text" style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;">Daily hydration volume on track for optimal recovery.</div>
+                    </div>
                 </div>
 
             </div>
-
         </div>
 
         <!-- Performance Trends Grid -->
@@ -2663,6 +2623,44 @@
         </div>
     </div>
 
+    <!-- AI Full Briefing Modal -->
+    <div id="aiBriefingModal" class="modal">
+        <div class="modal-content drilldown-modal-content" style="max-width: 800px; background: #0f172a; border: 1px solid rgba(56,189,248,0.25);">
+            <button class="modal-close" onclick="closeModal('aiBriefingModal')">&times;</button>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.25rem;">⚡</span>
+                    <h2 style="font-family: 'Lexend', sans-serif; margin: 0;">Daily Intelligence Briefing</h2>
+                </div>
+                <div id="modal-ai-model-badge" style="font-size: 0.75rem; color: var(--text-secondary); font-style: italic;"></div>
+            </div>
+
+            <div class="ai-grid" id="modal-ai-grid" style="display: grid; grid-template-columns: 1fr; gap: 1.5rem; max-height: 70vh; overflow-y: auto; padding-right: 0.5rem;">
+                <div class="insight-section" style="background: rgba(255,255,255,0.03); padding: 1.25rem; border-radius: 1rem; border: 1px solid rgba(255,255,255,0.06);">
+                    <h3 style="color: var(--accent-color); font-size: 0.95rem; margin-bottom: 0.75rem;">📊 Daily Summary & Biometrics</h3>
+                    <div class="insight-content" id="ai-daily-summary" style="line-height: 1.6; color: #cbd5e1;">
+                        Generating your daily summary...
+                    </div>
+                    <div id="ai-top-highlights" style="display: none; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;"></div>
+                </div>
+
+                <div class="insight-section" style="background: rgba(255,255,255,0.03); padding: 1.25rem; border-radius: 1rem; border: 1px solid rgba(255,255,255,0.06);">
+                    <h3 style="color: #a855f7; font-size: 0.95rem; margin-bottom: 0.75rem;">⏪ Yesterday's Recap</h3>
+                    <div class="insight-content" id="ai-yesterday-summary" style="line-height: 1.6; color: #cbd5e1;">
+                        Summarizing yesterday...
+                    </div>
+                </div>
+
+                <div class="insight-section" style="background: rgba(255,255,255,0.03); padding: 1.25rem; border-radius: 1rem; border: 1px solid rgba(255,255,255,0.06);">
+                    <h3 style="color: #4ade80; font-size: 0.95rem; margin-bottom: 0.75rem;">💡 Coach Suggestions</h3>
+                    <div class="insight-content" id="ai-suggestions" style="line-height: 1.6; color: #cbd5e1;">
+                        Analyzing your metrics for improvements...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Library Modal -->
     <div id="libraryModal" class="modal">
         <div class="modal-content"
@@ -2689,10 +2687,28 @@
 
         // Navigation for historical charts
         window.shiftDate = function (metric, dir) {
-            window[`current${metric}EndDate`].setDate(window[`current${metric}EndDate`].getDate() + (dir * (window[`current${metric}Range`] === '1w' ? 7 : (window[`current${metric}Range`] === '1m' ? 30 : (window[`current${metric}Range`] === '1d' ? 1 : 365)))));
-            if (window[`current${metric}EndDate`] > new Date()) window[`current${metric}EndDate`] = new Date();
+            const rangeKey = `current${metric}Range`;
+            const endKey = `current${metric}EndDate`;
+            if (!window[endKey]) window[endKey] = new Date();
+            const range = window[rangeKey] || '1w';
+            
+            let daysToShift = 7;
+            if (range === '1d') daysToShift = 1;
+            else if (range === '1w') daysToShift = 7;
+            else if (range === '1m') daysToShift = 28;
+            else if (range === '6m') daysToShift = 180;
+            else if (range === '1y') daysToShift = 365;
+            else if (range === '5y') daysToShift = 1825;
+
+            window[endKey].setDate(window[endKey].getDate() + (dir * daysToShift));
+            if (window[endKey] > new Date()) window[endKey] = new Date();
+
             const btn = document.getElementById(`${metric.toLowerCase()}-next`);
-            if (btn) btn.disabled = window.isDateToday(window[`current${metric}EndDate`]);
+            if (btn) btn.disabled = window.isDateToday ? window.isDateToday(window[endKey]) : (window[endKey].toDateString() === new Date().toDateString());
+
+            if (window.updateMetricDatePill) {
+                window.updateMetricDatePill(metric.toLowerCase(), range, window[endKey]);
+            }
             if (window[`fetch${metric}History`]) window[`fetch${metric}History`]();
         }
 
@@ -2722,24 +2738,24 @@
             }
         }
 
-        // Initialize state variables that are shared across modules if needed
+        // Initialize state variables that are shared across modules
         window.currentCalorieRange = '1w';
         window.currentCalorieEndDate = new Date();
-        window.currentWeightRange = '1d';
+        window.currentWeightRange = '1m';
         window.currentWeightEndDate = new Date();
-        window.currentStepsRange = '1d';
+        window.currentStepsRange = '1w';
         window.currentStepsEndDate = new Date();
-        window.currentHRRange = '1d';
+        window.currentHRRange = '1w';
         window.currentHREndDate = new Date();
-        window.currentStressRange = '1d';
+        window.currentStressRange = '1w';
         window.currentStressEndDate = new Date();
-        window.currentSleepRange = '1d';
+        window.currentSleepRange = '1w';
         window.currentSleepEndDate = new Date();
-        window.currentHydrationRange = '1d';
+        window.currentHydrationRange = '1w';
         window.currentHydrationEndDate = new Date();
-        window.currentHRVRange = '1d';
+        window.currentHRVRange = '1w';
         window.currentHRVEndDate = new Date();
-        window.currentIMRange = '1d';
+        window.currentIMRange = '1w';
         window.currentIMEndDate = new Date();
 
         // Start everything when DOM is ready

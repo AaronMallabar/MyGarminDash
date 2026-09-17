@@ -359,12 +359,9 @@ def get_user_profile_data(client):
 
 def get_user_max_hr(client):
     try:
-        profile = garmin_request(client.get_user_profile)
-        birth_str = profile.get('userData', {}).get('birthDate')
-        if birth_str:
-            birth_date = date.fromisoformat(birth_str)
-            today = get_today()
-            age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+        profile = get_user_profile_data(client)
+        age = profile.get('age')
+        if age:
             return 220 - age
     except:
         pass
@@ -505,31 +502,53 @@ class GarminSyncManager:
                 time.sleep(0.35 - elapsed)
             GarminSyncManager._last_api_call = time.time()
 
+    _bg_sync_lock = threading.Lock()
+    _bg_syncing_keys = set()
+
+    def _trigger_bg_refresh(self, metric, date_str):
+        """Asynchronously refresh stale data in the background without blocking the HTTP thread."""
+        if not self.client:
+            return
+        key = f"{metric}_{date_str}"
+        with GarminSyncManager._bg_sync_lock:
+            if key in GarminSyncManager._bg_syncing_keys:
+                return
+            GarminSyncManager._bg_syncing_keys.add(key)
+        
+        def worker():
+            try:
+                self.get_metric_for_date(metric, date_str, force_refresh=True)
+            except Exception as e:
+                logger.warning(f"Background refresh failed for {metric} {date_str}: {e}")
+            finally:
+                with GarminSyncManager._bg_sync_lock:
+                    GarminSyncManager._bg_syncing_keys.discard(key)
+        
+        threading.Thread(target=worker, daemon=True).start()
+
     def get_metric_for_date(self, metric, date_str, force_refresh=False):
-        """Get metric for a specific day, syncing if missing."""
+        """Get metric for a specific day, returning local cache immediately and refreshing in background if stale."""
         month_data = GarminPersistence.load_month(metric, date_str)
         
-        # Don't use cache for today or recently if it's older than threshold (heart rate/steps change)
         today = get_today()
         dt = datetime.strptime(date_str, '%Y-%m-%d').date()
         is_today = (date_str == today.isoformat())
-        # Refresh last 3 days if they're stale (not having everything yet if watch didn't sync)
         is_near_past = (today - dt).days <= 3 and (today - dt).days >= 0
 
-        if not force_refresh and date_str in month_data:
-            cached = month_data[date_str]
-            if not is_today and not is_near_past:
+        if not force_refresh:
+            if date_str in month_data:
+                cached = month_data[date_str]
+                # Stale-while-revalidate for today or near past (5 min for today, 4 hr for near past)
+                if (is_today or is_near_past) and self.client is not None:
+                    expiry = 300 if is_today else 14400
+                    cached_ts = cached.get('timestamp', 0) if isinstance(cached, dict) else self.sync_times.get(f"{metric}_{date_str}", 0)
+                    if time.time() - cached_ts > expiry:
+                        self._trigger_bg_refresh(metric, date_str)
                 return cached
-            
-            # If today or near past, check staleness (60s for today, 2h for near past)
-            expiry = 60 if is_today else 7200
-            if isinstance(cached, dict):
-                if time.time() - cached.get('timestamp', 0) < expiry:
-                    return cached
-            else:
-                last_sync = self.sync_times.get(f"{metric}_{date_str}", 0)
-                if time.time() - last_sync < expiry:
-                    return cached
+            elif is_today and self.client is not None:
+                # Trigger background fetch for today on cache miss so the request returns instantly
+                self._trigger_bg_refresh(metric, date_str)
+                return month_data.get(date_str)
         
         # If no client available (offline mode / mock / error), return cache directly
         if self.client is None:
@@ -609,6 +628,10 @@ class GarminSyncManager:
                     'total': (n(res.get('moderateMinutes')) + 2 * n(res.get('vigorousMinutes'))) if res else 0,
                     'goal': (n(res.get('weekGoal')) or 150) if res else 150,
                     'startDayMinutes': n(res.get('startDayMinutes')) if res else 0,
+                    'endDayMinutes': n(res.get('endDayMinutes')) if res else 0,
+                    'weeklyTotal': n(res.get('weeklyTotal')) if res else 0,
+                    'weeklyModerate': n(res.get('weeklyModerate')) if res else 0,
+                    'weeklyVigorous': n(res.get('weeklyVigorous')) if res else 0,
                     'imValuesArray': res.get('imValuesArray', []) if res else [],
                     'timestamp': time.time()
                 }
@@ -620,7 +643,7 @@ class GarminSyncManager:
                 res = self.client.get_hydration_data(date_str)
                 data = {
                     'intake': n(res.get('valueInML')) if res else 0,
-                    'goal': n(res.get('goalInML')) if res else 2000,
+                    'goal': n(res.get('goalInML')) if res and res.get('goalInML') else 2839.0,
                     'timestamp': time.time()
                 }
             else:
@@ -649,16 +672,20 @@ class GarminSyncManager:
                     if d_str not in by_date: by_date[d_str] = []
                     by_date[d_str].append(act)
             
-            # Mark all dates in range as processed
+            # Mark all dates in range as processed and save by month
+            months_to_save = {}
             current = start_date
             while current <= end_date:
                 d_str = current.isoformat()
-                data = by_date.get(d_str, [])
-                month_data = GarminPersistence.load_month('activities', d_str)
-                month_data[d_str] = data
-                GarminPersistence.save_month('activities', d_str, month_data)
+                ym = d_str[:7]
+                if ym not in months_to_save:
+                    months_to_save[ym] = GarminPersistence.load_month('activities', d_str)
+                months_to_save[ym][d_str] = by_date.get(d_str, [])
                 self.sync_times[f"activities_{d_str}"] = time.time()
                 current += timedelta(days=1)
+            
+            for ym, m_data in months_to_save.items():
+                GarminPersistence.save_month('activities', f"{ym}-01", m_data)
         except Exception as e:
             logger.error(f"Batch sync activities failed: {e}")
 
@@ -718,20 +745,15 @@ class GarminSyncManager:
                 if current >= threshold_date:
                     is_missing = True
             else:
-                # Present on disk: check expiration for today or near past (last 3 days)
+                # Present on disk: trigger background refresh if today or near past is stale, but don't block
                 age = (today - current).days
                 is_near_past = 0 <= age <= 3
-                expiry = 60 if is_today else 7200 if is_near_past else None
-                
-                if expiry:
+                if (is_today or is_near_past) and self.client is not None:
+                    expiry = 300 if is_today else 14400
                     cached = month_data[d_str]
-                    if isinstance(cached, dict):
-                        if time.time() - cached.get('timestamp', 0) > expiry:
-                            is_missing = True
-                    else:
-                        last_sync = self.sync_times.get(f"{metric}_{d_str}", 0)
-                        if last_sync == 0 or time.time() - last_sync > expiry:
-                            is_missing = True
+                    cached_ts = cached.get('timestamp', 0) if isinstance(cached, dict) else self.sync_times.get(f"{metric}_{d_str}", 0)
+                    if time.time() - cached_ts > expiry:
+                        self._trigger_bg_refresh(metric, d_str)
             
             if is_missing:
                 if range_start is None:
@@ -783,12 +805,20 @@ class GarminSyncManager:
         current = start_date
         while current <= end_date:
             d_str = current.isoformat()
-            val = self.get_metric_for_date(metric, d_str, force_refresh=force_refresh)
+            month_data = GarminPersistence.load_month(metric, d_str)
+            val = month_data.get(d_str)
             if val is not None:
                 if isinstance(val, dict):
                     results.append({**val, 'date': d_str, 'calendarDate': d_str})
-                else:
+                elif isinstance(val, list):
                     results.extend(val)
+            elif force_refresh:
+                val = self.get_metric_for_date(metric, d_str, force_refresh=True)
+                if val is not None:
+                    if isinstance(val, dict):
+                        results.append({**val, 'date': d_str, 'calendarDate': d_str})
+                    elif isinstance(val, list):
+                        results.extend(val)
             current += timedelta(days=1)
         logger.info(f"get_range: {metric} from {start_date} to {end_date} returned {len(results)} items")
         return results
@@ -1490,7 +1520,8 @@ def generate_insights_logic():
         im_moderate = n(im_raw.get('moderate', 0))
         im_vigorous = n(im_raw.get('vigorous', 0))
         im_total    = n(im_raw.get('total', 0)) or (im_moderate + 2 * im_vigorous)
-        im_goal     = n(im_raw.get('goal', 150))
+        im_weekly_total = n(im_raw.get('weeklyTotal')) or (n(im_raw.get('startDayMinutes', 0)) + im_total)
+        im_goal     = n(im_raw.get('goal', 150)) or 150
 
         # ── 2. FOOD LOGS — loaded from local JSON file (not Garmin API) ──────────
         # Format: [{"date": "YYYY-MM-DD", name, calories, protein, carbs, ...}, ...]
@@ -1818,9 +1849,34 @@ def generate_insights_logic():
         else:
             day_phase = "Late Night (Day concluding; review final totals and sleep/recovery prep)"
 
-        # Workout status for today
+        # Workout status for today and yesterday
         today_acts = [a for a in acts_raw if a.get('startTimeLocal', '').startswith(today_str)]
         today_has_completed_workout = len(today_acts) > 0
+        yesterday_acts = [a for a in acts_raw if a.get('startTimeLocal', '').startswith(yesterday_str)]
+        yesterday_has_workout = len(yesterday_acts) > 0
+
+        # Most recent workout before or on today
+        last_workout = None
+        for a in acts_raw:
+            sl = a.get('startTimeLocal', '')
+            if sl:
+                ad_str = sl.split(' ')[0]
+                if ad_str <= today_str:
+                    try:
+                        ad = date.fromisoformat(ad_str)
+                        days_ago = (today - ad).days
+                        timing_lbl = "Today" if days_ago == 0 else ("Yesterday" if days_ago == 1 else f"{days_ago} days ago ({ad.strftime('%A, %b %d')})")
+                        last_workout = {
+                            "name": a.get('activityName', 'Workout'),
+                            "date": ad_str,
+                            "days_ago": days_ago,
+                            "timing_label": timing_lbl,
+                            "distance_mi": round(n(a.get('distance', 0)) * 0.000621371, 1),
+                            "duration_min": round(n(a.get('duration', 0)) / 60)
+                        }
+                        break
+                    except Exception:
+                        pass
 
         # Week-to-date (Monday to today)
         start_of_week = today - timedelta(days=today.weekday())
@@ -1839,14 +1895,26 @@ def generate_insights_logic():
                 "workouts_today_count": len(today_acts)
             },
 
+            # Exact Timing & Workout Schedule Context
+            "timing_and_workout_schedule": {
+                "today_date": today_str,
+                "today_day_of_week": day_of_week,
+                "today_workout_completed": today_has_completed_workout,
+                "yesterday_date": yesterday_str,
+                "yesterday_day_of_week": (today - timedelta(days=1)).strftime("%A"),
+                "yesterday_had_workout": yesterday_has_workout,
+                "yesterday_workout_details": ", ".join([f"{a.get('activityName')} ({round(n(a.get('distance',0))*0.000621371, 1)} mi)" for a in yesterday_acts]) if yesterday_has_workout else "REST DAY (No workout logged yesterday)",
+                "most_recent_workout": last_workout
+            },
+
             # Week-to-Date Volume
             "week_to_date_progress": {
                 "week_start": start_of_week.isoformat(),
                 "running_miles": round(wtd_run_mi, 1),
                 "cycling_miles": round(wtd_cycle_mi, 1),
-                "intensity_minutes_logged": im_total,
+                "intensity_minutes_logged": im_weekly_total,
                 "intensity_minutes_goal": im_goal,
-                "intensity_minutes_pct": round(im_total / im_goal * 100) if im_goal else 0
+                "intensity_minutes_pct": round(im_weekly_total / im_goal * 100) if im_goal else 0
             },
 
             # ── TODAY'S SNAPSHOT ─────────────────────────────────────────────
@@ -1929,17 +1997,18 @@ def generate_insights_logic():
         settings   = load_settings()
         model_name = settings.get('ai_model', 'gemini-3.7-flash')
 
+        last_timing_hint = last_workout['timing_label'] if last_workout else 'earlier this week'
         system_instruction = (
-            "You are Athlete Intelligence, an elite, disciplined, and supportive sports performance coach.\n"
-            "Analyze the athlete's biometric, training, and nutritional data with precision and actionable directives.\n\n"
+            "You are Athlete Intelligence, an elite sports science coach and performance analyst.\n"
+            "Analyze the athlete's biometric, training, and nutrition data with high precision, brevity, and actionable clarity.\n\n"
             "CORE COACHING DIRECTIVES:\n"
-            "1. Cause and Effect: Connect the dots between sleep/HRV, stress, nutrition, and workout output.\n"
-            "2. Time Awareness: Always check time_context (time of day and day_phase). Do NOT scold morning/midday metrics as missed goals; frame them as remaining fuel and targets.\n"
-            "3. Strict & Data-Backed: Avoid generic cheerleading ('Great job!'). Dive straight into data-backed observations with specific numbers.\n"
-            "4. Specific Units: Weight in lbs, hydration in oz, running pace in min/mi, cycling power in watts, cycling speed in mph.\n"
-            "5. Baseline Comparisons: Measure every workout against the athlete's 30-day baselines and personal bests.\n"
-            "6. Strength Workouts: For strength sessions, evaluate total volume (reps x weight) and muscle balance.\n"
-            "7. Formatting: Format daily_summary with clean HTML elements (<ul>, <li>, <strong>, <br>)."
+            "1. Brevity & Punchiness: Do NOT write long essays. Deliver punchy, 1-sentence takeaways with data.\n"
+            "2. Daily Readiness Score (0-100): Calculate a realistic composite score balancing Sleep Score, HRV status (Balanced/Low), Resting HR, and recent fatigue.\n"
+            "3. Micro-Insights (Glance Blurbs): Provide exactly ONE crisp, data-backed sentence for each health category in 'glance_insights'.\n"
+            f"4. Exact Timing & Date Accuracy: Today is {today_str} ({day_of_week}). Yesterday was {yesterday_str}. Strictly verify workout dates before using relative terms. If yesterday ({yesterday_str}) had no logged workout, do NOT claim the athlete worked out yesterday. State that yesterday was a rest day, and refer to previous workouts by their actual timing (e.g. '{last_timing_hint}').\n"
+            "5. Time Awareness: Check time_context (time of day and day_phase). Do not scold morning metrics as missed daily goals.\n"
+            "6. Specific Units: Weight in lbs, hydration in oz, running pace in min/mi, cycling power in watts, cycling speed in mph.\n"
+            "7. Baseline Comparisons: Compare current metrics directly to 30-day baselines and personal bests."
         )
 
         def call_gemini_with_retry(client, model, sys_inst, prompt_text, max_retries=3):
@@ -1974,32 +2043,42 @@ def generate_insights_logic():
         # 7. THE PROMPT
         # ═══════════════════════════════════════════════════════════════════════
         prompt = f"""
-Review the athlete's Garmin and nutrition data below and generate the structured JSON performance debrief.
+Review the athlete's biometric and training context below and generate the structured JSON performance briefing.
+Strict timing requirement: Today is {today_str} ({day_of_week}). Yesterday was {yesterday_str}.
 
 DATA:
 {json.dumps(context)}
 
-ACTIVITY RULES:
-- Sessions with "cached_insight" already have an analysis — reuse it as-is.
-- For new sessions: generate a "Strava-style" coaching observation explicitly referencing the 30-day baselines.
-- Every session in 'training_history' MUST appear in 'activity_insights'.
-- Compare to activity_baselines_30d for context. Use ytd_run_max_dist_mi / ytd_cycle_max_power_w for YTD records.
-
 JSON SCHEMA REQUIREMENT:
 {{
-  "daily_summary": "<ul><li><strong>📊 Readiness:</strong> ...</li><li><strong>🚴 Performance:</strong> ...</li><li><strong>💡 Action Plan:</strong> ...</li></ul>",
+  "readiness_score": 88,
+  "readiness_category": "Optimal",
+  "headline": "1 punchy sentence summarizing overall recovery and the day's training window.",
+  "recommended_workout": "Concise specific target for today (e.g. 45-min Zone 2 ride or 4-mi tempo run).",
+  "glance_insights": {{
+    "sleep": "1 sentence takeaway on sleep duration, deep sleep, and score.",
+    "hrv": "1 sentence takeaway on HRV baseline status and autonomic balance.",
+    "steps": "1 sentence takeaway on step pacing and active movement.",
+    "heart_rate": "1 sentence takeaway on resting heart rate vs baseline.",
+    "stress": "1 sentence takeaway on average stress and recovery state.",
+    "intensity": "1 sentence takeaway on week-to-date intensity minutes vs goal.",
+    "weight": "1 sentence takeaway on weight trend/stability.",
+    "hydration": "1 sentence takeaway on hydration status and fluid pacing.",
+    "nutrition": "1 sentence fueling/macronutrient tip for today's training."
+  }},
+  "daily_summary": "<ul><li><strong>📊 Readiness:</strong> ...</li><li><strong>🚴 Training:</strong> ...</li><li><strong>💡 Action:</strong> ...</li></ul>",
   "top_highlights": [
-    "Emoji + strict/supportive callout. Focus STRICTLY on unusual data points, records, or significant streak deviations against exactly the 30-day baselines."
+    "Emoji + specific callout referencing 30-day baselines."
   ],
-  "yesterday_summary": "1-2 sentences recap of yesterday's key metrics. Bridge the story if today's data is incoming.",
-  "suggestions": ["One concrete, actionable tip.", "Another tip."],
+  "yesterday_summary": "1 sentence recap of yesterday ({yesterday_str}). If no workout was logged, clearly state yesterday was a rest/recovery day and summarize recovery metrics.",
+  "suggestions": ["One concrete tip.", "Another tip."],
   "activity_insights": [{{
     "session_id": "...",
     "name": "...",
-    "highlight": "**BOLD headline** (the one thing that stood out)",
-    "was": "Strava-style coaching observation. Explicitly compare this specific effort to the 30-day baseline. Use **bold** for key numbers.",
+    "highlight": "**BOLD headline**",
+    "was": "Strava-style coaching observation comparing to 30-day baseline.",
     "worked_on": "e.g. Aerobic Endurance",
-    "better_next": "One strict, specific improvement or recovery suggestion."
+    "better_next": "One recovery/execution suggestion."
   }}]
 }}
 """
@@ -2027,15 +2106,12 @@ JSON SCHEMA REQUIREMENT:
         for insight in ai_data.get('activity_insights', []):
             sid = insight.get('session_id')
             if sid:
-                # We always store it, even if it already existed, to get the freshest tone
                 ai_memory['activity_summaries'][sid] = insight
         
-        # Fallback Check: If the AI skipped ANY sessions, we create a basic placeholder 
-        # so they aren't blank on the UI.
+        # Fallback Check for session insights
         for s in sessions:
             sid = "|".join([str(a.get('activityId')) for a in s])
             if sid not in ai_memory['activity_summaries']:
-                logger.warning(f"AI skipped session {sid}, creating placeholder.")
                 ai_memory['activity_summaries'][sid] = {
                     "session_id": sid,
                     "name": s[0].get('activityName', 'Activity'),
@@ -2049,27 +2125,28 @@ JSON SCHEMA REQUIREMENT:
 
         # Build final response with unrolled activity IDs
         final_activity_insights = []
-        # We iterate over the sessions we originally identified to ensure nothing is missed
         for s in sessions:
             sid = "|".join([str(a.get('activityId')) for a in s])
-            # Get insight from memory (which now includes the ones just generated)
             insight = ai_memory['activity_summaries'].get(sid)
-            
             if insight:
-                # Map this session insight to every activity in the group
                 for a in s:
                     unrolled = insight.copy()
                     unrolled['activity_id'] = str(a.get('activityId'))
                     final_activity_insights.append(unrolled)
 
         result = {
-            'daily_summary':    ai_data.get('daily_summary'),
-            'top_highlights':   ai_data.get('top_highlights', []),
+            'readiness_score':   ai_data.get('readiness_score') or (85 if sleep_score_today >= 80 else 70),
+            'readiness_category': ai_data.get('readiness_category') or 'Balanced',
+            'headline':          ai_data.get('headline') or 'Recovery and training load are balanced for today.',
+            'recommended_workout': ai_data.get('recommended_workout') or 'Moderate zone 2 training or rest day.',
+            'glance_insights':   ai_data.get('glance_insights', {}),
+            'daily_summary':     ai_data.get('daily_summary'),
+            'top_highlights':    ai_data.get('top_highlights', []),
             'yesterday_summary': ai_data.get('yesterday_summary'),
-            'suggestions':      " ".join(ai_data.get('suggestions', [])),
+            'suggestions':       " ".join(ai_data.get('suggestions', [])) if isinstance(ai_data.get('suggestions'), list) else (ai_data.get('suggestions') or ''),
             'activity_insights': final_activity_insights,
-            'is_ai':            True,
-            'model_name':       model_name
+            'is_ai':             True,
+            'model_name':        model_name
         }
         
         now = time.time()
@@ -2398,12 +2475,14 @@ def get_dashboard_bootstrap():
         cal_data = mgr.get_metric_for_date('stats', today_str) or {}
         sleep_data = mgr.get_metric_for_date('sleep', today_str) or {}
         hrv_data = mgr.get_metric_for_date('hrv', today_str) or {}
+        hydration_data = mgr.get_metric_for_date('hydration', today_str) or {}
         
         if mgr.client is None and not cal_data.get('steps'):
             yesterday_str = (today - timedelta(days=1)).isoformat()
             cal_data = mgr.get_metric_for_date('stats', yesterday_str) or {}
             sleep_data = mgr.get_metric_for_date('sleep', yesterday_str) or {}
             hrv_data = mgr.get_metric_for_date('hrv', yesterday_str) or {}
+            hydration_data = mgr.get_metric_for_date('hydration', yesterday_str) or {}
             
         start_date_7d = today - timedelta(days=7)
         start_date_30d = today - timedelta(days=30)
@@ -2446,6 +2525,8 @@ def get_dashboard_bootstrap():
             if valid_w:
                 weight_grams = valid_w[-1]['weight']
                     
+        hyd_intake_ml = hydration_data.get('intake', 0)
+        hyd_goal_ml = hydration_data.get('goal', 2839.0) or 2839.0
         stats_payload = {
             'offline_mode': mgr.client is None,
             'steps': cal_data.get('steps', 0),
@@ -2462,6 +2543,10 @@ def get_dashboard_bootstrap():
             'hrv': hrv_data,
             'activities': ui_activities[:10],
             'weight_grams': weight_grams,
+            'hydration_ml': hyd_intake_ml,
+            'hydration_goal_ml': hyd_goal_ml,
+            'hydration_oz': round(n(hyd_intake_ml) * 0.033814, 1),
+            'hydration_goal_oz': round(n(hyd_goal_ml) * 0.033814, 1),
             'calories': {
                 'total': cal_data.get('total', 0),
                 'active': cal_data.get('active', 0),
@@ -2666,8 +2751,8 @@ def get_dashboard_bootstrap():
         today_hydration_1d = {
             'range': '1d',
             'summary': {
-                'intake': cal_data.get('hydration_intake', 0),
-                'goal': cal_data.get('hydration_goal', 2000)
+                'intake': hydration_data.get('intake', 0),
+                'goal': hydration_data.get('goal', 2839.0) or 2839.0
             }
         }
         today_hrv_1d = {
@@ -2715,6 +2800,7 @@ def get_dashboard_bootstrap():
             'goals_config': goals_config_payload,
             'longterm_stats': longterm_stats_payload,
             'ytd': ytd_payload,
+            'ai_insights': ai_insights_cache.get('data'),
             'today_1d': {
                 'sleep': today_sleep_1d,
                 'hydration': today_hydration_1d,
@@ -2902,14 +2988,23 @@ def get_stress_history():
             end_date = get_today()
 
         if range_val == '1d':
-            stress_data = mgr.client.get_stress_data(end_date.isoformat())
+            stress_data = mgr.get_metric_for_date('stress', end_date.isoformat()) or {}
+            if not stress_data and mgr.client:
+                try:
+                    stress_data = mgr.client.get_stress_data(end_date.isoformat()) or {}
+                except Exception as ex:
+                    logger.warning(f"Live get_stress_data failed: {ex}")
+            
+            day_stats = mgr.get_metric_for_date('stats', end_date.isoformat()) or {}
+            avg_val = stress_data.get('avgStressLevel') or stress_data.get('avg') or day_stats.get('stress_avg')
+            max_val = stress_data.get('maxStressLevel') or stress_data.get('max')
             return jsonify({
                 'range': '1d',
                 'summary': {
-                    'avg': stress_data.get('avgStressLevel'),
-                    'max': stress_data.get('maxStressLevel')
+                    'avg': avg_val,
+                    'max': max_val
                 },
-                'samples': stress_data.get('stressValuesArray', [])
+                'samples': stress_data.get('stressValuesArray', stress_data.get('samples', []))
             })
         else:
             days = 7
@@ -3133,7 +3228,7 @@ def get_hydration():
         return jsonify({
             'date': today,
             'intake': data.get('intake', 0),
-            'goal': data.get('goal', 2000)
+            'goal': data.get('goal', 2839.0) or 2839.0
         })
     except Exception as e:
         logger.error(f"Error fetching hydration: {e}")
@@ -3194,7 +3289,7 @@ def get_hydration_history():
                 'range': '1d',
                 'summary': {
                     'intake': data.get('intake', 0),
-                    'goal': data.get('goal', 2000)
+                    'goal': data.get('goal', 2839.0) or 2839.0
                 }
             })
         else:
@@ -3227,29 +3322,37 @@ def get_intensity_minutes_history():
             end_date = get_today()
 
         if range_val == '1d':
-            im_data = mgr.client.get_intensity_minutes_data(end_date.isoformat())
+            im_data = mgr.get_metric_for_date('intensity_minutes', end_date.isoformat()) or {}
+            if not im_data and mgr.client:
+                try:
+                    im_data = mgr.client.get_intensity_minutes_data(end_date.isoformat()) or {}
+                except Exception as ex:
+                    logger.warning(f"Live get_intensity_minutes_data failed: {ex}")
+            
+            mod_min = im_data.get('moderateMinutes') or im_data.get('moderate', 0)
+            vig_min = im_data.get('vigorousMinutes') or im_data.get('vigorous', 0)
+            tot_min = im_data.get('total') if 'total' in im_data else (mod_min + 2 * vig_min)
             return jsonify({
                 'range': '1d',
                 'summary': {
-                    'total': im_data.get('moderateMinutes', 0) + 2 * im_data.get('vigorousMinutes', 0),
-                    'moderate': im_data.get('moderateMinutes', 0),
-                    'vigorous': im_data.get('vigorousMinutes', 0),
-                    'goal': im_data.get('weekGoal', 150),
+                    'total': tot_min,
+                    'moderate': mod_min,
+                    'vigorous': vig_min,
+                    'goal': im_data.get('weekGoal') or im_data.get('goal', 150),
                     'startDayMinutes': im_data.get('startDayMinutes', 0)
                 },
-                'samples': im_data.get('imValuesArray', [])
+                'samples': im_data.get('imValuesArray', im_data.get('samples', [])) or []
             })
         
         elif range_val in ['1w', '1m']:
             days_to_monday = end_date.weekday()
             current_monday = end_date - timedelta(days=days_to_monday)
+            current_sunday = current_monday + timedelta(days=6)
             
             if range_val == '1w':
                 start_date = current_monday
-                days = 7
             else: # 1m
                 start_date = current_monday - timedelta(weeks=3)
-                days = 28
             
             history = mgr.get_range('intensity_minutes', start_date, end_date)
             goal = history[-1].get('goal', 150) if history else 150
@@ -3257,7 +3360,9 @@ def get_intensity_minutes_history():
             return jsonify({
                 'range': range_val,
                 'history': history,
-                'goal': goal
+                'goal': goal,
+                'startDate': start_date.isoformat(),
+                'endDate': current_sunday.isoformat()
             })
 
         else: # 6m or 1y

@@ -27,7 +27,7 @@ window.fetchDashboardData = async function () {
 
                     // Hydrate dashboard cards & stats
                     if (boot.stats && window.updateDashboard) {
-                        window.updateDashboard(boot.stats);
+                        window.updateDashboard(boot.stats, boot.today_1d, boot.history);
                     }
 
                     // Hydrate goals config & donut meters
@@ -54,6 +54,7 @@ window.fetchDashboardData = async function () {
                         if (hist.weight) window.populateChartCache('weight', '1m', todayObj, hist.weight);
                         if (hist.hydration) window.populateChartCache('hydration', '1w', todayObj, hist.hydration);
                         if (hist.hrv) window.populateChartCache('hrv', '1w', todayObj, hist.hrv);
+                        if (hist.intensity_minutes) window.populateChartCache('intensity_minutes', '1w', todayObj, hist.intensity_minutes);
 
                         // Cache 1d items
                         if (today1d.sleep) window.populateChartCache('sleep', '1d', todayObj, today1d.sleep);
@@ -92,6 +93,10 @@ window.fetchDashboardData = async function () {
                         window.renderIntensityMinutesVisualV2(hist.intensity_minutes);
                     }
 
+                    if (boot.ai_insights && window.renderAIInsights) {
+                        window.renderAIInsights(boot.ai_insights);
+                    }
+
                     if (window.safeSetText) {
                         if (isOffline) {
                             window.safeSetText('last-sync', 'Offline Mode');
@@ -109,27 +114,30 @@ window.fetchDashboardData = async function () {
             console.warn('Bootstrap fetch failed, falling back to modular endpoints:', bootErr);
         }
 
-        // 2. Secondary asynchronous loaders (Calendar, Nutrition, Calorie History, and 1d HR/Stress timelines)
-        const secondaryPromises = [
-            window.fetchCalendarData(),
-            window.fetchNutritionData(),
-            window.fetchCalorieHistory(),
-            window.fetchHRHistory(),
-            window.fetchStressHistory()
-        ];
-
-        // Fallback to legacy individual fetches if bootstrap did not succeed
-        if (!bootstrapSuccess) {
-            secondaryPromises.push(
-                window.fetchWeightHistory(),
-                window.fetchStepsHistory(),
-                window.fetchHRHistory(),
-                window.fetchStressHistory(),
-                window.fetchSleepHistory(),
-                window.fetchHydrationHistory(),
-                window.fetchHRVHistory(),
-                window.fetchIMHistory()
-            );
+        // 2. Secondary asynchronous loaders (Calendar, Nutrition, Calorie History)
+        if (bootstrapSuccess) {
+            // Bootstrap already loaded & cached stats, today_1d, history, goals, and YTD.
+            // Fire secondary sub-panels in background without blocking dashboard readiness.
+            Promise.allSettled([
+                window.fetchCalendarData ? window.fetchCalendarData() : Promise.resolve(),
+                window.fetchNutritionData ? window.fetchNutritionData() : Promise.resolve(),
+                window.fetchCalorieHistory ? window.fetchCalorieHistory() : Promise.resolve()
+            ]).catch(err => console.warn('Secondary data fetch issue:', err));
+        } else {
+            // Fallback to legacy individual fetches if bootstrap did not succeed
+            const fallbackPromises = [
+                window.fetchCalendarData ? window.fetchCalendarData() : Promise.resolve(),
+                window.fetchNutritionData ? window.fetchNutritionData() : Promise.resolve(),
+                window.fetchCalorieHistory ? window.fetchCalorieHistory() : Promise.resolve(),
+                window.fetchWeightHistory ? window.fetchWeightHistory() : Promise.resolve(),
+                window.fetchStepsHistory ? window.fetchStepsHistory() : Promise.resolve(),
+                window.fetchHRHistory ? window.fetchHRHistory() : Promise.resolve(),
+                window.fetchStressHistory ? window.fetchStressHistory() : Promise.resolve(),
+                window.fetchSleepHistory ? window.fetchSleepHistory() : Promise.resolve(),
+                window.fetchHydrationHistory ? window.fetchHydrationHistory() : Promise.resolve(),
+                window.fetchHRVHistory ? window.fetchHRVHistory() : Promise.resolve(),
+                window.fetchIMHistory ? window.fetchIMHistory() : Promise.resolve()
+            ];
 
             // Fetch basic stats
             const statsRes = await fetch('/api/stats');
@@ -170,9 +178,9 @@ window.fetchDashboardData = async function () {
                     window.renderYTDChart('ytdRunningChart', ytdData.labels, ytdData.running);
                 }
             }
-        }
 
-        await Promise.allSettled(secondaryPromises);
+            await Promise.allSettled(fallbackPromises);
+        }
 
         // Background / Low-priority tasks
         if (window.fetchAIInsights) window.fetchAIInsights(false);
@@ -253,140 +261,161 @@ function ensureRefreshButton() {
 }
 
 /**
+ * Render structured AI Insights into Hero banner, metric pills, and briefing modal
+ */
+window.renderAIInsights = function (data) {
+    if (!data) return;
+
+    // 1. Daily Readiness Hero Banner
+    const scoreEl = document.getElementById('ai-readiness-score');
+    const gaugeCircle = document.getElementById('readiness-gauge-circle');
+    const catEl = document.getElementById('ai-readiness-category');
+    const headlineEl = document.getElementById('ai-headline');
+    const workoutEl = document.getElementById('ai-recommended-workout');
+    const prescriptionBox = document.getElementById('ai-prescription-box');
+    const modelLabel = document.getElementById('ai-model-name');
+    const modalModelBadge = document.getElementById('modal-ai-model-badge');
+
+    const score = Math.round(data.readiness_score || 85);
+    if (scoreEl) scoreEl.textContent = score;
+    if (gaugeCircle) {
+        gaugeCircle.setAttribute('stroke-dasharray', `${score}, 100`);
+        if (score >= 80) {
+            gaugeCircle.style.stroke = '#38bdf8';
+        } else if (score >= 60) {
+            gaugeCircle.style.stroke = '#4ade80';
+        } else {
+            gaugeCircle.style.stroke = '#fbbf24';
+        }
+    }
+
+    if (catEl) {
+        catEl.textContent = data.readiness_category || (score >= 80 ? 'Optimal' : (score >= 60 ? 'Good' : 'Moderate'));
+        if (score >= 80) {
+            catEl.style.color = '#38bdf8';
+            catEl.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+            catEl.style.background = 'rgba(56, 189, 248, 0.15)';
+        } else if (score >= 60) {
+            catEl.style.color = '#4ade80';
+            catEl.style.borderColor = 'rgba(74, 222, 128, 0.4)';
+            catEl.style.background = 'rgba(74, 222, 128, 0.15)';
+        } else {
+            catEl.style.color = '#fbbf24';
+            catEl.style.borderColor = 'rgba(251, 191, 36, 0.4)';
+            catEl.style.background = 'rgba(251, 191, 36, 0.15)';
+        }
+    }
+
+    if (headlineEl && data.headline) {
+        headlineEl.textContent = data.headline;
+    }
+
+    if (workoutEl && data.recommended_workout) {
+        workoutEl.textContent = data.recommended_workout;
+        if (prescriptionBox) prescriptionBox.style.display = 'inline-flex';
+    }
+
+    const formattedModel = data.model_name && window.formatModelName ? window.formatModelName(data.model_name) : (data.model_name || '');
+    if (modelLabel) modelLabel.textContent = formattedModel;
+    if (modalModelBadge) modalModelBadge.textContent = formattedModel;
+
+    // 2. Micro-Insights into Health Cards (Glance Blurbs)
+    const glance = data.glance_insights || {};
+    const mapping = {
+        'steps': glance.steps,
+        'sleep': glance.sleep,
+        'hydration': glance.hydration,
+        'hr': glance.heart_rate || glance.hr,
+        'stress': glance.stress,
+        'hrv': glance.hrv,
+        'im': glance.intensity || glance.im || glance.intensity_minutes,
+        'weight': glance.weight
+    };
+
+    for (const [key, text] of Object.entries(mapping)) {
+        const blurbEl = document.getElementById(`ai-blurb-${key}`);
+        const pillEl = document.getElementById(`ai-pill-${key}`);
+        if (blurbEl && text) {
+            blurbEl.textContent = text;
+            if (pillEl) pillEl.style.display = 'flex';
+        }
+    }
+
+    // 3. Full Briefing Modal Content
+    if (window.safeSetHTML) {
+        window.safeSetHTML('ai-daily-summary', data.daily_summary || 'No summary available.');
+        window.safeSetHTML('ai-yesterday-summary', data.yesterday_summary || 'No recap available.');
+        window.safeSetHTML('ai-suggestions', data.suggestions || 'No suggestions available.');
+    }
+
+    // Top highlights chips in briefing modal
+    const highlightsContainer = document.getElementById('ai-top-highlights');
+    if (highlightsContainer) {
+        const highlights = data.top_highlights || [];
+        if (highlights.length > 0) {
+            highlightsContainer.innerHTML = highlights.map(h => `<span class="ai-highlight-chip">${h}</span>`).join('');
+            highlightsContainer.style.display = 'flex';
+        } else {
+            highlightsContainer.style.display = 'none';
+        }
+    }
+
+    // Cache activity insights
+    if (data.activity_insights) {
+        data.activity_insights.forEach(insight => {
+            if (insight.activity_id) window.cachedActivityInsights[insight.activity_id] = insight;
+        });
+    }
+};
+
+/**
  * Fetch and render AI Insights
  * @param {boolean} forceRefresh - If true, bypass cache and regenerate from AI
  */
 window.fetchAIInsights = async function (forceRefresh = false) {
-    const thinking = document.getElementById('ai-thinking');
-    const grid = document.getElementById('ai-content-grid');
-    const error = document.getElementById('ai-error');
-    const modelLabel = document.getElementById('ai-model-name');
-    const section = document.getElementById('ai-insights-section');
+    const headlineEl = document.getElementById('ai-headline');
     const refreshBtn = document.getElementById('ai-refresh-btn');
 
-    if (section) section.style.display = 'block';
-    ensureRefreshButton();
-    if (thinking) thinking.style.display = 'flex';
-    if (grid) grid.style.display = 'none';
-    if (error) error.style.display = 'none';
-    if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.style.opacity = '0.5'; }
+    if (refreshBtn) {
+        refreshBtn.disabled = true;
+        refreshBtn.style.opacity = '0.5';
+    }
 
-    // Creative thinking messages
-    const messages = forceRefresh ? [
-        "Connecting to AI analyst...",
-        "Regenerating fresh insights...",
-        "Recalculating performance metrics...",
-        "Building new training analysis...",
-        "Synthesizing updated coach report..."
-    ] : [
-        "Scanning metabolic history...",
-        "Calculating power-to-weight trends...",
-        "Analyzing recovery efficiency...",
-        "Identifying training outliers...",
-        "Optimizing cardiac drift profiles...",
-        "Benchmarking YTD milestones...",
-        "Synthesizing coach insights..."
-    ];
-    let msgIdx = 0;
-    const msgEl = document.getElementById('ai-loading-msg');
-    const interval = setInterval(() => {
-        if (msgEl) {
-            msgEl.style.opacity = 0;
-            setTimeout(() => {
-                msgEl.textContent = messages[msgIdx % messages.length];
-                msgEl.style.opacity = 1;
-                msgIdx++;
-            }, 200);
-        }
-    }, 3000);
+    if (forceRefresh && headlineEl) {
+        headlineEl.textContent = "Connecting to AI analyst & synthesizing fresh biometrics...";
+    }
 
     try {
         const url = forceRefresh ? '/api/ai_insights?force_refresh=true' : '/api/ai_insights';
         const res = await fetch(url);
-        clearInterval(interval);
 
         if (res.ok) {
             const data = await res.json();
 
             if (data.error) {
-                if (thinking) thinking.style.display = 'none';
-                if (grid) grid.style.display = 'none';
-                if (error) {
-                    error.style.display = 'block';
-                    const titleEl = document.getElementById('ai-err-title');
-                    const detailsEl = document.getElementById('ai-err-details');
-
-                    if (titleEl) titleEl.textContent = "Analysis Interrupted";
-                    if (detailsEl) detailsEl.innerHTML = `<div style="margin-bottom: 0.5rem; font-weight: 600;">${data.error}</div><div style="font-size: 0.75rem; opacity: 0.7; font-family: monospace; background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 0.25rem; overflow-x: auto; text-align: left;">${data.details || ''}</div>`;
-
-                    if (data.error.toLowerCase().includes('quota') || data.error.includes('429')) {
-                        if (titleEl) titleEl.textContent = "Model Capacity Reached";
-                    }
+                if (headlineEl) {
+                    headlineEl.textContent = `Analysis notice: ${data.error}`;
                 }
-                if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.style.opacity = '1'; }
                 return;
             }
 
-            if (thinking) thinking.style.display = 'none';
-            if (grid) grid.style.display = 'grid';
-
-            if (window.safeSetHTML) {
-                window.safeSetHTML('ai-daily-summary', data.daily_summary);
-                window.safeSetHTML('ai-yesterday-summary', data.yesterday_summary);
-                window.safeSetHTML('ai-suggestions', data.suggestions);
-            }
-
-            // Render top_highlights as pill chips beneath the daily summary
-            const highlightsContainer = document.getElementById('ai-top-highlights');
-            if (highlightsContainer) {
-                const highlights = data.top_highlights || [];
-                if (highlights.length > 0) {
-                    highlightsContainer.innerHTML = highlights.map(h =>
-                        `<span class="ai-highlight-chip">${h}</span>`
-                    ).join('');
-                    highlightsContainer.style.display = 'flex';
-                } else {
-                    highlightsContainer.style.display = 'none';
-                }
-            }
-
-            const titleEl = document.getElementById('ai-insight-title');
-            if (titleEl) {
-                titleEl.textContent = data.is_ai ? "AI Training Insight" : "Training Insight";
-            }
-
-            if (data.model_name) {
-                window.cachedModelName = data.model_name;
-                if (modelLabel && window.formatModelName) modelLabel.textContent = window.formatModelName(data.model_name);
-            }
-
-            if (data.activity_insights) {
-                data.activity_insights.forEach(insight => {
-                    if (insight.activity_id) window.cachedActivityInsights[insight.activity_id] = insight;
-                });
-            }
-
-            // Show cache freshness info
-            updateCacheAgeBadge(data);
+            // Render all components
+            window.renderAIInsights(data);
         } else {
             throw new Error(`Server responded with ${res.status}`);
         }
     } catch (err) {
-        clearInterval(interval);
         console.error('AI insights error:', err);
-        if (thinking) thinking.style.display = 'none';
-        if (grid) grid.style.display = 'none';
-        if (error) {
-            error.style.display = 'block';
-            const titleEl = document.getElementById('ai-err-title');
-            const detailsEl = document.getElementById('ai-err-details');
-            if (titleEl) titleEl.textContent = "Connection Terminated";
-            if (detailsEl) detailsEl.textContent = err.message || "The analyst core is currently offline.";
+        if (headlineEl) {
+            headlineEl.textContent = "Athlete Intelligence is currently in offline mode.";
         }
     } finally {
-        if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.style.opacity = '1'; }
+        if (refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.style.opacity = '1';
+        }
     }
-}
+};
 
 /**
  * Fetch calendar activities

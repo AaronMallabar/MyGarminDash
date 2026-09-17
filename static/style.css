@@ -1868,4 +1868,521 @@ h1 {
 /* Native Tap Highlight Removal */
 * {
     -webkit-tap-highlight-color: transparent;
+}
+
+/* ==========================================================================
+   DAILY READINESS HERO BANNER
+   ========================================================================== */
+.readiness-hero {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.95) 100%);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 1.5rem;
+    padding: 1.5rem 2rem;
+    margin-bottom: 2.5rem;
+    backdrop-filter: blur(16px);
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 0 20px rgba(56, 189, 248, 0.08);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 2rem;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.readiness-hero::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #38bdf8, #818cf8, #a855f7, #38bdf8);
+    background-size: 200% 100%;
+    animation: shimmer 4s infinite linear;
+}
+
+.readiness-score-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 110px;
+}
+
+.readiness-gauge {
+    position: relative;
+    width: 84px;
+    height: 84px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(15, 23, 42, 0.9) 60%, transparent 70%);
+    box-shadow: inset 0 0 15px rgba(56, 189, 248, 0.2);
+}
+
+.readiness-gauge svg {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.readiness-gauge-circle-bg {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.08);
+    stroke-width: 6;
+}
+
+.readiness-gauge-circle-val {
+    fill: none;
+    stroke: #38bdf8;
+    stroke-width: 6;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s ease, stroke 0.5s ease;
+}
+
+.readiness-number {
+    font-size: 1.75rem;
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: -0.03em;
+}
+
+.readiness-badge {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.readiness-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.readiness-title {
+    font-size: 0.8rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.readiness-headline {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #f8fafc;
+    line-height: 1.45;
+}
+
+.readiness-prescription {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0.4rem 0.85rem;
+    border-radius: 0.75rem;
+    font-size: 0.85rem;
+    color: #e2e8f0;
+    width: fit-content;
+}
+
+.readiness-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-end;
+}
+
+@media (max-width: 860px) {
+    .readiness-hero {
+        grid-template-columns: 1fr;
+        padding: 1.5rem;
+        gap: 1.25rem;
+        text-align: center;
+    }
+    .readiness-score-box {
+        margin: 0 auto;
+    }
+    .readiness-title {
+        justify-content: center;
+    }
+    .readiness-prescription {
+        margin: 0 auto;
+    }
+    .readiness-actions {
+        align-items: center;
+        width: 100%;
+    }
+}
+
+/* ==========================================================================
+   GARMIN AT-A-GLANCE HEALTH CARDS
+   ========================================================================== */
+.glance-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 2.5rem;
+}
+
+.glance-card {
+    background: var(--card-bg);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 1.25rem;
+    padding: 1.25rem;
+    backdrop-filter: blur(12px);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    min-height: 245px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.glance-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(56, 189, 248, 0.4);
+    box-shadow: 0 12px 25px -5px rgba(0, 0, 0, 0.4), 0 0 15px rgba(56, 189, 248, 0.12);
+}
+
+.glance-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.6rem;
+}
+
+.glance-card-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.glance-quick-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    background: rgba(56, 189, 248, 0.1);
+    color: var(--accent-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.glance-quick-btn:hover {
+    background: var(--accent-color);
+    color: #0f172a;
+    transform: scale(1.1);
+}
+
+/* Metric values layout */
+.glance-stat-primary {
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+}
+
+.glance-val-lg {
+    font-size: 1.85rem;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: -0.02em;
+    line-height: 1;
+}
+
+.glance-val-sub {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.glance-val-sm {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1;
+}
+
+/* Garmin Circular Ring Meter */
+.glance-ring-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: 0.5rem 0;
+    position: relative;
+}
+
+.glance-donut-meter {
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: conic-gradient(var(--ring-color, #4ade80) calc(var(--ring-pct, 0) * 1%), rgba(255,255,255,0.08) 0deg);
+    transition: background 0.5s ease;
+}
+
+.glance-donut-meter::before {
+    content: '';
+    position: absolute;
+    width: 92px;
+    height: 92px;
+    border-radius: 50%;
+    background: #0f172a;
+}
+
+.glance-donut-content {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.glance-donut-val {
+    font-size: 1.55rem;
+    font-weight: 800;
+    color: #ffffff;
+    line-height: 1;
+}
+
+.glance-donut-sub {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.35rem;
+    font-weight: 500;
+}
+
+/* Weekday Streak Bar (M T W T F S S) */
+.week-streak-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.week-streak-days {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.streak-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.streak-dot.met {
+    color: var(--success-color);
+    background: rgba(74, 222, 128, 0.15);
+}
+
+.streak-caption {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+}
+
+/* Sparklines */
+.glance-sparkline-box {
+    width: 100%;
+    height: 52px;
+    position: relative;
+    margin: 0.4rem 0;
+}
+
+.glance-sparkline-canvas {
+    width: 100% !important;
+    height: 52px !important;
+}
+
+/* Sleep Stage Mini Bar */
+.glance-sleep-timeline {
+    height: 44px;
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    margin: 0.5rem 0 0.25rem 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+.sleep-stage-bar {
+    flex: 1;
+    border-radius: 2px 2px 0 0;
+    min-height: 8px;
+}
+.stage-deep { background: #3b82f6; height: 38px; }
+.stage-light { background: #60a5fa; height: 26px; }
+.stage-rem { background: #d946ef; height: 32px; }
+.stage-awake { background: #f97316; height: 44px; }
+
+/* AI Micro Pill */
+.glance-ai-pill {
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.08) 0%, rgba(129, 140, 248, 0.08) 100%);
+    border: 1px solid rgba(56, 189, 248, 0.15);
+    border-radius: 0.55rem;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.72rem;
+    color: #cbd5e1;
+    line-height: 1.3;
+    margin-top: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+/* ==========================================================================
+   GARMIN DRILL-DOWN DETAIL VIEW / MODAL
+   ========================================================================== */
+.drilldown-modal-content {
+    max-width: 950px;
+    width: 95%;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: #0b1120;
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 1.5rem;
+    padding: 2rem;
+}
+
+.drilldown-top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.drilldown-date-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.drilldown-date-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.drilldown-range-segmented {
+    display: inline-flex;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    padding: 0.2rem;
+}
+
+.drilldown-range-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 0.3rem 0.85rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.drilldown-range-btn.active {
+    background: #ffffff;
+    color: #0f172a;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+
+.drilldown-chart-wrapper {
+    min-height: 320px;
+    height: 320px;
+    position: relative;
+    margin-bottom: 1.5rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 1rem;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.drilldown-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.drilldown-stat-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0.75rem;
+    padding: 0.85rem 1rem;
+}
+
+.drilldown-stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.drilldown-stat-val {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.drilldown-ai-box {
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.06) 0%, rgba(129, 140, 248, 0.06) 100%);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    border-radius: 1rem;
+    padding: 1.25rem;
+    margin-top: 1rem;
+}
+
+.metric-detail-pane {
+    animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }

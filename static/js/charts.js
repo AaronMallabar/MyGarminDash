@@ -39,6 +39,30 @@ window.populateChartCache = function(metric, range, endDate, data) {
     }
 };
 
+window.updateMetricDatePill = function(metricKey, range, endDate) {
+    const pill = document.getElementById(`${metricKey}-date-range-pill`);
+    if (!pill) return;
+    const end = endDate ? new Date(endDate) : new Date();
+    const start = new Date(end);
+    if (range === '1d') {
+        pill.textContent = `📅 ${end.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        return;
+    } else if (range === '1w') {
+        start.setDate(end.getDate() - 6);
+    } else if (range === '1m') {
+        start.setDate(end.getDate() - 27);
+    } else if (range === '6m') {
+        start.setMonth(end.getMonth() - 6);
+    } else if (range === '1y') {
+        start.setFullYear(end.getFullYear() - 1);
+    } else if (range === '5y') {
+        start.setFullYear(end.getFullYear() - 5);
+    }
+    const startStr = start.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const endStr = end.toLocaleDateString([], { month: 'short', day: 'numeric', year: start.getFullYear() !== end.getFullYear() ? 'numeric' : undefined });
+    pill.textContent = `📅 ${startStr} – ${endStr}`;
+};
+
 // Smooth, fluid animations for interactive feel
 Chart.defaults.animation = {
     duration: 350,
@@ -81,9 +105,10 @@ window.renderYTDChart = function (canvasId, labels, data) {
 window.updateWeightRange = async function (range, btn) {
     if (range) window.currentWeightRange = range;
     if (btn) {
-        btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+        btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
+    window.updateMetricDatePill('weight', window.currentWeightRange, window.currentWeightEndDate);
     try {
         const cached = getCachedData('weight', window.currentWeightRange, window.currentWeightEndDate);
         if (cached) {
@@ -145,6 +170,23 @@ window.renderWeightChart = function (data, range) {
             changeEl.style.color = color;
         }
     }
+
+    // Hydrate drilldown stat cards
+    const latestLbs = summary.latest_lbs || (weightData.length > 0 ? weightData[weightData.length - 1].weight_lbs : null);
+    if (latestLbs) {
+        safeSetText('weight-drilldown-current', `${latestLbs.toFixed(1)} lbs`);
+    }
+    safeSetText('weight-drilldown-goal', '185.0 lbs');
+    if (summary.delta_lbs !== undefined) {
+        const prefix = summary.delta_lbs > 0 ? '+' : '';
+        safeSetText('weight-drilldown-change', `${prefix}${summary.delta_lbs.toFixed(1)} lbs`);
+        const changeEl = document.getElementById('weight-drilldown-change');
+        if (changeEl) changeEl.style.color = summary.delta_lbs <= 0 ? '#4ade80' : '#f87171';
+    }
+    const bmiVal = document.getElementById('weight-bmi-val')?.textContent || '--';
+    safeSetText('weight-drilldown-bmi', bmiVal);
+
+    window.updateMetricDatePill('weight', range || window.currentWeightRange, window.currentWeightEndDate);
 
     if (weightData.length === 0) return;
 
@@ -445,7 +487,11 @@ window.renderCalorieChart = function (data) {
 
 window.updateStepsRange = async function (range, btn) {
     if (range) window.currentStepsRange = range;
-    if (btn) { btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+    if (btn) {
+        btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    window.updateMetricDatePill('steps', window.currentStepsRange, window.currentStepsEndDate);
     try {
         const cached = getCachedData('steps', window.currentStepsRange, window.currentStepsEndDate);
         if (cached) { renderStepsVisual(cached); return; }
@@ -470,39 +516,53 @@ window.renderStepsVisual = function (data) {
     const donutContainer = document.getElementById('steps-donut-container');
     const streakEl = document.getElementById('steps-streak');
     if (streakEl) streakEl.textContent = data.streak || 0;
+    safeSetText('steps-drilldown-streak', `${data.streak || 0} days`);
+    window.updateMetricDatePill('steps', window.currentStepsRange, window.currentStepsEndDate);
+
+    const history = data.history || [];
 
     if (window.currentStepsRange === '1d') {
         if (canvas) canvas.style.display = 'none';
         if (donutContainer) donutContainer.style.display = 'flex';
-        const day = data.history[data.history.length - 1] || { totalSteps: 0, stepGoal: 10000 };
-        const percent = Math.min(100, Math.round((day.totalSteps / day.stepGoal) * 100));
+        const day = history[history.length - 1] || { totalSteps: 0, stepGoal: 10000 };
+        const percent = Math.min(100, Math.round((day.totalSteps / (day.stepGoal || 10000)) * 100));
         safeSetText('steps', day.totalSteps.toLocaleString());
         safeSetText('steps-goal-text', '/ ' + (day.stepGoal >= 1000 ? (day.stepGoal / 1000) + 'k' : day.stepGoal));
         safeSetText('steps-day-percent', percent + '%');
+        safeSetText('steps-drilldown-avg', day.totalSteps.toLocaleString());
+        safeSetText('steps-drilldown-dist', `${(day.totalSteps * 0.000473).toFixed(2)} mi`);
+        safeSetText('steps-drilldown-cal', `${Math.round(day.totalSteps * 0.04)} kcal`);
+
         const chart = document.getElementById('steps-day-chart');
         if (chart) chart.style.background = `conic-gradient(${percent >= 100 ? 'var(--success-color)' : 'var(--accent-color)'} 0% ${percent}%, rgba(255,255,255,0.1) ${percent}% 100%)`;
     } else {
         if (canvas) canvas.style.display = 'block';
         if (donutContainer) donutContainer.style.display = 'none';
-        const validDays = data.history.filter(d => d.totalSteps > 0);
+        const validDays = history.filter(d => d.totalSteps > 0);
         const avg = validDays.length > 0 ? Math.round(validDays.reduce((sum, d) => sum + d.totalSteps, 0) / validDays.length) : 0;
-        safeSetText('steps', avg.toLocaleString());
-        safeSetText('steps-goal-text', 'Avg/Day');
+        safeSetText('steps-drilldown-avg', avg.toLocaleString());
+        safeSetText('steps-drilldown-dist', `${(avg * 0.000473).toFixed(2)} mi/day`);
+        safeSetText('steps-drilldown-cal', `${Math.round(avg * 0.04)} kcal/day`);
+
         if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: data.history.map(d => { const p = d.calendarDate.split('-'); return `${p[1]}/${p[2]}`; }),
-                datasets: [{ label: 'Steps', data: data.history.map(d => d.totalSteps), backgroundColor: data.history.map(d => d.totalSteps >= d.stepGoal ? '#4ade80' : '#38bdf8'), borderRadius: data.history.length > 100 ? 0 : 4, barPercentage: data.history.length > 100 ? 0.7 : 0.5 }]
+                labels: history.map(d => { const p = (d.calendarDate || d.date || '').split('-'); return p.length >= 3 ? `${p[1]}/${p[2]}` : d.calendarDate; }),
+                datasets: [{ label: 'Steps', data: history.map(d => d.totalSteps), backgroundColor: history.map(d => d.totalSteps >= (d.stepGoal || 10000) ? '#4ade80' : '#38bdf8'), borderRadius: history.length > 100 ? 0 : 4, barPercentage: history.length > 100 ? 0.7 : 0.5 }]
             },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, mode: 'x' } } }, scales: { x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 7 } }, y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } } } }
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, mode: 'x' } } }, scales: { x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 12 } }, y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } } } }
         });
     }
 }
 
 window.updateHRRange = async function (range, btn) {
     if (range) window.currentHRRange = range;
-    if (btn) { btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+    if (btn) {
+        btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    window.updateMetricDatePill('hr', window.currentHRRange, window.currentHREndDate);
     try {
         const cached = getCachedData('hr', window.currentHRRange, window.currentHREndDate);
         if (cached) { renderHRVisual(cached); return; }
@@ -522,12 +582,20 @@ window.renderHRVisual = function (data) {
     if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
     const range = data.range || window.currentHRRange || '1d';
+    window.updateMetricDatePill('hr', range, window.currentHREndDate);
 
     if (range === '1d') {
         const summary = data.summary || {};
         const dailyMax = parseInt(summary.max) || 0;
+        const dailyRhr = parseInt(summary.rhr) || 0;
+        const dailyMin = parseInt(summary.min) || 0;
         const zones = data.zones || [95, 114, 133, 152, 171];
         safeSetText('hr-max-val', dailyMax || '--');
+        safeSetText('hr-drilldown-current', `${dailyRhr || '--'} bpm`);
+        safeSetText('hr-drilldown-7d', `${dailyRhr || '--'} bpm`);
+        safeSetText('hr-drilldown-max', `${dailyMax || '--'} bpm`);
+        safeSetText('hr-drilldown-min', `${dailyMin || '--'} bpm`);
+
         const rawSamples = data.samples || [];
         const points = rawSamples
             .filter(s => Array.isArray(s) && s[0] != null && s[1] != null)
@@ -593,6 +661,17 @@ window.renderHRVisual = function (data) {
         });
     } else {
         const history = data.history || [];
+        const validRhr = history.map(d => d.rhr).filter(v => typeof v === 'number' && v > 0);
+        const avgRhr = validRhr.length > 0 ? Math.round(validRhr.reduce((a, b) => a + b, 0) / validRhr.length) : '--';
+        const maxRecorded = Math.max(0, ...history.map(d => d.max || 0));
+        const minRecorded = Math.min(...history.map(d => d.min || 999).filter(v => v < 999));
+        const currentRhr = history.length > 0 ? (history[history.length - 1].rhr || '--') : '--';
+
+        safeSetText('hr-drilldown-current', `${currentRhr} bpm`);
+        safeSetText('hr-drilldown-7d', `${avgRhr} bpm`);
+        safeSetText('hr-drilldown-max', `${maxRecorded > 0 ? maxRecorded : '--'} bpm`);
+        safeSetText('hr-drilldown-min', `${minRecorded < 999 ? minRecorded : '--'} bpm`);
+
         const labels = history.map(d => {
             if (!d.date) return '';
             const p = d.date.split('-');
@@ -624,7 +703,11 @@ window.renderHRVisual = function (data) {
 
 window.updateStressRange = async function (range, btn) {
     if (range) window.currentStressRange = range;
-    if (btn) { btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+    if (btn) {
+        btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    window.updateMetricDatePill('stress', window.currentStressRange, window.currentStressEndDate);
     try {
         const cached = getCachedData('stress', window.currentStressRange, window.currentStressEndDate);
         if (cached) { renderStressVisual(cached); return; }
@@ -644,14 +727,28 @@ window.renderStressVisual = function (data) {
     if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
     const range = data.range || window.currentStressRange || '1d';
+    window.updateMetricDatePill('stress', range, window.currentStressEndDate);
 
     if (range === '1d') {
         const summary = data.summary || {};
-        safeSetText('stress', summary.avg || '--');
+        const avg = summary.avg || '--';
+        safeSetText('stress', avg);
+        safeSetText('stress-drilldown-avg', avg);
+
         const rawSamples = data.samples || [];
         const points = rawSamples
             .filter(s => Array.isArray(s) && s[0] != null && s[1] != null && s[1] >= 0)
             .map(s => ({ x: s[0], y: s[1] }));
+
+        const totalSamplePts = points.length || 1;
+        const restPts = points.filter(p => p.y < 25).length;
+        const lowPts = points.filter(p => p.y >= 25 && p.y < 50).length;
+        const highPts = points.filter(p => p.y >= 50).length;
+        const totalLoggedHrs = (totalSamplePts * 3) / 60;
+        safeSetText('stress-drilldown-rest', `${((restPts / totalSamplePts) * totalLoggedHrs).toFixed(1)} hrs`);
+        safeSetText('stress-drilldown-low', `${((lowPts / totalSamplePts) * totalLoggedHrs).toFixed(1)} hrs`);
+        safeSetText('stress-drilldown-high', `${((highPts / totalSamplePts) * totalLoggedHrs).toFixed(1)} hrs`);
+
         const getStressColor = (v) => {
             if (v == null) return '#94a3b8';
             if (v < 25) return '#38bdf8';
@@ -704,6 +801,13 @@ window.renderStressVisual = function (data) {
         });
     } else {
         const history = data.history || [];
+        const validStress = history.map(d => d.avg).filter(v => typeof v === 'number' && v > 0);
+        const avgStress = validStress.length > 0 ? Math.round(validStress.reduce((a, b) => a + b, 0) / validStress.length) : '--';
+        safeSetText('stress-drilldown-avg', avgStress);
+        safeSetText('stress-drilldown-rest', 'Normal');
+        safeSetText('stress-drilldown-low', 'Moderate');
+        safeSetText('stress-drilldown-high', 'Occasional');
+
         const labels = history.map(d => {
             if (!d.date) return '';
             const p = d.date.split('-');
@@ -738,7 +842,11 @@ window.renderStressVisual = function (data) {
 
 window.updateSleepRange = async function (range, btn) {
     if (range) window.currentSleepRange = range;
-    if (btn) { btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+    if (btn) {
+        btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    window.updateMetricDatePill('sleep', window.currentSleepRange, window.currentSleepEndDate);
     try {
         const cached = getCachedData('sleep', window.currentSleepRange, window.currentSleepEndDate);
         if (cached) { renderSleepVisual(cached); return; }
@@ -757,10 +865,19 @@ window.renderSleepVisual = function (data) {
     const ctx = canvas.getContext('2d');
     if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
 
-    if (window.currentSleepRange === '1d') {
-        const s = data.summary;
-        safeSetText('sleep', (s.total / 3600).toFixed(1));
+    const range = data.range || window.currentSleepRange || '1d';
+    window.updateMetricDatePill('sleep', range, window.currentSleepEndDate);
+
+    if (range === '1d') {
+        const s = data.summary || {};
+        const totalHrs = s.total ? (s.total / 3600).toFixed(1) : '--';
+        safeSetText('sleep', totalHrs);
         safeSetText('sleep-score-val', s.score || '--');
+        safeSetText('sleep-drilldown-score', s.score || '--');
+        safeSetText('sleep-drilldown-duration', `${totalHrs} hrs`);
+        safeSetText('sleep-drilldown-deep', s.deep ? `${(s.deep / 3600).toFixed(1)} hrs` : '--');
+        safeSetText('sleep-drilldown-rem', s.rem ? `${(s.rem / 3600).toFixed(1)} hrs` : '--');
+
         const stageData = [{ label: 'Deep', value: s.deep || 0, color: '#6366f1' }, { label: 'Light', value: s.light || 0, color: '#3b82f6' }, { label: 'REM', value: s.rem || 0, color: '#2dd4bf' }, { label: 'Awake', value: s.awake || 0, color: '#f97316' }].filter(d => d.value > 0);
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'doughnut',
@@ -768,10 +885,25 @@ window.renderSleepVisual = function (data) {
             options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'right', labels: { color: '#94a3b8' } } } }
         });
     } else {
-        const labels = data.history.map(d => { const p = d.date.split('-'); return p[1] + '/' + p[2]; });
+        const history = data.history || [];
+        const validScores = history.map(d => d.score).filter(s => typeof s === 'number' && s > 0);
+        const avgScore = validScores.length > 0 ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length) : '--';
+        const validDur = history.map(d => d.total).filter(t => typeof t === 'number' && t > 0);
+        const avgDur = validDur.length > 0 ? (validDur.reduce((a, b) => a + b, 0) / (validDur.length * 3600)).toFixed(1) : '--';
+        const validDeep = history.map(d => d.deep).filter(t => typeof t === 'number' && t > 0);
+        const avgDeep = validDeep.length > 0 ? (validDeep.reduce((a, b) => a + b, 0) / (validDeep.length * 3600)).toFixed(1) : '--';
+        const validRem = history.map(d => d.rem).filter(t => typeof t === 'number' && t > 0);
+        const avgRem = validRem.length > 0 ? (validRem.reduce((a, b) => a + b, 0) / (validRem.length * 3600)).toFixed(1) : '--';
+
+        safeSetText('sleep-drilldown-score', avgScore);
+        safeSetText('sleep-drilldown-duration', `${avgDur} hrs`);
+        safeSetText('sleep-drilldown-deep', `${avgDeep} hrs`);
+        safeSetText('sleep-drilldown-rem', `${avgRem} hrs`);
+
+        const labels = history.map(d => { const p = (d.date || '').split('-'); return p.length >= 3 ? p[1] + '/' + p[2] : d.date; });
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
-            data: { labels, datasets: [{ label: 'Score', data: data.history.map(d => d.score), borderColor: '#818cf8', borderWidth: 3, tension: 0.4, fill: true, backgroundColor: 'rgba(129, 140, 248, 0.1)' }] },
+            data: { labels, datasets: [{ label: 'Score', data: history.map(d => d.score), borderColor: '#818cf8', borderWidth: 3, tension: 0.4, fill: true, backgroundColor: 'rgba(129, 140, 248, 0.1)' }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100 } } }
         });
     }
@@ -779,7 +911,11 @@ window.renderSleepVisual = function (data) {
 
 window.updateHydrationRange = async function (range, btn) {
     if (range) window.currentHydrationRange = range;
-    if (btn) { btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+    if (btn) {
+        btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    window.updateMetricDatePill('hydration', window.currentHydrationRange, window.currentHydrationEndDate);
     await renderHydrationVisual();
 }
 
@@ -798,6 +934,7 @@ function renderHydrationContent(data, oz) {
     const hChart = document.getElementById('hydration-chart');
     const hDonutContainer = document.getElementById('hydration-donut-container');
     const hHistoryChart = document.getElementById('hydrationHistoryChart');
+    window.updateMetricDatePill('hydration', window.currentHydrationRange, window.currentHydrationEndDate);
 
     if (window.currentHydrationRange === '1d') {
         if (hDonutContainer) hDonutContainer.style.display = 'flex';
@@ -805,12 +942,17 @@ function renderHydrationContent(data, oz) {
 
         const summary = data.summary || data;
         const intake = summary.intake || 0;
-        const goal = summary.goal || 2000;
+        const goal = summary.goal || 2839;
         const p = goal > 0 ? Math.min(100, Math.round((intake / goal) * 100)) : 0;
+        const intakeOz = oz(intake);
+        const goalOz = oz(goal);
         
-        safeSetText('hydration-val', oz(intake) + ' oz');
+        safeSetText('hydration-val', intakeOz + ' oz');
         safeSetText('hydration-percent', p + '%');
-        safeSetText('hydration-goal', `Goal: ${oz(goal)} oz`);
+        safeSetText('hydration-goal', `Goal: ${goalOz} oz`);
+        safeSetText('hydration-drilldown-intake', `${intakeOz} oz`);
+        safeSetText('hydration-drilldown-goal', `${goalOz} oz`);
+        safeSetText('hydration-drilldown-avg', `${intakeOz} oz`);
         
         if (hChart) {
             hChart.style.background = `conic-gradient(${p >= 100 ? '#22c55e' : '#38bdf8'} ${p}%, rgba(255,255,255,0.05) ${p}% 100%)`;
@@ -819,11 +961,20 @@ function renderHydrationContent(data, oz) {
         if (hDonutContainer) hDonutContainer.style.display = 'none';
         if (hHistoryChart) hHistoryChart.style.display = 'block';
 
+        const history = data.history || [];
+        const validIntake = history.map(d => parseFloat(oz(d.intake || 0))).filter(v => v > 0);
+        const avgOz = validIntake.length > 0 ? Math.round(validIntake.reduce((a, b) => a + b, 0) / validIntake.length) : '--';
+        const latestGoal = history.length > 0 ? oz(history[history.length - 1].goal || 2839) : '96.0';
+
+        safeSetText('hydration-drilldown-intake', validIntake.length > 0 ? `${validIntake[validIntake.length - 1]} oz` : '-- oz');
+        safeSetText('hydration-drilldown-goal', `${latestGoal} oz`);
+        safeSetText('hydration-drilldown-avg', `${avgOz} oz`);
+
         const ctx = hHistoryChart.getContext('2d');
         if (chartInstances['hydrationHistoryChart']) chartInstances['hydrationHistoryChart'].destroy();
         chartInstances['hydrationHistoryChart'] = new Chart(ctx, {
             type: 'bar',
-            data: { labels: data.history.map(d => d.date.split('-').slice(1).join('/')), datasets: [{ data: data.history.map(d => parseFloat(oz(d.intake))), backgroundColor: '#38bdf8', borderRadius: 4 }] },
+            data: { labels: history.map(d => (d.date || '').split('-').slice(1).join('/')), datasets: [{ data: history.map(d => parseFloat(oz(d.intake || 0))), backgroundColor: '#38bdf8', borderRadius: 4 }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
         });
     }
@@ -832,9 +983,10 @@ function renderHydrationContent(data, oz) {
 window.updateHRVRange = async function (range, btn) {
     if (range) window.currentHRVRange = range;
     if (btn) {
-        btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+        btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
+    window.updateMetricDatePill('hrv', window.currentHRVRange, window.currentHRVEndDate);
     if (window.fetchHRVHistory) window.fetchHRVHistory();
 }
 
@@ -844,31 +996,45 @@ window.renderHRVVisual = function (data) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const statusContainer = document.getElementById('hrv-status-container');
+    window.updateMetricDatePill('hrv', window.currentHRVRange, window.currentHRVEndDate);
+
+    const summary = data.hrvSummary || data.summary || data || {};
+    const lastNight = summary.lastNightAvg || summary.last_night_avg || '--';
+    const weeklyAvg = summary.weeklyAvg || summary.weekly_avg || '--';
+    const status = summary.lastNightStatus || summary.last_night_status || summary.status || 'BALANCED';
+    const feedback = summary.feedbackText || summary.feedback || '';
+    
+    const baseline = summary.baseline || {};
+    const low = baseline.balancedLow || summary.baselineLow || 0;
+    const high = baseline.balancedUpper || summary.baselineHigh || 0;
+
+    safeSetText('hrv-drilldown-7d', typeof weeklyAvg === 'number' ? `${weeklyAvg} ms` : `${weeklyAvg}`);
+    safeSetText('hrv-drilldown-night', typeof lastNight === 'number' ? `${lastNight} ms` : `${lastNight}`);
+    safeSetText('hrv-drilldown-low', low ? `${low} ms` : '--');
+    safeSetText('hrv-drilldown-high', high ? `${high} ms` : '--');
+    safeSetText('hrv-drilldown-base-low', low || '--');
+    safeSetText('hrv-drilldown-base-high', high || '--');
+    safeSetText('hrv-drilldown-status', status.replace(/_/g, ' '));
 
     if (window.currentHRVRange === '1d') {
         if (canvas) canvas.style.display = 'none';
         if (statusContainer) statusContainer.style.display = 'block';
 
-        const summary = data.hrvSummary || data.summary || data || {};
-        const lastNight = summary.lastNightAvg || summary.last_night_avg || '--';
-        const weeklyAvg = summary.weeklyAvg || summary.weekly_avg || '--';
-        const status = summary.lastNightStatus || summary.last_night_status || summary.status || '--';
-        const feedback = summary.feedbackText || summary.feedback || '';
-        
-        const baseline = summary.baseline || {};
-        const low = baseline.balancedLow || summary.baselineLow || 0;
-        const high = baseline.balancedUpper || summary.baselineHigh || 0;
-        let markerPercent = (baseline.markerValue !== undefined) ? (baseline.markerValue * 100) : null;
+        let displayFeedback = feedback;
+        if (!displayFeedback && status) {
+            const s = status.toLowerCase();
+            if (s.includes('balanced') && !s.includes('unbalanced') && low && high && lastNight !== '--') {
+                displayFeedback = `Your overnight HRV of ${lastNight} ms is balanced within your baseline (${low}–${high} ms), indicating good autonomic recovery.`;
+            }
+        }
 
-        // Restore Preferred Arrangement: 7d Avg as Main, Nightly as Secondary
         safeSetText('hrv-val', weeklyAvg);
         safeSetText('hrv-status-badge', status.replace(/_/g, ' '));
         safeSetText('hrv-weekly-avg', `Overnight: ${lastNight} ms`);
         safeSetText('hrv-baseline-low', low || '--');
         safeSetText('hrv-baseline-high', high || '--');
-        safeSetText('hrv-feedback', feedback);
+        safeSetText('hrv-feedback', displayFeedback);
 
-        // Update badge color
         const badge = document.getElementById('hrv-status-badge');
         if (badge) {
             badge.className = 'badge';
@@ -878,27 +1044,32 @@ window.renderHRVVisual = function (data) {
             else if (s.includes('poor')) badge.classList.add('badge-danger');
         }
 
-        // Update gauge marker
         const marker = document.getElementById('hrv-marker');
         const zone = document.getElementById('hrv-baseline-zone');
-        if (marker) {
-            if (markerPercent !== null) {
-                marker.style.left = Math.max(5, Math.min(95, markerPercent)) + '%';
-            } else if (low && high) {
-                const range = high - low;
-                const scaleMin = Math.max(0, low - range);
-                const scaleMax = high + range;
-                const scaleRange = scaleMax - scaleMin;
-                const val = (lastNight !== '--') ? lastNight : weeklyAvg;
-                const percent = (scaleRange > 0 && typeof val === 'number') ? ((val - scaleMin) / scaleRange) * 100 : 50;
-                marker.style.left = Math.max(5, Math.min(95, percent)) + '%';
+        const drillMarker = document.getElementById('hrv-drilldown-marker');
+        const drillZone = document.getElementById('hrv-drilldown-zone');
+
+        if (low && high) {
+            const range = high - low;
+            const buffer = Math.max(15, range * 0.75);
+            const scaleMin = Math.max(0, low - buffer);
+            const scaleMax = high + buffer;
+            const scaleRange = scaleMax - scaleMin;
+
+            if (scaleRange > 0) {
+                const zoneLeft = ((low - scaleMin) / scaleRange) * 100;
+                const zoneWidth = ((high - low) / scaleRange) * 100;
+                if (zone) { zone.style.left = `${zoneLeft.toFixed(1)}%`; zone.style.width = `${zoneWidth.toFixed(1)}%`; }
+                if (drillZone) { drillZone.style.left = `${zoneLeft.toFixed(1)}%`; drillZone.style.width = `${zoneWidth.toFixed(1)}%`; }
+
+                const val = (typeof lastNight === 'number') ? lastNight : ((typeof weeklyAvg === 'number') ? weeklyAvg : 0);
+                if (val > 0) {
+                    const percent = ((val - scaleMin) / scaleRange) * 100;
+                    const pos = `${Math.max(2, Math.min(98, percent)).toFixed(1)}%`;
+                    if (marker) marker.style.left = pos;
+                    if (drillMarker) drillMarker.style.left = pos;
+                }
             }
-        }
-        
-        if (zone && low && high) {
-            // green zone represents the baseline. In our UI it's usually static 35-65%
-            zone.style.left = '35%';
-            zone.style.width = '30%';
         }
     } else {
         if (canvas) canvas.style.display = 'block';
@@ -1327,3 +1498,298 @@ window.formatDuration = function(s) {
     const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); const sec = Math.floor(s % 60);
     return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}` : `${m}:${sec.toString().padStart(2, '0')}`;
 }
+
+// ============================================================================
+// GARMIN AT-A-GLANCE MINI VISUAL RENDERERS
+// ============================================================================
+
+window.renderGlanceHRSparkline = function(hrData) {
+    const canvas = document.getElementById('glance-hr-sparkline');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    let rawList = [];
+    if (Array.isArray(hrData)) {
+        rawList = hrData;
+    } else if (hrData && Array.isArray(hrData.samples)) {
+        rawList = hrData.samples;
+    } else if (hrData && Array.isArray(hrData.history)) {
+        rawList = hrData.history;
+    }
+
+    const points = [];
+    rawList.forEach(item => {
+        if (typeof item === 'number' && item > 0) {
+            points.push(item);
+        } else if (Array.isArray(item) && item.length >= 2 && typeof item[1] === 'number' && item[1] > 0) {
+            points.push(item[1]);
+        } else if (item && typeof item.rhr === 'number' && item.rhr > 0) {
+            points.push(item.rhr);
+        }
+    });
+
+    if (points.length < 2) {
+        if (window.chartInstances['glance-hr-sparkline']) {
+            window.chartInstances['glance-hr-sparkline'].destroy();
+        }
+        return;
+    }
+
+    let sampled = points;
+    if (points.length > 40) {
+        const step = Math.ceil(points.length / 40);
+        sampled = points.filter((_, idx) => idx % step === 0);
+    }
+
+    if (window.chartInstances['glance-hr-sparkline']) {
+        window.chartInstances['glance-hr-sparkline'].destroy();
+    }
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, 45);
+    gradient.addColorStop(0, 'rgba(248, 113, 113, 0.35)');
+    gradient.addColorStop(1, 'rgba(248, 113, 113, 0.0)');
+
+    window.chartInstances['glance-hr-sparkline'] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: sampled.map((_, i) => i),
+            datasets: [{
+                data: sampled,
+                borderColor: '#f87171',
+                borderWidth: 2,
+                backgroundColor: gradient,
+                fill: true,
+                pointRadius: 0,
+                tension: 0.35
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            scales: { x: { display: false }, y: { display: false } }
+        }
+    });
+};
+
+window.renderGlanceWeightSparkline = function(weightData) {
+    const canvas = document.getElementById('glance-weight-sparkline');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const list = Array.isArray(weightData) ? weightData : ((weightData && weightData.history) || []);
+    const vals = list.map(d => typeof d === 'number' ? d : d.weight_lbs).filter(v => typeof v === 'number' && v > 0);
+    
+    if (vals.length < 2) {
+        if (window.chartInstances['glance-weight-sparkline']) {
+            window.chartInstances['glance-weight-sparkline'].destroy();
+        }
+        return;
+    }
+
+    if (window.chartInstances['glance-weight-sparkline']) {
+        window.chartInstances['glance-weight-sparkline'].destroy();
+    }
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, 45);
+    gradient.addColorStop(0, 'rgba(129, 140, 248, 0.35)');
+    gradient.addColorStop(1, 'rgba(129, 140, 248, 0.0)');
+
+    window.chartInstances['glance-weight-sparkline'] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: vals.map((_, i) => i),
+            datasets: [{
+                data: vals,
+                borderColor: '#818cf8',
+                borderWidth: 2,
+                backgroundColor: gradient,
+                fill: true,
+                pointRadius: (ctx) => ctx.dataIndex === vals.length - 1 ? 4 : 0,
+                pointBackgroundColor: '#818cf8',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 1.5,
+                tension: 0.35
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            scales: { x: { display: false }, y: { display: false } }
+        }
+    });
+};
+
+window.renderGlanceStressSparkline = function(stressData) {
+    const canvas = document.getElementById('glance-stress-sparkline');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    let rawList = [];
+    if (Array.isArray(stressData)) {
+        rawList = stressData;
+    } else if (stressData && Array.isArray(stressData.samples)) {
+        rawList = stressData.samples;
+    } else if (stressData && Array.isArray(stressData.history)) {
+        rawList = stressData.history;
+    }
+
+    const points = [];
+    rawList.forEach(item => {
+        if (typeof item === 'number' && item >= 0) {
+            points.push(item);
+        } else if (Array.isArray(item) && item.length >= 2 && typeof item[1] === 'number' && item[1] >= 0) {
+            points.push(item[1]);
+        } else if (item && typeof item.avg === 'number' && item.avg >= 0) {
+            points.push(item.avg);
+        }
+    });
+
+    if (points.length < 2) {
+        if (window.chartInstances['glance-stress-sparkline']) {
+            window.chartInstances['glance-stress-sparkline'].destroy();
+        }
+        return;
+    }
+
+    let sampled = points;
+    if (points.length > 40) {
+        const step = Math.ceil(points.length / 40);
+        sampled = points.filter((_, idx) => idx % step === 0);
+    }
+
+    if (window.chartInstances['glance-stress-sparkline']) {
+        window.chartInstances['glance-stress-sparkline'].destroy();
+    }
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, 45);
+    gradient.addColorStop(0, 'rgba(168, 85, 247, 0.35)');
+    gradient.addColorStop(1, 'rgba(168, 85, 247, 0.0)');
+
+    window.chartInstances['glance-stress-sparkline'] = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: sampled.map((_, i) => i),
+            datasets: [{
+                data: sampled,
+                borderColor: '#a855f7',
+                borderWidth: 2,
+                backgroundColor: gradient,
+                fill: true,
+                pointRadius: 0,
+                tension: 0.35
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { enabled: false } },
+            scales: { x: { display: false }, y: { display: false } }
+        }
+    });
+};
+
+window.renderGlanceHRV = function(hrvData, hrvHistory = []) {
+    if (!hrvData) return;
+    const summary = hrvData.hrvSummary || hrvData.summary || hrvData;
+    const lastNight = summary.lastNightAvg || summary.last_night_avg || '--';
+    const weeklyAvg = summary.weeklyAvg || summary.weekly_avg || '--';
+    const baseline = summary.baseline || { lowUpper: 77, balancedLow: 77, balancedUpper: 103 };
+    const low = baseline.balancedLow || baseline.lowUpper || summary.baselineLow || 70;
+    const high = baseline.balancedUpper || summary.baselineHigh || 100;
+    const status = summary.lastNightStatus || summary.last_night_status || summary.status || 'BALANCED';
+
+    window.safeSetText('hrv-val', weeklyAvg);
+    window.safeSetText('hrv-last-night-caption', `Overnight: ${lastNight} ms`);
+    window.safeSetText('hrv-baseline-low', low);
+    window.safeSetText('hrv-baseline-high', high);
+
+    const badge = document.getElementById('hrv-status-badge');
+    if (badge) {
+        const isBal = String(status).toUpperCase().includes('BALANCED');
+        badge.textContent = isBal ? 'Balanced' : status.replace(/_/g, ' ');
+        badge.style.background = isBal ? 'rgba(74, 222, 128, 0.15)' : 'rgba(251, 146, 60, 0.15)';
+        badge.style.color = isBal ? '#4ade80' : '#fb923c';
+    }
+
+    const buffer = Math.max(15, (high - low) * 0.5);
+    const minScale = Math.max(10, low - buffer);
+    const maxScale = high + buffer;
+    const zoneLeft = Math.max(0, Math.min(100, ((low - minScale) / (maxScale - minScale)) * 100));
+    const zoneWidth = Math.max(15, Math.min(100 - zoneLeft, ((high - low) / (maxScale - minScale)) * 100));
+    const reading = (typeof lastNight === 'number' && lastNight > 0) ? lastNight : ((typeof weeklyAvg === 'number' && weeklyAvg > 0) ? weeklyAvg : 0);
+    const markerPct = reading > 0 ? Math.max(2, Math.min(98, ((reading - minScale) / (maxScale - minScale)) * 100)) : 50;
+
+    const zoneEl = document.getElementById('hrv-baseline-zone');
+    const markerEl = document.getElementById('hrv-marker');
+    if (zoneEl) { zoneEl.style.left = zoneLeft.toFixed(1) + '%'; zoneEl.style.width = zoneWidth.toFixed(1) + '%'; }
+    if (markerEl) { markerEl.style.left = markerPct.toFixed(1) + '%'; }
+
+    // Render 4w scatter sparkline
+    const canvas = document.getElementById('glance-hrv-sparkline');
+    if (canvas) {
+        const ctx = canvas.getContext('2d');
+        const histList = (Array.isArray(hrvHistory) && hrvHistory.length > 0) ? hrvHistory : ((hrvData && hrvData.history) || []);
+        const points = histList.map(h => (typeof h === 'number' ? h : (h.lastNightAvg || h.value || h.hrv || null))).filter(p => typeof p === 'number' && p > 0);
+        
+        if (points.length < 2) {
+            if (window.chartInstances['glance-hrv-sparkline']) {
+                window.chartInstances['glance-hrv-sparkline'].destroy();
+            }
+            return;
+        }
+
+        if (window.chartInstances['glance-hrv-sparkline']) {
+            window.chartInstances['glance-hrv-sparkline'].destroy();
+        }
+        window.chartInstances['glance-hrv-sparkline'] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: points.map((_, i) => i),
+                datasets: [{
+                    data: points,
+                    borderColor: '#4ade80',
+                    borderWidth: 1.5,
+                    pointRadius: 2.5,
+                    pointBackgroundColor: '#4ade80',
+                    pointBorderColor: '#0f172a',
+                    tension: 0.2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                scales: { x: { display: false }, y: { display: false, min: minScale, max: maxScale } }
+            }
+        });
+    }
+};
+
+window.renderGlanceDonut = function(elementId, current, goal, color) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const safeGoal = goal > 0 ? goal : 1;
+    const pct = Math.min(100, Math.round((current / safeGoal) * 100));
+    el.style.setProperty('--ring-color', color || '#4ade80');
+    el.style.setProperty('--ring-pct', pct);
+};
+
+window.renderWeekStreak = function(containerId, historyDays, goal) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    const entries = Array.isArray(historyDays) ? historyDays.slice(-7) : [];
+    
+    el.innerHTML = days.map((dayChar, i) => {
+        const entry = entries[i];
+        let val = 0;
+        if (typeof entry === 'number') {
+            val = entry;
+        } else if (entry) {
+            val = entry.totalSteps || entry.total || entry.intake || entry.val || entry.activeMinutes || 0;
+        }
+        const isMet = val >= (goal || 1);
+        return `<span class="streak-dot ${isMet ? 'met' : ''}">${isMet ? '✓' : dayChar}</span>`;
+    }).join('');
+};
