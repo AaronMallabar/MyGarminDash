@@ -337,10 +337,15 @@ window.submitFoodLog = async function () {
                 });
                 window.updateNutrientSummary();
                 document.getElementById('food-search-input').value = '';
+            } else {
+                window.openManualFormFallback(name);
             }
+        } else {
+            window.openManualFormFallback(name);
         }
     } catch (err) {
         console.error("Log food error:", err);
+        window.openManualFormFallback(name);
     } finally {
         btn.textContent = originalText;
         btn.disabled = false;
@@ -423,22 +428,62 @@ window.addChatMessage = function (role, text) {
     history.scrollTop = history.scrollHeight;
 }
 
+window.openManualFormFallback = function (itemName = '') {
+    window.showCustomFoodForm();
+    const nameEl = document.getElementById('custom-name');
+    if (nameEl && itemName) nameEl.value = itemName;
+
+    const list = document.getElementById('ingredient-list');
+    if (list) {
+        list.innerHTML = '';
+        ingredientIndex = 0;
+        window.addIngredientRow({
+            name: itemName || 'Meal Item',
+            qty: 1,
+            unit: 'serving',
+            calories: 0,
+            protein_g: 0,
+            carbs_g: 0,
+            fat_g: 0,
+            sugar_g: 0,
+            cholesterol_mg: 0,
+            caffeine_mg: 0
+        });
+        window.updateNutrientSummary();
+    }
+
+    const toastContainer = document.getElementById('coach-toast-container');
+    if (toastContainer) {
+        const toast = document.createElement('div');
+        toast.className = 'coach-toast';
+        toast.style.background = 'rgba(56, 189, 248, 0.9)';
+        toast.innerHTML = `<div style="font-size: 0.85rem; font-weight: 600; color: white;">⚡ AI estimation unavailable — opened manual log form for "${itemName || 'Item'}".</div>`;
+        toastContainer.appendChild(toast);
+        setTimeout(() => { if (toast.parentNode) toast.remove(); }, 4000);
+    }
+};
+
 window.sendFoodChat = async function () {
     const input = document.getElementById('food-chat-input');
-    const text = input.value.trim();
+    const text = input ? input.value.trim() : '';
     if (!text && !currentFoodImageBase64) return;
 
     const btn = document.getElementById('btn-send-chat');
-    const originalText = btn.textContent;
-    btn.textContent = '...';
-    btn.disabled = true;
+    const originalText = btn ? btn.textContent : 'Analyze';
+    if (btn) {
+        btn.textContent = '...';
+        btn.disabled = true;
+    }
 
     try {
+        const rawTime = document.getElementById('food-log-time')?.value;
+        const timeStr = window.parseTimeString(rawTime) || rawTime;
+
         const payload = {
             text: text,
             image: currentFoodImageBase64,
             date: window.getLocalDateStr(window.activeNutritionDate),
-            time: document.getElementById('food-log-time').value
+            time: timeStr
         };
 
         const res = await fetch('/api/nutrition/chat', {
@@ -447,7 +492,15 @@ window.sendFoodChat = async function () {
             body: JSON.stringify(payload)
         });
 
+        if (!res.ok) {
+            throw new Error(`Server returned status ${res.status}`);
+        }
+
         const data = await res.json();
+
+        if (data.error) {
+            throw new Error(data.error);
+        }
 
         if (data.extracted_time) {
             const timeInput = document.getElementById('food-log-time');
@@ -474,16 +527,23 @@ window.sendFoodChat = async function () {
             if (data.confidence_score < 80) {
                 window.toggleAIAssistant(true);
             }
+        } else {
+            window.openManualFormFallback(text);
         }
 
         window.clearFoodImage();
-        input.value = '';
+        if (input) input.value = '';
 
     } catch (err) {
-        console.error("Chat error:", err);
+        console.warn("AI Chat error, opening manual log form:", err);
+        window.openManualFormFallback(text);
+        window.clearFoodImage();
+        if (input) input.value = '';
     } finally {
-        btn.textContent = originalText;
-        btn.disabled = false;
+        if (btn) {
+            btn.textContent = originalText;
+            btn.disabled = false;
+        }
     }
 }
 
@@ -845,7 +905,20 @@ window.saveCustomFood = async function (alsoLog = true) {
             await fetch('/api/nutrition/log', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name, date: dateStr, time: timeStr })
+                body: JSON.stringify({
+                    name: name,
+                    date: dateStr,
+                    time: timeStr,
+                    calories: totalCal,
+                    cholesterol_mg: totalChol,
+                    protein_g: totalPro,
+                    carbs_g: totalCarb,
+                    sugar_g: totalSugar,
+                    fat_g: totalFat,
+                    caffeine_mg: totalCaffeine,
+                    category: category,
+                    ingredients: ingredients
+                })
             });
         }
 

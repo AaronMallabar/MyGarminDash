@@ -3787,7 +3787,7 @@ def extract_time_and_clean_text(text):
 @app.route('/api/nutrition/log', methods=['POST'])
 @login_required
 def log_food():
-    data = request.json
+    data = request.json or {}
     raw_name = data.get('name', '')
     if not raw_name:
         return jsonify({'error': 'Food name required'}), 400
@@ -3802,61 +3802,81 @@ def log_food():
     else:
         time_str = datetime.now(EST).strftime('%H:%M')
 
-    # Support multiple food items separated by commas
-    items_to_log = [i.strip() for i in raw_name.split(',')]
-    logged_entries = []
-    
     date_str = data.get('date', get_today().isoformat())
-    custom_foods = load_json(CUSTOM_FOODS_FILE, {})
-    
-    ai_items = []
-    for name in items_to_log:
-        if name in custom_foods:
-            nutrition = custom_foods[name]
-            log_entry = {
-                'id': int(time.time() * 1000) + len(logged_entries),
-                'date': date_str,
-                'time': time_str,
-                'name': name,
-                **nutrition
-            }
-            logged_entries.append(log_entry)
-        else:
-            ai_items.append(name)
-            
-    if ai_items:
-        try:
-            ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-            settings = load_settings()
-            model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
-            
-            prompt = f"""
-            Analyze these food items: {", ".join(ai_items)}
-            My Goals: Weight loss, low cholesterol.
-            Return ONLY a JSON array of objects, one for each item, with:
-            name (string), calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), sugar_g (int), fat_g (int), caffeine_mg (int), ai_note (str).
-            """
-            
-            response = ai_client.models.generate_content(model=model_name, contents=prompt)
-            clean_text = response.text.replace('```json', '').replace('```', '').strip()
-            estimates = json.loads(clean_text)
-            
-            for est in estimates:
+    logged_entries = []
+
+    # 1. If explicit nutrition fields are passed directly in request body (e.g. manual log / recipe editor), use them directly!
+    if 'calories' in data or 'ingredients' in data or 'protein_g' in data:
+        log_entry = {
+            'id': int(time.time() * 1000),
+            'date': date_str,
+            'time': time_str,
+            'name': raw_name,
+            'calories': int(data.get('calories', 0)),
+            'cholesterol_mg': int(data.get('cholesterol_mg', 0)),
+            'protein_g': int(data.get('protein_g', 0)),
+            'carbs_g': int(data.get('carbs_g', 0)),
+            'sugar_g': int(data.get('sugar_g', 0)),
+            'fat_g': int(data.get('fat_g', 0)),
+            'caffeine_mg': int(data.get('caffeine_mg', 0)),
+            'category': data.get('category', 'Meal'),
+            'ingredients': data.get('ingredients', []),
+            'ai_note': data.get('ai_note', '')
+        }
+        logged_entries.append(log_entry)
+    else:
+        # 2. Otherwise support lookup from custom_foods or fallback to AI estimation
+        items_to_log = [i.strip() for i in raw_name.split(',')]
+        custom_foods = load_json(CUSTOM_FOODS_FILE, {})
+        
+        ai_items = []
+        for name in items_to_log:
+            if name in custom_foods:
+                nutrition = custom_foods[name]
                 log_entry = {
                     'id': int(time.time() * 1000) + len(logged_entries),
                     'date': date_str,
                     'time': time_str,
-                    **est
+                    'name': name,
+                    **nutrition
                 }
                 logged_entries.append(log_entry)
-        except Exception as e:
-            logger.error(f"Bulk AI estimation failed: {e}")
-            for name in ai_items:
-                logged_entries.append({
-                    'id': int(time.time() * 1000) + len(logged_entries),
-                    'date': date_str, 'time': time_str, 'name': name,
-                    'calories': 0, 'cholesterol_mg': 0, 'protein_g': 0, 'carbs_g': 0, 'sugar_g': 0, 'fat_g': 0, 'caffeine_mg': 0, 'ai_note': 'Failed'
-                })
+            else:
+                ai_items.append(name)
+                
+        if ai_items:
+            try:
+                ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+                settings = load_settings()
+                model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
+                
+                prompt = f"""
+                Analyze these food items: {", ".join(ai_items)}
+                My Goals: Weight loss, low cholesterol.
+                Return ONLY a JSON array of objects, one for each item, with:
+                name (string), calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), sugar_g (int), fat_g (int), caffeine_mg (int), ai_note (str).
+                """
+                
+                response = ai_client.models.generate_content(model=model_name, contents=prompt)
+                clean_text = response.text.replace('```json', '').replace('```', '').strip()
+                estimates = json.loads(clean_text)
+                
+                for est in estimates:
+                    log_entry = {
+                        'id': int(time.time() * 1000) + len(logged_entries),
+                        'date': date_str,
+                        'time': time_str,
+                        **est
+                    }
+                    logged_entries.append(log_entry)
+            except Exception as e:
+                logger.error(f"Bulk AI estimation failed: {e}")
+                for name in ai_items:
+                    logged_entries.append({
+                        'id': int(time.time() * 1000) + len(logged_entries),
+                        'date': date_str, 'time': time_str, 'name': name,
+                        'calories': 0, 'cholesterol_mg': 0, 'protein_g': 0, 'carbs_g': 0, 'sugar_g': 0, 'fat_g': 0, 'caffeine_mg': 0, 'ai_note': 'Manual Entry Needed'
+                    })
 
     dry_run = request.args.get('dry_run') == 'true'
     if not dry_run:
