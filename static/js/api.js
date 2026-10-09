@@ -488,21 +488,27 @@ window.fetchNutritionData = async function () {
             fetch('/api/nutrition/custom_foods')
         ]);
 
+        let currentLogs = [];
         if (logsRes.ok) {
-            const logs = await logsRes.json();
-            const analysisUrl = `/api/nutrition/analysis?date=${dateStr}&no_ai=true`;
-            const statsRes = await fetch(analysisUrl);
-            const analysisData = await statsRes.json();
-
-            let metabolic = { total: 0, active: 0, resting: 0 };
-            if (analysisData.metabolic) {
-                metabolic = analysisData.metabolic;
-            }
-
-            if (window.updateNutritionUI) window.updateNutritionUI(logs, metabolic, analysisData.analysis);
+            currentLogs = await logsRes.json();
+            // Render logs immediately without waiting for metabolic analysis
+            if (window.updateNutritionUI) window.updateNutritionUI(currentLogs, { total: 0, active: 0, resting: 0 }, null);
         }
         if (customRes.ok) {
             window.customFoods = await customRes.json();
+        }
+
+        // Fetch metabolic & analysis in background without blocking log display
+        try {
+            const analysisUrl = `/api/nutrition/analysis?date=${dateStr}&no_ai=true`;
+            const statsRes = await fetch(analysisUrl);
+            if (statsRes.ok) {
+                const analysisData = await statsRes.json();
+                let metabolic = analysisData.metabolic || { total: 0, active: 0, resting: 0 };
+                if (window.updateNutritionUI) window.updateNutritionUI(currentLogs, metabolic, analysisData.analysis);
+            }
+        } catch (mErr) {
+            console.warn("Metabolic fetch skipped/failed:", mErr);
         }
     } catch (err) {
         console.error("Nutrition fetch error:", err);

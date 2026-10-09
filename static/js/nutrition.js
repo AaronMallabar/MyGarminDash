@@ -902,7 +902,7 @@ window.saveCustomFood = async function (alsoLog = true) {
             const rawTime = document.getElementById('food-log-time')?.value;
             const timeStr = window.parseTimeString(rawTime) || rawTime || (new Date().getHours().toString().padStart(2, '0') + ':' + new Date().getMinutes().toString().padStart(2, '0'));
             const dateStr = window.getLocalDateStr(window.activeNutritionDate);
-            await fetch('/api/nutrition/log', {
+            const logRes = await fetch('/api/nutrition/log', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -920,13 +920,21 @@ window.saveCustomFood = async function (alsoLog = true) {
                     ingredients: ingredients
                 })
             });
+
+            if (!logRes.ok) {
+                const errData = await logRes.json().catch(() => ({}));
+                throw new Error(errData.error || `Server error ${logRes.status}`);
+            }
         }
 
         window.editingLogId = null;
         window.hideCustomFoodForm();
         window.closeFoodModal();
         if (window.fetchNutritionData) window.fetchNutritionData();
-    } catch (err) { console.error(err); }
+    } catch (err) {
+        console.error("Save custom food error:", err);
+        alert(`Could not log food: ${err.message || 'Please check your inputs and try again.'}`);
+    }
 }
 
 window.openLibraryModal = function () {

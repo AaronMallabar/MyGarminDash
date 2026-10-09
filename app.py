@@ -1,6 +1,7 @@
 import os
 import subprocess
 import logging
+import re
 from google import genai
 import json
 import traceback
@@ -3727,62 +3728,70 @@ def get_food_logs():
 
 def parse_time_str(time_str):
     """Parse various time formats (e.g., '8:30 AM', '1:15pm', '14:30', '7pm') into 'HH:MM' 24h format."""
-    if not time_str or not isinstance(time_str, str):
-        return datetime.now(EST).strftime('%H:%M')
-    time_str = time_str.strip()
-    if not time_str:
-        return datetime.now(EST).strftime('%H:%M')
-    
-    # Check 24h format e.g. "14:30" or "08:15"
-    m24 = re.match(r'^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$', time_str)
-    if m24:
-        return f"{int(m24.group(1)):02d}:{m24.group(2)}"
+    try:
+        if not time_str or not isinstance(time_str, str):
+            return datetime.now(EST).strftime('%H:%M')
+        time_str = time_str.strip()
+        if not time_str:
+            return datetime.now(EST).strftime('%H:%M')
         
-    # Check 12h format e.g. "8:30 AM", "1:15pm", "12:00pm"
-    m12 = re.match(r'^([0-1]?[0-9])(?::([0-5][0-9]))?\s*([ap]\.?m\.?)$', time_str, re.IGNORECASE)
-    if m12:
-        h = int(m12.group(1))
-        m = m12.group(2) if m12.group(2) else "00"
-        mer = m12.group(3).lower().replace('.', '')
-        if h == 12:
-            h = 0 if mer.startswith('a') else 12
-        elif mer.startswith('p'):
-            h += 12
-        return f"{h:02d}:{m}"
-        
-    # Check simple e.g. "8am", "7pm"
-    m_simple = re.match(r'^([0-1]?[0-9])\s*([ap]\.?m\.?)$', time_str, re.IGNORECASE)
-    if m_simple:
-        h = int(m_simple.group(1))
-        mer = m_simple.group(2).lower().replace('.', '')
-        if h == 12:
-            h = 0 if mer.startswith('a') else 12
-        elif mer.startswith('p'):
-            h += 12
-        return f"{h:02d}:00"
+        # Check 24h format e.g. "14:30" or "08:15"
+        m24 = re.match(r'^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$', time_str)
+        if m24:
+            return f"{int(m24.group(1)):02d}:{m24.group(2)}"
+            
+        # Check 12h format e.g. "8:30 AM", "1:15pm", "12:00pm"
+        m12 = re.match(r'^([0-1]?[0-9])(?::([0-5][0-9]))?\s*([ap]\.?m\.?)$', time_str, re.IGNORECASE)
+        if m12:
+            h = int(m12.group(1))
+            m = m12.group(2) if m12.group(2) else "00"
+            mer = m12.group(3).lower().replace('.', '')
+            if h == 12:
+                h = 0 if mer.startswith('a') else 12
+            elif mer.startswith('p'):
+                h += 12
+            return f"{h:02d}:{m}"
+            
+        # Check simple e.g. "8am", "7pm"
+        m_simple = re.match(r'^([0-1]?[0-9])\s*([ap]\.?m\.?)$', time_str, re.IGNORECASE)
+        if m_simple:
+            h = int(m_simple.group(1))
+            mer = m_simple.group(2).lower().replace('.', '')
+            if h == 12:
+                h = 0 if mer.startswith('a') else 12
+            elif mer.startswith('p'):
+                h += 12
+            return f"{h:02d}:00"
 
-    return time_str
+        return time_str
+    except Exception as e:
+        logger.warning(f"Error parsing time string '{time_str}': {e}")
+        return datetime.now(EST).strftime('%H:%M')
 
 def extract_time_and_clean_text(text):
     """
     Extract time from text like '2 eggs at 8:30 AM' or 'pizza at 1:15pm'.
     Returns (cleaned_text, extracted_time_or_None).
     """
-    if not text or not isinstance(text, str):
-        return text, None
+    try:
+        if not text or not isinstance(text, str):
+            return text, None
 
-    pattern = r'(?:(?:\bat|@)\s*)?\b((?:1[0-2]|0?[1-9]):[0-5][0-9]\s*(?:[ap]\.?m\.?)|(?:2[0-3]|[01]?[0-9]):[0-5][0-9]|(?:1[0-2]|0?[1-9])\s*[ap]\.?m\.?)\b'
-    match = re.search(pattern, text, re.IGNORECASE)
-    if match:
-        raw_time_found = match.group(1)
-        parsed_time = parse_time_str(raw_time_found)
-        full_match = match.group(0)
-        cleaned_text = re.sub(re.escape(full_match), '', text, flags=re.IGNORECASE).strip()
-        cleaned_text = re.sub(r'^\s*,\s*|\s*,\s*$', '', cleaned_text).strip()
-        if not cleaned_text:
-            cleaned_text = text
-        return cleaned_text, parsed_time
-    return text, None
+        pattern = r'(?:(?:\bat|@)\s*)?\b((?:1[0-2]|0?[1-9]):[0-5][0-9]\s*(?:[ap]\.?m\.?)|(?:2[0-3]|[01]?[0-9]):[0-5][0-9]|(?:1[0-2]|0?[1-9])\s*[ap]\.?m\.?)\b'
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            raw_time_found = match.group(1)
+            parsed_time = parse_time_str(raw_time_found)
+            full_match = match.group(0)
+            cleaned_text = re.sub(re.escape(full_match), '', text, flags=re.IGNORECASE).strip()
+            cleaned_text = re.sub(r'^\s*,\s*|\s*,\s*$', '', cleaned_text).strip()
+            if not cleaned_text:
+                cleaned_text = text
+            return cleaned_text, parsed_time
+        return text, None
+    except Exception as e:
+        logger.warning(f"Error extracting time from text '{text}': {e}")
+        return text, None
 
 @app.route('/api/nutrition/log', methods=['POST'])
 @login_required
