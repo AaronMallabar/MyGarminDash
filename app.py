@@ -3725,6 +3725,65 @@ def get_food_logs():
     day_logs = [log for log in logs if log['date'] == date_str]
     return jsonify(day_logs)
 
+def parse_time_str(time_str):
+    """Parse various time formats (e.g., '8:30 AM', '1:15pm', '14:30', '7pm') into 'HH:MM' 24h format."""
+    if not time_str or not isinstance(time_str, str):
+        return datetime.now(EST).strftime('%H:%M')
+    time_str = time_str.strip()
+    if not time_str:
+        return datetime.now(EST).strftime('%H:%M')
+    
+    # Check 24h format e.g. "14:30" or "08:15"
+    m24 = re.match(r'^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$', time_str)
+    if m24:
+        return f"{int(m24.group(1)):02d}:{m24.group(2)}"
+        
+    # Check 12h format e.g. "8:30 AM", "1:15pm", "12:00pm"
+    m12 = re.match(r'^([0-1]?[0-9])(?::([0-5][0-9]))?\s*([ap]\.?m\.?)$', time_str, re.IGNORECASE)
+    if m12:
+        h = int(m12.group(1))
+        m = m12.group(2) if m12.group(2) else "00"
+        mer = m12.group(3).lower().replace('.', '')
+        if h == 12:
+            h = 0 if mer.startswith('a') else 12
+        elif mer.startswith('p'):
+            h += 12
+        return f"{h:02d}:{m}"
+        
+    # Check simple e.g. "8am", "7pm"
+    m_simple = re.match(r'^([0-1]?[0-9])\s*([ap]\.?m\.?)$', time_str, re.IGNORECASE)
+    if m_simple:
+        h = int(m_simple.group(1))
+        mer = m_simple.group(2).lower().replace('.', '')
+        if h == 12:
+            h = 0 if mer.startswith('a') else 12
+        elif mer.startswith('p'):
+            h += 12
+        return f"{h:02d}:00"
+
+    return time_str
+
+def extract_time_and_clean_text(text):
+    """
+    Extract time from text like '2 eggs at 8:30 AM' or 'pizza at 1:15pm'.
+    Returns (cleaned_text, extracted_time_or_None).
+    """
+    if not text or not isinstance(text, str):
+        return text, None
+
+    pattern = r'(?:(?:\bat|@)\s*)?\b((?:1[0-2]|0?[1-9]):[0-5][0-9]\s*(?:[ap]\.?m\.?)|(?:2[0-3]|[01]?[0-9]):[0-5][0-9]|(?:1[0-2]|0?[1-9])\s*[ap]\.?m\.?)\b'
+    match = re.search(pattern, text, re.IGNORECASE)
+    if match:
+        raw_time_found = match.group(1)
+        parsed_time = parse_time_str(raw_time_found)
+        full_match = match.group(0)
+        cleaned_text = re.sub(re.escape(full_match), '', text, flags=re.IGNORECASE).strip()
+        cleaned_text = re.sub(r'^\s*,\s*|\s*,\s*$', '', cleaned_text).strip()
+        if not cleaned_text:
+            cleaned_text = text
+        return cleaned_text, parsed_time
+    return text, None
+
 @app.route('/api/nutrition/log', methods=['POST'])
 @login_required
 def log_food():
@@ -3733,12 +3792,21 @@ def log_food():
     if not raw_name:
         return jsonify({'error': 'Food name required'}), 400
     
+    # Try extracting time from name if present, e.g. "Scrambled eggs at 8:30 AM"
+    cleaned_name, extracted_time_from_name = extract_time_and_clean_text(raw_name)
+    if extracted_time_from_name and not data.get('time'):
+        time_str = extracted_time_from_name
+        raw_name = cleaned_name
+    elif data.get('time'):
+        time_str = parse_time_str(data.get('time'))
+    else:
+        time_str = datetime.now(EST).strftime('%H:%M')
+
     # Support multiple food items separated by commas
     items_to_log = [i.strip() for i in raw_name.split(',')]
     logged_entries = []
     
     date_str = data.get('date', get_today().isoformat())
-    time_str = data.get('time', datetime.now(EST).strftime('%H:%M'))
     custom_foods = load_json(CUSTOM_FOODS_FILE, {})
     
     ai_items = []
@@ -3992,6 +4060,9 @@ def nutrition_chat():
         logs = load_json(FOOD_LOGS_FILE, [])
         recent_meals = [l.get('name') for l in logs[-15:]] # last 15 items
         
+        # Pre-extract time from text if present
+        _, text_extracted_time = extract_time_and_clean_text(text)
+        
         prompt = f"""
         Analyze this food log request for Aaron.
         Goal: Weight loss and low cholesterol.
@@ -4006,6 +4077,7 @@ def nutrition_chat():
         4. "clarifying_questions": 1-2 specific questions to increase confidence.
         5. "meal_name": Title of the meal.
         6. "items": Updated list of {{"name", "qty", "unit", "calories", "cholesterol_mg", "protein_g", "carbs_g", "sugar_g", "fat_g", "caffeine_mg"}}.
+        7. "extracted_time": If a specific time of day is mentioned in the INPUT (e.g. "at 8:30 AM", "1:15pm", "8:30", "7pm"), return it formatted as "HH:MM" 24-hr time (e.g. "08:30" or "13:15"). Otherwise return null.
         
         Context:
         INPUT: "{text}"
@@ -4026,6 +4098,10 @@ def nutrition_chat():
         clean_text = response.text.replace('```json', '').replace('```', '').strip()
         result = json.loads(clean_text)
         
+        # Fallback to regex extracted time if AI did not return extracted_time
+        if text_extracted_time and not result.get('extracted_time'):
+            result['extracted_time'] = text_extracted_time
+            
         return jsonify(result)
     except Exception as e:
         logger.error(f"Nutrition chat failed: {e}")

@@ -8,6 +8,62 @@ window.currentNutritionLogs = [];
 window.editingLogId = null;
 window.activeNutritionDate = new Date();
 
+window.parseTimeString = function (str) {
+    if (!str || typeof str !== 'string') return null;
+    str = str.trim();
+    if (!str) return null;
+
+    // 24hr format HH:MM
+    const match24 = str.match(/^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$/);
+    if (match24) {
+        const h = match24[1].padStart(2, '0');
+        const m = match24[2];
+        return `${h}:${m}`;
+    }
+
+    // 12hr format e.g. "8:30 AM", "1:15pm", "12:00pm"
+    const match12 = str.match(/^([0-1]?[0-9])(?::([0-5][0-9]))?\s*([ap]\.?m\.?)$/i);
+    if (match12) {
+        let h = parseInt(match12[1], 10);
+        const m = match12[2] ? match12[2].padStart(2, '0') : '00';
+        const mer = match12[3].toLowerCase().replace(/\./g, '');
+        if (h === 12) {
+            h = mer.startsWith('a') ? 0 : 12;
+        } else if (mer.startsWith('p')) {
+            h += 12;
+        }
+        return `${h.toString().padStart(2, '0')}:${m}`;
+    }
+
+    // Simple format e.g. "8am", "7pm"
+    const matchSimple = str.match(/^([0-1]?[0-9])\s*([ap]\.?m\.?)$/i);
+    if (matchSimple) {
+        let h = parseInt(matchSimple[1], 10);
+        const mer = matchSimple[2].toLowerCase().replace(/\./g, '');
+        if (h === 12) {
+            h = mer.startsWith('a') ? 0 : 12;
+        } else if (mer.startsWith('p')) {
+            h += 12;
+        }
+        return `${h.toString().padStart(2, '0')}:00`;
+    }
+
+    return str;
+};
+
+window.normalizeTimeInput = function (el) {
+    if (!el || !el.value) return;
+    const parsed = window.parseTimeString(el.value);
+    if (parsed) el.value = parsed;
+};
+
+window.setCurrentTimeInInput = function () {
+    const now = new Date();
+    const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+    const input = document.getElementById('food-log-time');
+    if (input) input.value = timeStr;
+};
+
 window.shiftNutritionDate = function (dir) {
     window.activeNutritionDate.setDate(window.activeNutritionDate.getDate() + dir);
     const today = new Date();
@@ -392,6 +448,11 @@ window.sendFoodChat = async function () {
         });
 
         const data = await res.json();
+
+        if (data.extracted_time) {
+            const timeInput = document.getElementById('food-log-time');
+            if (timeInput) timeInput.value = data.extracted_time;
+        }
 
         if (data.items && data.items.length > 0) {
             window.showCustomFoodForm();
@@ -778,7 +839,8 @@ window.saveCustomFood = async function (alsoLog = true) {
         }
 
         if (alsoLog || window.editingLogId) {
-            const timeStr = document.getElementById('food-log-time').value;
+            const rawTime = document.getElementById('food-log-time')?.value;
+            const timeStr = window.parseTimeString(rawTime) || rawTime || (new Date().getHours().toString().padStart(2, '0') + ':' + new Date().getMinutes().toString().padStart(2, '0'));
             const dateStr = window.getLocalDateStr(window.activeNutritionDate);
             await fetch('/api/nutrition/log', {
                 method: 'POST',
@@ -878,7 +940,7 @@ window.logFromLibrary = async function (name) {
     let timeStr;
     const timeInput = document.getElementById('food-log-time');
     if (timeInput && timeInput.value) {
-        timeStr = timeInput.value;
+        timeStr = window.parseTimeString(timeInput.value) || timeInput.value;
     } else {
         const now = new Date();
         timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');

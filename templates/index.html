@@ -2393,9 +2393,16 @@
                     <span style="font-size: 1.8rem;">🥗</span> Conversational Nutrition
                 </h2>
                 <div id="food-modal-date-picker"
-                    style="display: flex; align-items: center; gap: 1rem; margin-top: 1rem; padding: 0.5rem; background: rgba(255,255,255,0.02); border-radius: 0.75rem;">
-                    <input type="time" id="food-log-time"
-                        style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 0.4rem 0.6rem; border-radius: 0.5rem; font-family: 'Lexend', sans-serif; cursor: pointer; border-left: 3px solid #10b981; font-size: 0.85rem;">
+                    style="display: flex; align-items: center; gap: 0.75rem; margin-top: 1rem; padding: 0.5rem; background: rgba(255,255,255,0.02); border-radius: 0.75rem; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 0.4rem;">
+                        <span style="font-size: 0.85rem; color: var(--text-secondary);">⏰</span>
+                        <input type="text" id="food-log-time" placeholder="e.g. 1:30 PM"
+                            style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 0.4rem 0.6rem; border-radius: 0.5rem; font-family: 'Lexend', sans-serif; border-left: 3px solid #10b981; font-size: 0.85rem; width: 120px;"
+                            onchange="window.normalizeTimeInput(this)" onblur="window.normalizeTimeInput(this)" title="Enter time (e.g. 8:30 AM, 1:15 PM, 14:30)">
+                        <button type="button" onclick="window.setCurrentTimeInInput()"
+                            style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary); font-size: 0.75rem; padding: 0.35rem 0.55rem; border-radius: 0.4rem; cursor: pointer; transition: background 0.2s;"
+                            onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'" title="Set to current time">Now</button>
+                    </div>
                     <span style="font-size: 0.8rem; color: var(--text-secondary);">Logging for <span
                             id="food-modal-date-label"
                             style="color: var(--text-primary); font-weight: 600;">Today</span></span>
