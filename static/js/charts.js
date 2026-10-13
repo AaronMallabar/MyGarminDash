@@ -177,18 +177,52 @@ window.renderWeightChart = function (data, range) {
         safeSetText('weight-drilldown-current', `${latestLbs.toFixed(1)} lbs`);
     }
     safeSetText('weight-drilldown-goal', '185.0 lbs');
-    if (summary.delta_lbs !== undefined) {
-        const prefix = summary.delta_lbs > 0 ? '+' : '';
-        safeSetText('weight-drilldown-change', `${prefix}${summary.delta_lbs.toFixed(1)} lbs`);
+    const delta = summary.delta_lbs !== undefined ? summary.delta_lbs : (summary.range_change !== undefined ? summary.range_change : null);
+    if (delta !== null) {
+        const prefix = delta > 0 ? '+' : '';
+        safeSetText('weight-drilldown-change', `${prefix}${delta.toFixed(1)} lbs`);
         const changeEl = document.getElementById('weight-drilldown-change');
-        if (changeEl) changeEl.style.color = summary.delta_lbs <= 0 ? '#4ade80' : '#f87171';
+        if (changeEl) changeEl.style.color = delta <= 0 ? '#4ade80' : '#f87171';
+    } else {
+        safeSetText('weight-drilldown-change', '0.0 lbs');
     }
-    const bmiVal = document.getElementById('weight-bmi-val')?.textContent || '--';
+    const bmiVal = (summary && summary.bmi) ? summary.bmi : (document.getElementById('weight-bmi-val')?.textContent || '--');
     safeSetText('weight-drilldown-bmi', bmiVal);
 
     window.updateMetricDatePill('weight', range || window.currentWeightRange, window.currentWeightEndDate);
 
-    if (weightData.length === 0) return;
+    if (weightData.length === 0) {
+        if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: { datasets: [] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                scales: { x: { display: false }, y: { display: false } }
+            },
+            plugins: [{
+                id: 'emptyWeightNotice',
+                afterDraw(chart) {
+                    const { ctx, width, height } = chart;
+                    ctx.save();
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.font = '14px Inter, sans-serif';
+                    const dateStr = summary.date || 'prior period';
+                    const lbsStr = summary.latest_lbs ? `${summary.latest_lbs} lbs (${dateStr})` : 'No data';
+                    ctx.fillText('No weigh-ins recorded in this date range', width / 2, height / 2 - 12);
+                    ctx.fillStyle = '#38bdf8';
+                    ctx.font = '12px Inter, sans-serif';
+                    ctx.fillText(`Latest recorded weight: ${lbsStr}`, width / 2, height / 2 + 14);
+                    ctx.restore();
+                }
+            }]
+        });
+        return;
+    }
 
     const weights = weightData.map(d => d.weight_lbs);
     const min = Math.floor(Math.min(...weights) - 3);
@@ -953,6 +987,7 @@ function renderHydrationContent(data, oz) {
         safeSetText('hydration-drilldown-intake', `${intakeOz} oz`);
         safeSetText('hydration-drilldown-goal', `${goalOz} oz`);
         safeSetText('hydration-drilldown-avg', `${intakeOz} oz`);
+        safeSetText('hydration-drilldown-adherence', `${p}%`);
         
         if (hChart) {
             hChart.style.background = `conic-gradient(${p >= 100 ? '#22c55e' : '#38bdf8'} ${p}%, rgba(255,255,255,0.05) ${p}% 100%)`;
@@ -966,9 +1001,13 @@ function renderHydrationContent(data, oz) {
         const avgOz = validIntake.length > 0 ? Math.round(validIntake.reduce((a, b) => a + b, 0) / validIntake.length) : '--';
         const latestGoal = history.length > 0 ? oz(history[history.length - 1].goal || 2839) : '96.0';
 
+        const metDays = history.filter(d => (d.intake || 0) >= (d.goal || 2839)).length;
+        const adherencePct = history.length > 0 ? Math.round((metDays / history.length) * 100) : 0;
+
         safeSetText('hydration-drilldown-intake', validIntake.length > 0 ? `${validIntake[validIntake.length - 1]} oz` : '-- oz');
         safeSetText('hydration-drilldown-goal', `${latestGoal} oz`);
         safeSetText('hydration-drilldown-avg', `${avgOz} oz`);
+        safeSetText('hydration-drilldown-adherence', `${adherencePct}%`);
 
         const ctx = hHistoryChart.getContext('2d');
         if (chartInstances['hydrationHistoryChart']) chartInstances['hydrationHistoryChart'].destroy();
@@ -998,15 +1037,17 @@ window.renderHRVVisual = function (data) {
     const statusContainer = document.getElementById('hrv-status-container');
     window.updateMetricDatePill('hrv', window.currentHRVRange, window.currentHRVEndDate);
 
-    const summary = data.hrvSummary || data.summary || data || {};
-    const lastNight = summary.lastNightAvg || summary.last_night_avg || '--';
-    const weeklyAvg = summary.weeklyAvg || summary.weekly_avg || '--';
-    const status = summary.lastNightStatus || summary.last_night_status || summary.status || 'BALANCED';
+    const history = data.history || [];
+    const latestHistory = history.length > 0 ? history[history.length - 1] : {};
+    const summary = data.hrvSummary || data.summary || (data.lastNightAvg != null ? data : latestHistory) || {};
+    const lastNight = summary.lastNightAvg != null ? summary.lastNightAvg : (summary.last_night_avg != null ? summary.last_night_avg : (latestHistory.lastNightAvg != null ? latestHistory.lastNightAvg : '--'));
+    const weeklyAvg = summary.weeklyAvg != null ? summary.weeklyAvg : (summary.weekly_avg != null ? summary.weekly_avg : (latestHistory.weeklyAvg != null ? latestHistory.weeklyAvg : '--'));
+    const status = summary.lastNightStatus || summary.last_night_status || summary.status || latestHistory.status || 'BALANCED';
     const feedback = summary.feedbackText || summary.feedback || '';
     
-    const baseline = summary.baseline || {};
-    const low = baseline.balancedLow || summary.baselineLow || 0;
-    const high = baseline.balancedUpper || summary.baselineHigh || 0;
+    const baseline = summary.baseline || latestHistory.baseline || {};
+    const low = baseline.balancedLow || summary.baselineLow || latestHistory.baselineLow || 0;
+    const high = baseline.balancedUpper || summary.baselineHigh || latestHistory.baselineHigh || 0;
 
     safeSetText('hrv-drilldown-7d', typeof weeklyAvg === 'number' ? `${weeklyAvg} ms` : `${weeklyAvg}`);
     safeSetText('hrv-drilldown-night', typeof lastNight === 'number' ? `${lastNight} ms` : `${lastNight}`);

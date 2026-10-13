@@ -51,7 +51,10 @@ window.updateDashboard = function (data, today1d = {}, history = {}) {
     window.safeSetText('weight', weightLbs);
     window.safeSetText('weight-dual', weightKg);
     window.safeSetText('weight-7d-avg', `${weightLbs} lbs`);
-    if (data.bmi) window.safeSetText('weight-bmi-val', data.bmi);
+    const heightM = (data.user_height_cm || 182.88) / 100;
+    const kgNum = parseFloat(weightKg);
+    const calculatedBmi = data.bmi || ((!isNaN(kgNum) && kgNum > 0) ? (kgNum / (heightM * heightM)).toFixed(1) : null);
+    if (calculatedBmi) window.safeSetText('weight-bmi-val', calculatedBmi);
     if (weightSum.delta_lbs !== undefined || data.weight_change_lbs !== undefined) {
         const delta = weightSum.delta_lbs !== undefined ? weightSum.delta_lbs : data.weight_change_lbs;
         const prefix = delta > 0 ? '+' : '';

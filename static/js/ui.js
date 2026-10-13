@@ -31,7 +31,18 @@ window.openMetricDetail = function (metricKey) {
     document.body.style.overflow = 'hidden';
 
     // Highlight current active button for this pane
-    const activeRange = metricKey === 'weight' ? (window.currentWeightRange || '1m') : (window[`current${metricKey.toUpperCase()}Range`] || '1w');
+    const metricNameMap = {
+        'weight': 'Weight',
+        'steps': 'Steps',
+        'sleep': 'Sleep',
+        'stress': 'Stress',
+        'hydration': 'Hydration',
+        'hr': 'HR',
+        'hrv': 'HRV',
+        'im': 'IM'
+    };
+    const varName = metricNameMap[metricKey] || metricKey;
+    const activeRange = window[`current${varName}Range`] || (metricKey === 'weight' ? '1m' : '1w');
     if (targetPane) {
         targetPane.querySelectorAll('.drilldown-range-btn').forEach(btn => {
             if (btn.getAttribute('onclick')?.includes(`'${activeRange}'`)) {
@@ -43,8 +54,8 @@ window.openMetricDetail = function (metricKey) {
     }
 
     if (window.updateMetricDatePill) {
-        const endDate = metricKey === 'weight' ? window.currentWeightEndDate : window[`current${metricKey.toUpperCase()}EndDate`];
-        window.updateMetricDatePill(metricKey, activeRange, endDate || new Date());
+        const endDate = window[`current${varName}EndDate`] || new Date();
+        window.updateMetricDatePill(metricKey, activeRange, endDate);
     }
 
     // Trigger Chart reload for this metric with active range

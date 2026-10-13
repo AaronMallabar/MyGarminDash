@@ -358,6 +358,20 @@ def get_user_profile_data(client):
         logger.warning(f"Failed to get user profile: {e}")
         return {'age': None, 'height_cm': None, 'gender': None, 'weight_grams': None}
 
+def get_user_height(mgr=None):
+    try:
+        prof = None
+        if mgr and getattr(mgr, 'client', None):
+            prof = get_user_profile_data(mgr.client)
+        elif user_profile_cache.get('data'):
+            prof = user_profile_cache.get('data')
+        if prof and prof.get('height_cm'):
+            return float(prof['height_cm'])
+    except Exception:
+        pass
+    settings = load_settings()
+    return float(settings.get('height_cm') or 182.88)
+
 def get_user_max_hr(client):
     try:
         profile = get_user_profile_data(client)
@@ -2236,6 +2250,13 @@ def get_stats():
                     weight_grams = prev_weight['weight']
                     break
 
+        height_cm = get_user_height(mgr)
+        bmi = None
+        if weight_grams and height_cm:
+            height_m = height_cm / 100.0
+            kg = weight_grams / 1000.0
+            bmi = round(kg / (height_m * height_m), 1)
+
         response_data = {
             'offline_mode': mgr.client is None,
             'steps': cal_data.get('steps', 0),
@@ -2252,6 +2273,8 @@ def get_stats():
             'hrv': hrv_data,
             'activities': ui_activities[:10], # Cap to 10 for UI
             'weight_grams': weight_grams,
+            'bmi': bmi,
+            'user_height_cm': height_cm,
             'calories': {
                 'total': cal_data.get('total', 0),
                 'active': cal_data.get('active', 0),
@@ -2528,6 +2551,13 @@ def get_dashboard_bootstrap():
                     
         hyd_intake_ml = hydration_data.get('intake', 0)
         hyd_goal_ml = hydration_data.get('goal', 2839.0) or 2839.0
+        height_cm = get_user_height(mgr)
+        bmi = None
+        if weight_grams and height_cm:
+            height_m = height_cm / 100.0
+            kg = weight_grams / 1000.0
+            bmi = round(kg / (height_m * height_m), 1)
+
         stats_payload = {
             'offline_mode': mgr.client is None,
             'steps': cal_data.get('steps', 0),
@@ -2544,6 +2574,8 @@ def get_dashboard_bootstrap():
             'hrv': hrv_data,
             'activities': ui_activities[:10],
             'weight_grams': weight_grams,
+            'bmi': bmi,
+            'user_height_cm': height_cm,
             'hydration_ml': hyd_intake_ml,
             'hydration_goal_ml': hyd_goal_ml,
             'hydration_oz': round(n(hyd_intake_ml) * 0.033814, 1),
@@ -3214,6 +3246,11 @@ def get_weight_history():
                 summary['latest_kg'] = round(kg, 1)
                 summary['date'] = latest.get('date') or latest.get('calendarDate')
             
+        height_cm = get_user_height(mgr)
+        if summary.get('latest_kg') and height_cm:
+            height_m = height_cm / 100.0
+            summary['bmi'] = round(summary['latest_kg'] / (height_m * height_m), 1)
+
         return jsonify({'history': history, 'summary': summary})
     except Exception as e:
         logger.error(f"Error fetching weight history: {e}")
@@ -3262,9 +3299,12 @@ def get_hrv():
             
             start_date = end_date - timedelta(days=days)
             history = mgr.get_range('hrv', start_date, end_date)
+            latest_summary = history[-1] if history else {}
             return jsonify({
                 'range': range_val,
-                'history': history
+                'history': history,
+                'summary': latest_summary,
+                'hrvSummary': latest_summary
             })
             
     except Exception as e:
@@ -3370,16 +3410,38 @@ def get_intensity_minutes_history():
             weeks = 26 if range_val == '6m' else 52
             start_date = end_date - timedelta(weeks=weeks)
             
-            wim_data = mgr.client.get_weekly_intensity_minutes(start_date.isoformat(), end_date.isoformat())
             history = []
-            for w in wim_data:
-                history.append({
-                    'date': w.get('calendarDate'),
-                    'goal': w.get('weeklyGoal', 150),
-                    'moderate': w.get('moderateValue', 0),
-                    'vigorous': w.get('vigorousValue', 0),
-                    'total': w.get('moderateValue', 0) + 2 * w.get('vigorousValue', 0)
-                })
+            if mgr.client:
+                try:
+                    wim_data = mgr.client.get_weekly_intensity_minutes(start_date.isoformat(), end_date.isoformat()) or []
+                    for w in wim_data:
+                        history.append({
+                            'date': w.get('calendarDate'),
+                            'goal': w.get('weeklyGoal', 150),
+                            'moderate': w.get('moderateValue', 0),
+                            'vigorous': w.get('vigorousValue', 0),
+                            'total': w.get('moderateValue', 0) + 2 * w.get('vigorousValue', 0)
+                        })
+                except Exception as ex:
+                    logger.warning(f"Live get_weekly_intensity_minutes failed, falling back to cache: {ex}")
+
+            if not history:
+                daily_items = mgr.get_range('intensity_minutes', start_date, end_date)
+                week_map = {}
+                for d in daily_items:
+                    d_str = d.get('calendarDate') or d.get('date')
+                    if not d_str: continue
+                    d_dt = date.fromisoformat(d_str)
+                    mon = (d_dt - timedelta(days=d_dt.weekday())).isoformat()
+                    if mon not in week_map:
+                        week_map[mon] = {'date': mon, 'goal': d.get('goal', 150), 'moderate': 0, 'vigorous': 0, 'total': 0}
+                    m_val = d.get('moderate', 0)
+                    v_val = d.get('vigorous', 0)
+                    t_val = d.get('total') if 'total' in d else (m_val + 2 * v_val)
+                    week_map[mon]['moderate'] += m_val
+                    week_map[mon]['vigorous'] += v_val
+                    week_map[mon]['total'] += t_val
+                history = sorted(list(week_map.values()), key=lambda x: x['date'])
             
             latest_goal = history[-1]['goal'] if history else 150
             return jsonify({

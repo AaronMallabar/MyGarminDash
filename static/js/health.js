@@ -2,9 +2,10 @@
  * Health Metrics: HRV & Intensity Minutes Logic
  */
 
-window.currentHRVEndDate = new Date();
-window.currentHRVRange = '1d';
-window.currentIMRange = '1d';
+window.currentHRVEndDate = window.currentHRVEndDate || new Date();
+window.currentHRVRange = window.currentHRVRange || '1w';
+window.currentIMRange = window.currentIMRange || '1w';
+window.currentIMEndDate = window.currentIMEndDate || new Date();
 
 window.updateHRVRange = async function (range, btn) {
     if (range) window.currentHRVRange = range;
