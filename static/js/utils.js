@@ -99,6 +99,17 @@ window.getLocalDateStr = function (date) {
     if (!date) {
         return window.getEasternDateStr();
     }
+    if (typeof date === 'string') {
+        return date.slice(0, 10);
+    }
+    if (!(date instanceof Date) || isNaN(date.getTime())) {
+        try {
+            date = new Date(date);
+            if (isNaN(date.getTime())) return window.getEasternDateStr();
+        } catch (e) {
+            return window.getEasternDateStr();
+        }
+    }
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -117,6 +128,24 @@ window.isDateToday = function (date) {
         d.getMonth() === today.getMonth() &&
         d.getFullYear() === today.getFullYear();
 }
+
+window.destroyChartIfExists = function (canvasIdOrEl) {
+    if (!canvasIdOrEl) return;
+    const canvas = typeof canvasIdOrEl === 'string' ? document.getElementById(canvasIdOrEl) : canvasIdOrEl;
+    const id = typeof canvasIdOrEl === 'string' ? canvasIdOrEl : (canvas ? canvas.id : null);
+    if (window.Chart && canvas) {
+        try {
+            const chart = window.Chart.getChart(canvas);
+            if (chart) chart.destroy();
+        } catch (e) {}
+    }
+    if (id && window.chartInstances && window.chartInstances[id]) {
+        try {
+            window.chartInstances[id].destroy();
+        } catch (e) {}
+        delete window.chartInstances[id];
+    }
+};
 
 window.formatDuration = function (s) {
     const h = Math.floor(s / 3600);

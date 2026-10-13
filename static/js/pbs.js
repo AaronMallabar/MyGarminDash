@@ -114,8 +114,10 @@ function renderPbCharts(sport, data) {
     const ctx = document.getElementById(canvasId)?.getContext('2d');
     if (!ctx) return;
 
+    if (window.destroyChartIfExists) window.destroyChartIfExists(canvasId);
     if (window.pbChartInstance) {
-        window.pbChartInstance.destroy();
+        try { window.pbChartInstance.destroy(); } catch (e) {}
+        window.pbChartInstance = null;
     }
 
     const lifetime = data.lifetime[sport];

@@ -7,6 +7,24 @@
 window.chartInstances = window.chartInstances || {};
 const chartInstances = window.chartInstances;
 
+window.destroyChartIfExists = function (canvasIdOrEl) {
+    if (!canvasIdOrEl) return;
+    const canvas = typeof canvasIdOrEl === 'string' ? document.getElementById(canvasIdOrEl) : canvasIdOrEl;
+    const id = typeof canvasIdOrEl === 'string' ? canvasIdOrEl : (canvas ? canvas.id : null);
+    if (window.Chart && canvas) {
+        try {
+            const chart = window.Chart.getChart(canvas);
+            if (chart) chart.destroy();
+        } catch (e) {}
+    }
+    if (id && window.chartInstances && window.chartInstances[id]) {
+        try {
+            window.chartInstances[id].destroy();
+        } catch (e) {}
+        delete window.chartInstances[id];
+    }
+};
+
 // Client-side cache for chart data
 const chartDataCache = {
     steps: {},
@@ -74,7 +92,7 @@ window.renderYTDChart = function (canvasId, labels, data) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+    window.destroyChartIfExists(canvasId);
 
     chartInstances[canvasId] = new Chart(ctx, {
         type: 'line',
@@ -138,7 +156,7 @@ window.renderWeightChart = function (data, range) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+    window.destroyChartIfExists(canvasId);
 
     const weightData = (data.history || data) || [];
     const summary = data.summary || {};
@@ -192,7 +210,7 @@ window.renderWeightChart = function (data, range) {
     window.updateMetricDatePill('weight', range || window.currentWeightRange, window.currentWeightEndDate);
 
     if (weightData.length === 0) {
-        if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+        window.destroyChartIfExists(canvasId);
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
             data: { datasets: [] },
@@ -398,9 +416,8 @@ function renderCalorie1DayView(day) {
     if (macrosCenter) macrosCenter.textContent = consumed > 0 ? consumed.toLocaleString() : '--';
 
     const macrosCanvas = document.getElementById('calorie-macros-donut');
-    if (macrosCanvas && chartInstances['calorieMacrosDonut']) {
-        chartInstances['calorieMacrosDonut'].destroy();
-        chartInstances['calorieMacrosDonut'] = null;
+    if (macrosCanvas) {
+        window.destroyChartIfExists(macrosCanvas);
     }
     if (macrosCanvas && totalMacroCal > 0) {
         const pPct = (calFromPro / totalMacroCal) * 100;
@@ -445,8 +462,8 @@ window.renderCalorieChart = function (data) {
     const history = data.history || [];
 
     if (range === '1d' && history.length > 0) {
-        if (chartInstances[canvasId]) { chartInstances[canvasId].destroy(); chartInstances[canvasId] = null; }
-        if (chartInstances['calorieMacrosDonut']) { chartInstances['calorieMacrosDonut'].destroy(); chartInstances['calorieMacrosDonut'] = null; }
+        window.destroyChartIfExists(canvasId);
+        window.destroyChartIfExists('calorie-macros-donut');
         renderCalorie1DayView(history[0]);
         if (canvas) canvas.style.display = 'none';
         if (oneDayContainer) oneDayContainer.style.display = 'block';
@@ -461,7 +478,7 @@ window.renderCalorieChart = function (data) {
     if (filterBar) filterBar.style.display = 'flex';
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+    window.destroyChartIfExists(canvasId);
 
     const filters = getCalorieFilters();
     if (history.length === 0 || filters.length === 0) {
@@ -578,7 +595,7 @@ window.renderStepsVisual = function (data) {
         safeSetText('steps-drilldown-dist', `${(avg * 0.000473).toFixed(2)} mi/day`);
         safeSetText('steps-drilldown-cal', `${Math.round(avg * 0.04)} kcal/day`);
 
-        if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+        window.destroyChartIfExists(canvasId);
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -613,7 +630,7 @@ window.renderHRVisual = function (data) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+    window.destroyChartIfExists(canvasId);
 
     const range = data.range || window.currentHRRange || '1d';
     window.updateMetricDatePill('hr', range, window.currentHREndDate);
@@ -624,7 +641,7 @@ window.renderHRVisual = function (data) {
         const dailyRhr = parseInt(summary.rhr) || 0;
         const dailyMin = parseInt(summary.min) || 0;
         const zones = data.zones || [95, 114, 133, 152, 171];
-        safeSetText('hr-max-val', dailyMax || '--');
+        safeSetText('hr-max-val', `Max: ${dailyMax || '--'}`);
         safeSetText('hr-drilldown-current', `${dailyRhr || '--'} bpm`);
         safeSetText('hr-drilldown-7d', `${dailyRhr || '--'} bpm`);
         safeSetText('hr-drilldown-max', `${dailyMax || '--'} bpm`);
@@ -758,7 +775,7 @@ window.renderStressVisual = function (data) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+    window.destroyChartIfExists(canvasId);
 
     const range = data.range || window.currentStressRange || '1d';
     window.updateMetricDatePill('stress', range, window.currentStressEndDate);
@@ -897,7 +914,7 @@ window.renderSleepVisual = function (data) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+    window.destroyChartIfExists(canvasId);
 
     const range = data.range || window.currentSleepRange || '1d';
     window.updateMetricDatePill('sleep', range, window.currentSleepEndDate);
@@ -972,7 +989,10 @@ function renderHydrationContent(data, oz) {
 
     if (window.currentHydrationRange === '1d') {
         if (hDonutContainer) hDonutContainer.style.display = 'flex';
-        if (hHistoryChart) hHistoryChart.style.display = 'none';
+        if (hHistoryChart) {
+            hHistoryChart.style.display = 'none';
+            window.destroyChartIfExists('hydrationHistoryChart');
+        }
 
         const summary = data.summary || data;
         const intake = summary.intake || 0;
@@ -1010,7 +1030,7 @@ function renderHydrationContent(data, oz) {
         safeSetText('hydration-drilldown-adherence', `${adherencePct}%`);
 
         const ctx = hHistoryChart.getContext('2d');
-        if (chartInstances['hydrationHistoryChart']) chartInstances['hydrationHistoryChart'].destroy();
+        window.destroyChartIfExists('hydrationHistoryChart');
         chartInstances['hydrationHistoryChart'] = new Chart(ctx, {
             type: 'bar',
             data: { labels: history.map(d => (d.date || '').split('-').slice(1).join('/')), datasets: [{ data: history.map(d => parseFloat(oz(d.intake || 0))), backgroundColor: '#38bdf8', borderRadius: 4 }] },
@@ -1058,7 +1078,10 @@ window.renderHRVVisual = function (data) {
     safeSetText('hrv-drilldown-status', status.replace(/_/g, ' '));
 
     if (window.currentHRVRange === '1d') {
-        if (canvas) canvas.style.display = 'none';
+        if (canvas) {
+            canvas.style.display = 'none';
+            window.destroyChartIfExists(canvasId);
+        }
         if (statusContainer) statusContainer.style.display = 'block';
 
         let displayFeedback = feedback;
@@ -1116,7 +1139,7 @@ window.renderHRVVisual = function (data) {
         if (canvas) canvas.style.display = 'block';
         if (statusContainer) statusContainer.style.display = 'none';
 
-        if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+        window.destroyChartIfExists(canvasId);
         
         const history = data.history || [];
         const statusColors = history.map(d => {
@@ -1399,7 +1422,7 @@ window.renderDetailChart = function(id, x, y, label, color, unit, rev = false, c
     const canvas = document.getElementById(finalId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (chartInstances[finalId]) chartInstances[finalId].destroy();
+    window.destroyChartIfExists(finalId);
 
     const chart = new Chart(ctx, {
         type: 'line',
@@ -1570,9 +1593,7 @@ window.renderGlanceHRSparkline = function(hrData) {
     });
 
     if (points.length < 2) {
-        if (window.chartInstances['glance-hr-sparkline']) {
-            window.chartInstances['glance-hr-sparkline'].destroy();
-        }
+        window.destroyChartIfExists('glance-hr-sparkline');
         return;
     }
 
@@ -1582,9 +1603,7 @@ window.renderGlanceHRSparkline = function(hrData) {
         sampled = points.filter((_, idx) => idx % step === 0);
     }
 
-    if (window.chartInstances['glance-hr-sparkline']) {
-        window.chartInstances['glance-hr-sparkline'].destroy();
-    }
+    window.destroyChartIfExists('glance-hr-sparkline');
 
     const gradient = ctx.createLinearGradient(0, 0, 0, 45);
     gradient.addColorStop(0, 'rgba(248, 113, 113, 0.35)');
@@ -1621,15 +1640,11 @@ window.renderGlanceWeightSparkline = function(weightData) {
     const vals = list.map(d => typeof d === 'number' ? d : d.weight_lbs).filter(v => typeof v === 'number' && v > 0);
     
     if (vals.length < 2) {
-        if (window.chartInstances['glance-weight-sparkline']) {
-            window.chartInstances['glance-weight-sparkline'].destroy();
-        }
+        window.destroyChartIfExists('glance-weight-sparkline');
         return;
     }
 
-    if (window.chartInstances['glance-weight-sparkline']) {
-        window.chartInstances['glance-weight-sparkline'].destroy();
-    }
+    window.destroyChartIfExists('glance-weight-sparkline');
 
     const gradient = ctx.createLinearGradient(0, 0, 0, 45);
     gradient.addColorStop(0, 'rgba(129, 140, 248, 0.35)');
@@ -1687,9 +1702,7 @@ window.renderGlanceStressSparkline = function(stressData) {
     });
 
     if (points.length < 2) {
-        if (window.chartInstances['glance-stress-sparkline']) {
-            window.chartInstances['glance-stress-sparkline'].destroy();
-        }
+        window.destroyChartIfExists('glance-stress-sparkline');
         return;
     }
 
@@ -1699,9 +1712,7 @@ window.renderGlanceStressSparkline = function(stressData) {
         sampled = points.filter((_, idx) => idx % step === 0);
     }
 
-    if (window.chartInstances['glance-stress-sparkline']) {
-        window.chartInstances['glance-stress-sparkline'].destroy();
-    }
+    window.destroyChartIfExists('glance-stress-sparkline');
 
     const gradient = ctx.createLinearGradient(0, 0, 0, 45);
     gradient.addColorStop(0, 'rgba(168, 85, 247, 0.35)');
@@ -1774,15 +1785,11 @@ window.renderGlanceHRV = function(hrvData, hrvHistory = []) {
         const points = histList.map(h => (typeof h === 'number' ? h : (h.lastNightAvg || h.value || h.hrv || null))).filter(p => typeof p === 'number' && p > 0);
         
         if (points.length < 2) {
-            if (window.chartInstances['glance-hrv-sparkline']) {
-                window.chartInstances['glance-hrv-sparkline'].destroy();
-            }
+            window.destroyChartIfExists('glance-hrv-sparkline');
             return;
         }
 
-        if (window.chartInstances['glance-hrv-sparkline']) {
-            window.chartInstances['glance-hrv-sparkline'].destroy();
-        }
+        window.destroyChartIfExists('glance-hrv-sparkline');
         window.chartInstances['glance-hrv-sparkline'] = new Chart(ctx, {
             type: 'line',
             data: {

@@ -80,7 +80,7 @@ window.renderIntensityMinutesVisualV2 = function (data) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    if (window.chartInstances[canvasId]) window.chartInstances[canvasId].destroy();
+    window.destroyChartIfExists(canvasId);
 
     const range = data.range || window.currentIMRange || '1w';
     const history = data.history || [];

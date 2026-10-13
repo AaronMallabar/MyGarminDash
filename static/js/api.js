@@ -65,32 +65,36 @@ window.fetchDashboardData = async function () {
                         if (today1d.intensity_minutes) window.populateChartCache('intensity_minutes', '1d', todayObj, today1d.intensity_minutes);
                     }
 
-                    // Render active 1d / default views
-                    if (today1d.sleep && window.renderSleepVisual) {
-                        window.renderSleepVisual(today1d.sleep);
+                    // Render default / active views matching the initial active buttons
+                    if (window.renderHRVisual) {
+                        const hrData = (window.currentHRRange === '1d' ? today1d.hr : hist.hr) || hist.hr || today1d.hr;
+                        if (hrData) window.renderHRVisual(hrData);
                     }
-                    if (today1d.hydration && window.renderHydrationVisual) {
-                        window.renderHydrationVisual(today1d.hydration);
+                    if (window.renderStressVisual) {
+                        const stressData = (window.currentStressRange === '1d' ? today1d.stress : hist.stress) || hist.stress || today1d.stress;
+                        if (stressData) window.renderStressVisual(stressData);
                     }
-                    if (today1d.hrv && window.renderHRVVisual) {
-                        window.renderHRVVisual(today1d.hrv);
+                    if (window.renderSleepVisual) {
+                        const sleepData = (window.currentSleepRange === '1d' ? today1d.sleep : hist.sleep) || hist.sleep || today1d.sleep;
+                        if (sleepData) window.renderSleepVisual(sleepData);
                     }
-                    if (today1d.hr && window.renderHRVisual) {
-                        window.renderHRVisual(today1d.hr);
+                    if (window.renderHydrationVisual) {
+                        const hydData = (window.currentHydrationRange === '1d' ? today1d.hydration : hist.hydration) || hist.hydration || today1d.hydration;
+                        if (hydData) window.renderHydrationVisual(hydData);
                     }
-                    if (today1d.stress && window.renderStressVisual) {
-                        window.renderStressVisual(today1d.stress);
+                    if (window.renderHRVVisual) {
+                        const hrvData = (window.currentHRVRange === '1d' ? today1d.hrv : hist.hrv) || hist.hrv || today1d.hrv;
+                        if (hrvData) window.renderHRVVisual(hrvData);
+                    }
+                    if (window.renderIntensityMinutesVisualV2) {
+                        const imData = (window.currentIMRange === '1d' ? today1d.intensity_minutes : hist.intensity_minutes) || hist.intensity_minutes || today1d.intensity_minutes;
+                        if (imData) window.renderIntensityMinutesVisualV2(imData);
                     }
                     if (hist.steps && window.renderStepsVisual) {
                         window.renderStepsVisual(hist.steps);
                     }
                     if (hist.weight && window.renderWeightChart) {
-                        window.renderWeightChart(hist.weight, '1m');
-                    }
-                    if (today1d.intensity_minutes && window.renderIntensityMinutesVisualV2) {
-                        window.renderIntensityMinutesVisualV2(today1d.intensity_minutes);
-                    } else if (hist.intensity_minutes && window.renderIntensityMinutesVisualV2) {
-                        window.renderIntensityMinutesVisualV2(hist.intensity_minutes);
+                        window.renderWeightChart(hist.weight, window.currentWeightRange || '1m');
                     }
 
                     if (boot.ai_insights && window.renderAIInsights) {
