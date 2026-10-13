@@ -1571,10 +1571,17 @@
                         <button onclick="resetNutritionToToday()" id="nutrition-today-btn"
                             style="background: rgba(16, 185, 129, 0.15); border: none; color: #10b981; padding: 0.4rem 0.8rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700; cursor: pointer; margin-left: 0.5rem; display: none;">Today</button>
                     </div>
-                    <button class="range-btn active" onclick="openFoodModal()"
-                        style="background: #10b981; color: #fff; padding: 1rem 1.8rem; border-radius: 1rem; border: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.6rem; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 8px 16px rgba(16, 185, 129, 0.25);">
-                        <span>🍎</span> Log Food
-                    </button>
+                    <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+                        <button class="range-btn active" onclick="openFoodModal()" id="btn-open-food-modal"
+                            style="background: #10b981; color: #fff; padding: 0.9rem 1.6rem; border-radius: 1rem; border: none; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.6rem; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 8px 16px rgba(16, 185, 129, 0.25);">
+                            <span>🍎</span> Log Food
+                        </button>
+                        <button class="range-btn" onclick="openFoodModal('manual')" id="btn-manual-food-log"
+                            style="background: rgba(255,255,255,0.06); color: #fff; padding: 0.9rem 1.4rem; border-radius: 1rem; border: 1px solid rgba(255,255,255,0.15); font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.6rem; transition: all 0.2s;"
+                            title="Directly enter food into manual table without AI">
+                            <span>📝</span> Manual Entry
+                        </button>
+                    </div>
                 </div>
 
                 <div id="coach-nudge-container" style="display: none; margin-bottom: 2rem;">
@@ -2388,24 +2395,83 @@
             <button class="modal-close" onclick="closeFoodModal()">&times;</button>
 
             <header style="margin-bottom: 1.5rem;">
-                <h2
-                    style="display: flex; align-items: center; gap: 0.75rem; font-family: 'Lexend', sans-serif; margin: 0;">
-                    <span style="font-size: 1.8rem;">🥗</span> Conversational Nutrition
-                </h2>
-                <div id="food-modal-date-picker"
-                    style="display: flex; align-items: center; gap: 0.75rem; margin-top: 1rem; padding: 0.5rem; background: rgba(255,255,255,0.02); border-radius: 0.75rem; flex-wrap: wrap;">
-                    <div style="display: flex; align-items: center; gap: 0.4rem;">
-                        <span style="font-size: 0.85rem; color: var(--text-secondary);">⏰</span>
-                        <input type="text" id="food-log-time" placeholder="e.g. 1:30 PM"
-                            style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 0.4rem 0.6rem; border-radius: 0.5rem; font-family: 'Lexend', sans-serif; border-left: 3px solid #10b981; font-size: 0.85rem; width: 120px;"
-                            onchange="window.normalizeTimeInput(this)" onblur="window.normalizeTimeInput(this)" title="Enter time (e.g. 8:30 AM, 1:15 PM, 14:30)">
-                        <button type="button" onclick="window.setCurrentTimeInInput()"
-                            style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary); font-size: 0.75rem; padding: 0.35rem 0.55rem; border-radius: 0.4rem; cursor: pointer; transition: background 0.2s;"
-                            onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'" title="Set to current time">Now</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+                    <h2
+                        style="display: flex; align-items: center; gap: 0.75rem; font-family: 'Lexend', sans-serif; margin: 0;">
+                        <span style="font-size: 1.8rem;">🥗</span> <span id="food-modal-title">Log Food</span>
+                    </h2>
+                    <div id="food-modal-mode-tabs"
+                        style="display: flex; background: rgba(0,0,0,0.35); padding: 0.25rem; border-radius: 0.75rem; border: 1px solid rgba(255,255,255,0.1); gap: 0.25rem;">
+                        <button type="button" id="food-mode-ai-btn" onclick="window.switchFoodModalMode('ai')"
+                            style="padding: 0.45rem 1rem; border-radius: 0.5rem; border: none; font-size: 0.82rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; transition: all 0.2s; background: #10b981; color: white;">
+                            ✨ Conversational (AI)
+                        </button>
+                        <button type="button" id="food-mode-manual-btn" onclick="window.switchFoodModalMode('manual')"
+                            style="padding: 0.45rem 1rem; border-radius: 0.5rem; border: none; font-size: 0.82rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; transition: all 0.2s; background: transparent; color: var(--text-secondary);">
+                            📝 Manual Table
+                        </button>
                     </div>
-                    <span style="font-size: 0.8rem; color: var(--text-secondary);">Logging for <span
-                            id="food-modal-date-label"
-                            style="color: var(--text-primary); font-weight: 600;">Today</span></span>
+                </div>
+                <div id="food-modal-date-picker"
+                    style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; padding: 0.65rem 0.9rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 0.85rem; flex-wrap: wrap;">
+                    
+                    <!-- Time Controls -->
+                    <div style="display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; font-weight: 700; color: #10b981; text-transform: uppercase; letter-spacing: 0.05em;">
+                            <span>🕒</span> Time (ET)
+                        </div>
+
+                        <!-- Mode Switcher (Text vs Clock) -->
+                        <div style="display: flex; background: rgba(0,0,0,0.3); padding: 0.2rem; border-radius: 0.5rem; border: 1px solid rgba(255,255,255,0.08); gap: 0.2rem;">
+                            <button type="button" id="time-mode-text-btn" onclick="window.setTimeInputMode('text')"
+                                style="background: #10b981; border: none; color: white; padding: 0.25rem 0.6rem; border-radius: 0.35rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: all 0.2s;"
+                                title="Manual 12-hour text input (for typing or AI)">
+                                ⌨️ Text
+                            </button>
+                            <button type="button" id="time-mode-clock-btn" onclick="window.setTimeInputMode('clock')"
+                                style="background: transparent; border: none; color: var(--text-secondary); padding: 0.25rem 0.6rem; border-radius: 0.35rem; font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: all 0.2s;"
+                                title="Interactive clock time picker">
+                                🕐 Clock
+                            </button>
+                        </div>
+
+                        <!-- Manual 12-Hour Text Input (for typing or AI/Spark) -->
+                        <div id="time-text-input-wrapper" style="display: flex; align-items: center; gap: 0.4rem;">
+                            <input type="text" id="food-log-time" placeholder="1:30 PM"
+                                style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.12); color: white; padding: 0.4rem 0.75rem; border-radius: 0.5rem; font-family: 'Lexend', sans-serif; border-left: 3px solid #10b981; font-size: 0.88rem; width: 110px; font-weight: 600;"
+                                onchange="window.normalizeTimeInput(this)" onblur="window.normalizeTimeInput(this)"
+                                title="12-hour Eastern Time (e.g. 1:30 PM, 8:00 AM)">
+                        </div>
+
+                        <!-- Interactive Clock Time Picker -->
+                        <div id="time-clock-input-wrapper" style="display: none; align-items: center; gap: 0.4rem;">
+                            <input type="time" id="food-log-time-picker"
+                                style="color-scheme: dark; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.15); color: white; padding: 0.35rem 0.6rem; border-radius: 0.5rem; font-family: 'Lexend', sans-serif; border-left: 3px solid #10b981; font-size: 0.88rem; font-weight: 600; cursor: pointer;"
+                                onchange="window.onClockPickerChange(this)"
+                                title="Click to pick time from clock">
+                        </div>
+
+                        <!-- Clock popup button -->
+                        <button type="button" onclick="window.openClockPicker()"
+                            style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary); width: 32px; height: 32px; border-radius: 0.45rem; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; transition: all 0.2s;"
+                            onmouseover="this.style.background='rgba(255,255,255,0.12)'; this.style.color='white';"
+                            onmouseout="this.style.background='rgba(255,255,255,0.06)'; this.style.color='var(--text-secondary)';"
+                            title="Open graphical clock picker">🕐</button>
+
+                        <!-- Now (Eastern Time) button -->
+                        <button type="button" onclick="window.setCurrentTimeInInput()"
+                            style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.75rem; padding: 0.4rem 0.65rem; border-radius: 0.45rem; cursor: pointer; font-weight: 700; transition: all 0.2s;"
+                            onmouseover="this.style.background='rgba(16, 185, 129, 0.22)'" onmouseout="this.style.background='rgba(16, 185, 129, 0.12)'"
+                            title="Set to current Eastern Time">Now</button>
+                    </div>
+
+                    <!-- Date & Eastern Time Badge -->
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.8rem; color: var(--text-secondary);">Logging for: <span
+                                id="food-modal-date-label"
+                                style="color: var(--text-primary); font-weight: 700;">Today</span></span>
+                        <span style="background: rgba(16,185,129,0.12); color: #10b981; font-size: 0.68rem; font-weight: 800; padding: 0.15rem 0.45rem; border-radius: 0.35rem; border: 1px solid rgba(16,185,129,0.25);" title="All food logs are recorded in US Eastern Time">ET</span>
+                    </div>
                 </div>
             </header>
 
@@ -2454,15 +2520,15 @@
                     </button>
                 </div>
 
-                <div style="margin-top: 2rem; display: flex; gap: 1.5rem;">
-                    <button onclick="showCustomFoodForm()"
-                        style="background: none; border: none; color: var(--text-secondary); font-size: 0.85rem; cursor: pointer; text-decoration: underline; opacity: 0.7;"
-                        onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">
-                        Open Recipe Editor
+                <div style="margin-top: 2rem; display: flex; gap: 1.25rem; flex-wrap: wrap; justify-content: center;">
+                    <button onclick="window.switchFoodModalMode('manual')"
+                        style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #10b981; font-size: 0.85rem; padding: 0.55rem 1.1rem; border-radius: 0.6rem; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 0.4rem; transition: all 0.2s;"
+                        onmouseover="this.style.background='rgba(16, 185, 129, 0.2)'" onmouseout="this.style.background='rgba(16, 185, 129, 0.1)'">
+                        <span>📝</span> Enter Directly via Table (No AI)
                     </button>
                     <button onclick="openLibraryModal()"
-                        style="background: none; border: none; color: var(--text-secondary); font-size: 0.85rem; cursor: pointer; text-decoration: underline; opacity: 0.7;"
-                        onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">
+                        style="background: none; border: none; color: var(--text-secondary); font-size: 0.85rem; cursor: pointer; text-decoration: underline; opacity: 0.8;"
+                        onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8">
                         Browse Library
                     </button>
                 </div>
@@ -2477,7 +2543,7 @@
                     <div
                         style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
                         <div style="display: flex; gap: 0.75rem; flex-grow: 1;">
-                            <input type="text" id="custom-name" placeholder="Meal Name"
+                            <input type="text" id="custom-name" placeholder="Meal Name (e.g. Chicken Rice Bowl)"
                                 style="flex-grow: 1; padding: 0.5rem 0.8rem; border-radius: 0.6rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; font-weight: 700; font-family: 'Lexend', sans-serif; font-size: 0.95rem;">
                             <select id="custom-category"
                                 style="padding: 0.5rem 0.8rem; border-radius: 0.6rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; font-weight: 600; font-size: 0.85rem;">
@@ -2494,7 +2560,7 @@
                         <div
                             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
                             <span
-                                style="font-weight: 800; font-size: 0.9rem; color: #10b981; text-transform: uppercase; letter-spacing: 0.1em;">Detailed
+                                style="font-weight: 800; font-size: 0.9rem; color: #10b981; text-transform: uppercase; letter-spacing: 0.1em;">Items
                                 Breakdown</span>
                             <div style="display: flex; gap: 0.75rem;">
                                 <button onclick="window.toggleAIAssistant()" id="btn-toggle-ai"
@@ -2503,27 +2569,27 @@
                                         style="background: #10b981; color: white; padding: 0.1rem 0.4rem; border-radius: 0.4rem; font-size: 0.7rem;">0%</span>
                                 </button>
                                 <button onclick="estimateAllIngredients()" id="btn-ai-scan-detailed"
-                                    title="Re-estimate with AI"
+                                    title="Auto-estimate empty macros with AI"
                                     style="background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.2); color: #38bdf8; font-size: 0.8rem; padding: 0.4rem 0.9rem; border-radius: 0.6rem; cursor: pointer; font-weight: 700;">🔄
-                                    Refresh</button>
+                                    Estimate with AI</button>
                                 <button onclick="addIngredientRow()"
-                                    style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; font-size: 0.75rem; padding: 0.4rem 0.8rem; border-radius: 0.5rem; cursor: pointer;">＋
+                                    style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: white; font-size: 0.8rem; padding: 0.4rem 0.9rem; border-radius: 0.5rem; cursor: pointer; font-weight: 600;">＋
                                     Add Item</button>
                             </div>
                         </div>
 
                         <div id="ingredient-header" class="ingredient-grid"
                             style="padding: 0 0.5rem; margin-bottom: 0.25rem;">
-                            <div class="ing-label">Item</div>
-                            <div class="ing-label">Qty</div>
-                            <div class="ing-label">Unit</div>
-                            <div class="ing-label">Pro</div>
-                            <div class="ing-label">Carb</div>
-                            <div class="ing-label">Fat</div>
-                            <div class="ing-label">Sug</div>
-                            <div class="ing-label">Caf</div>
-                            <div class="ing-label">Chol</div>
-                            <div class="ing-label">Kcal</div>
+                            <div class="ing-label" title="Item Name">Item</div>
+                            <div class="ing-label" title="Quantity">Qty</div>
+                            <div class="ing-label" title="Unit">Unit</div>
+                            <div class="ing-label" title="Protein (grams)">Pro</div>
+                            <div class="ing-label" title="Carbohydrates (grams)">Carb</div>
+                            <div class="ing-label" title="Fat (grams)">Fat</div>
+                            <div class="ing-label" title="Sugar (grams)">Sug</div>
+                            <div class="ing-label" title="Caffeine (mg)">Caf</div>
+                            <div class="ing-label" title="Cholesterol (mg)">Chol</div>
+                            <div class="ing-label" title="Calories (kcal)">Kcal</div>
                             <div></div>
                         </div>
 
@@ -2534,8 +2600,8 @@
 
                     <div
                         style="background: rgba(16, 185, 129, 0.05); padding: 0.75rem 1.25rem; border-radius: 1rem; border: 1px solid rgba(16, 185, 129, 0.1);">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div style="display: flex; gap: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                            <div style="display: flex; gap: 1.25rem; flex-wrap: wrap;">
                                 <div>
                                     <div
                                         style="font-size: 0.6rem; color: #10b981; font-weight: 800; text-transform: uppercase;">
@@ -2546,11 +2612,27 @@
                                 </div>
                                 <div>
                                     <div
-                                        style="font-size: 0.6rem; color: #fb923c; font-weight: 800; text-transform: uppercase;">
-                                        Cholesterol</div>
-                                    <div id="summary-chol"
-                                        style="font-size: 1.25rem; font-weight: 800; font-family: 'Lexend', sans-serif; color: #fb923c;">
-                                        0mg</div>
+                                        style="font-size: 0.6rem; color: #f472b6; font-weight: 800; text-transform: uppercase;">
+                                        Protein</div>
+                                    <div id="summary-pro"
+                                        style="font-size: 1.25rem; font-weight: 800; font-family: 'Lexend', sans-serif; color: #f472b6;">
+                                        0g</div>
+                                </div>
+                                <div>
+                                    <div
+                                        style="font-size: 0.6rem; color: #eab308; font-weight: 800; text-transform: uppercase;">
+                                        Carbs</div>
+                                    <div id="summary-carb"
+                                        style="font-size: 1.25rem; font-weight: 800; font-family: 'Lexend', sans-serif; color: #eab308;">
+                                        0g</div>
+                                </div>
+                                <div>
+                                    <div
+                                        style="font-size: 0.6rem; color: #f97316; font-weight: 800; text-transform: uppercase;">
+                                        Fat</div>
+                                    <div id="summary-fat"
+                                        style="font-size: 1.25rem; font-weight: 800; font-family: 'Lexend', sans-serif; color: #f97316;">
+                                        0g</div>
                                 </div>
                                 <div>
                                     <div
@@ -2560,12 +2642,22 @@
                                         style="font-size: 1.25rem; font-weight: 800; font-family: 'Lexend', sans-serif; color: #60a5fa;">
                                         0g</div>
                                 </div>
+                                <div>
+                                    <div
+                                        style="font-size: 0.6rem; color: #fb923c; font-weight: 800; text-transform: uppercase;">
+                                        Cholesterol</div>
+                                    <div id="summary-chol"
+                                        style="font-size: 1.25rem; font-weight: 800; font-family: 'Lexend', sans-serif; color: #fb923c;">
+                                        0mg</div>
+                                </div>
                             </div>
-                            <div style="display: flex; gap: 0.75rem;">
-                                <button onclick="hideCustomFoodForm()" class="range-btn"
-                                    style="padding: 0.7rem 1.2rem; border-radius: 0.75rem;">Cancel</button>
-                                <button onclick="saveCustomFood(true)" class="range-btn active"
-                                    style="padding: 0.7rem 2rem; border-radius: 0.75rem; background: #10b981; font-weight: 700;">Log
+                            <div style="display: flex; gap: 0.6rem; align-items: center;">
+                                <button type="button" onclick="window.clearManualFoodForm()" class="range-btn"
+                                    style="padding: 0.7rem 1.1rem; border-radius: 0.75rem; background: rgba(255,255,255,0.05); font-size: 0.85rem;" title="Reset fields">Clear</button>
+                                <button type="button" onclick="window.closeFoodModal()" class="range-btn"
+                                    style="padding: 0.7rem 1.1rem; border-radius: 0.75rem; font-size: 0.85rem;">Cancel</button>
+                                <button type="button" onclick="saveCustomFood(true)" id="btn-save-custom-food" class="range-btn active"
+                                    style="padding: 0.7rem 1.8rem; border-radius: 0.75rem; background: #10b981; font-weight: 700;">Log
                                     Food</button>
                             </div>
                         </div>

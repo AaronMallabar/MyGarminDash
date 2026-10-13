@@ -53,15 +53,92 @@ window.parseTimeString = function (str) {
 
 window.normalizeTimeInput = function (el) {
     if (!el || !el.value) return;
-    const parsed = window.parseTimeString(el.value);
-    if (parsed) el.value = parsed;
+    const val = el.value.trim().toLowerCase();
+    if (val === 'now') {
+        window.setCurrentTimeInInput();
+        return;
+    }
+    const normalized12 = window.normalizeTo12H(el.value);
+    if (normalized12) {
+        el.value = normalized12;
+        const time24 = window.parseTimeString(normalized12);
+        const clockInput = document.getElementById('food-log-time-picker');
+        if (clockInput && time24) clockInput.value = time24;
+    }
 };
 
 window.setCurrentTimeInInput = function () {
-    const now = new Date();
-    const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-    const input = document.getElementById('food-log-time');
-    if (input) input.value = timeStr;
+    const time12 = window.getEasternTime12H ? window.getEasternTime12H() : '12:00 PM';
+    const time24 = window.getEasternTime24H ? window.getEasternTime24H() : '12:00';
+    const textInput = document.getElementById('food-log-time');
+    const clockInput = document.getElementById('food-log-time-picker');
+    if (textInput) textInput.value = time12;
+    if (clockInput) clockInput.value = time24;
+};
+
+window.onClockPickerChange = function (el) {
+    if (!el || !el.value) return;
+    const time12 = window.formatTo12H(el.value);
+    const textInput = document.getElementById('food-log-time');
+    if (textInput) textInput.value = time12;
+};
+
+window.setTimeInputMode = function (mode) {
+    localStorage.setItem('food_time_input_mode', mode);
+    const textWrapper = document.getElementById('time-text-input-wrapper');
+    const clockWrapper = document.getElementById('time-clock-input-wrapper');
+    const typeBtn = document.getElementById('time-mode-text-btn');
+    const clockBtn = document.getElementById('time-mode-clock-btn');
+    const textInput = document.getElementById('food-log-time');
+    const clockInput = document.getElementById('food-log-time-picker');
+
+    if (mode === 'clock') {
+        if (textWrapper) textWrapper.style.display = 'none';
+        if (clockWrapper) clockWrapper.style.display = 'flex';
+        if (typeBtn) {
+            typeBtn.style.background = 'transparent';
+            typeBtn.style.color = 'var(--text-secondary)';
+        }
+        if (clockBtn) {
+            clockBtn.style.background = '#10b981';
+            clockBtn.style.color = 'white';
+        }
+        if (textInput && clockInput && textInput.value) {
+            const time24 = window.parseTimeString(textInput.value);
+            if (time24) clockInput.value = time24;
+        }
+    } else {
+        if (textWrapper) textWrapper.style.display = 'flex';
+        if (clockWrapper) clockWrapper.style.display = 'none';
+        if (typeBtn) {
+            typeBtn.style.background = '#10b981';
+            typeBtn.style.color = 'white';
+        }
+        if (clockBtn) {
+            clockBtn.style.background = 'transparent';
+            clockBtn.style.color = 'var(--text-secondary)';
+        }
+        if (clockInput && textInput && clockInput.value) {
+            textInput.value = window.formatTo12H(clockInput.value);
+        }
+        if (textInput) textInput.focus();
+    }
+};
+
+window.openClockPicker = function () {
+    window.setTimeInputMode('clock');
+    const clockInput = document.getElementById('food-log-time-picker');
+    if (clockInput) {
+        try {
+            if (typeof clockInput.showPicker === 'function') {
+                clockInput.showPicker();
+            } else {
+                clockInput.focus();
+            }
+        } catch (e) {
+            clockInput.focus();
+        }
+    }
 };
 
 window.shiftNutritionDate = function (dir) {
@@ -225,39 +302,136 @@ window.refreshNutritionAnalysis = async function () {
     }
 }
 
-window.openFoodModal = function () {
+window.openFoodModal = function (mode) {
     const modal = document.getElementById('foodModal');
     if (modal) {
         modal.classList.add('active');
-        const searchInput = document.getElementById('food-chat-input');
-        if (searchInput) searchInput.focus();
 
-        const now = new Date();
-        const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-        const timeInput = document.getElementById('food-log-time');
-        if (timeInput) timeInput.value = timeStr;
+        // Set to current Eastern Time in 12-hour format if not already editing a meal
+        if (!window.editingLogId) {
+            window.setCurrentTimeInInput();
+        }
+
+        // Restore preferred time input mode (text vs clock)
+        const timeMode = localStorage.getItem('food_time_input_mode') || 'text';
+        window.setTimeInputMode(timeMode);
 
         window.updateFoodModalDateLabel();
-    }
-}
 
-window.updateFoodModalDateLabel = function () {
-    const label = document.getElementById('food-modal-date-label');
-    if (label) {
-        const todayStr = window.getLocalDateStr(new Date());
-        const activeStr = window.getLocalDateStr(window.activeNutritionDate);
-        if (todayStr === activeStr) {
-            label.textContent = "Today";
-        } else {
-            label.textContent = window.activeNutritionDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-        }
+        const targetMode = mode || localStorage.getItem('preferred_food_entry_mode') || 'ai';
+        window.switchFoodModalMode(targetMode);
     }
-}
+};
+
+window.switchFoodModalMode = function (mode) {
+    localStorage.setItem('preferred_food_entry_mode', mode);
+
+    const aiBtn = document.getElementById('food-mode-ai-btn');
+    const manualBtn = document.getElementById('food-mode-manual-btn');
+    const titleEl = document.getElementById('food-modal-title');
+    const chatView = document.getElementById('food-chat-view');
+    const customForm = document.getElementById('custom-food-form');
+
+    if (mode === 'manual') {
+        if (aiBtn) {
+            aiBtn.style.background = 'transparent';
+            aiBtn.style.color = 'var(--text-secondary)';
+        }
+        if (manualBtn) {
+            manualBtn.style.background = '#10b981';
+            manualBtn.style.color = 'white';
+        }
+        if (titleEl) titleEl.textContent = 'Manual Food Log';
+
+        window.openManualTableDirectly();
+    } else {
+        if (aiBtn) {
+            aiBtn.style.background = '#10b981';
+            aiBtn.style.color = 'white';
+        }
+        if (manualBtn) {
+            manualBtn.style.background = 'transparent';
+            manualBtn.style.color = 'var(--text-secondary)';
+        }
+        if (titleEl) titleEl.textContent = 'Conversational Nutrition';
+
+        if (chatView) chatView.style.display = 'flex';
+        if (customForm) customForm.style.display = 'none';
+
+        const searchInput = document.getElementById('food-chat-input');
+        if (searchInput) searchInput.focus();
+    }
+};
+
+window.openManualTableDirectly = function () {
+    const chatView = document.getElementById('food-chat-view');
+    const customForm = document.getElementById('custom-food-form');
+    if (chatView) chatView.style.display = 'none';
+    if (customForm) customForm.style.display = 'flex';
+
+    window.toggleAIAssistant(false);
+
+    const list = document.getElementById('ingredient-list');
+    if (list && (!list.children.length || !window.editingLogId)) {
+        list.innerHTML = '';
+        ingredientIndex = 0;
+        window.addIngredientRow({
+            name: '',
+            qty: 1,
+            unit: 'serving',
+            calories: 0,
+            protein_g: 0,
+            carbs_g: 0,
+            fat_g: 0,
+            sugar_g: 0,
+            caffeine_mg: 0,
+            cholesterol_mg: 0
+        });
+        window.updateNutrientSummary();
+    }
+
+    const mealNameInput = document.getElementById('custom-name');
+    if (mealNameInput && !mealNameInput.value) {
+        mealNameInput.focus();
+    } else {
+        const firstItem = document.querySelector('.ingredient-row .ing-name');
+        if (firstItem) firstItem.focus();
+    }
+};
+
+window.clearManualFoodForm = function () {
+    const nameInput = document.getElementById('custom-name');
+    if (nameInput) nameInput.value = '';
+    const catInput = document.getElementById('custom-category');
+    if (catInput) catInput.value = 'Meal';
+    window.editingLogId = null;
+
+    const list = document.getElementById('ingredient-list');
+    if (list) {
+        list.innerHTML = '';
+        ingredientIndex = 0;
+        window.addIngredientRow({
+            name: '',
+            qty: 1,
+            unit: 'serving',
+            calories: 0,
+            protein_g: 0,
+            carbs_g: 0,
+            fat_g: 0,
+            sugar_g: 0,
+            caffeine_mg: 0,
+            cholesterol_mg: 0
+        });
+        window.updateNutrientSummary();
+    }
+    if (nameInput) nameInput.focus();
+};
 
 window.closeFoodModal = function () {
     const modal = document.getElementById('foodModal');
     if (modal) modal.classList.remove('active');
-}
+    window.editingLogId = null;
+};
 
 window.onFoodSearchInput = function () {
     const input = document.getElementById('food-chat-input');
@@ -359,12 +533,18 @@ window.editAnyMeal = async function (logId) {
     window.editingLogId = logId;
 
     if (log.time) {
-        document.getElementById('food-log-time').value = log.time;
+        const time12 = window.formatTo12H(log.time);
+        const time24 = window.parseTimeString(log.time) || log.time;
+        const textInput = document.getElementById('food-log-time');
+        const clockInput = document.getElementById('food-log-time-picker');
+        if (textInput) textInput.value = time12;
+        if (clockInput) clockInput.value = time24;
     }
 
     if (window.customFoods[log.name]) {
         window.editLibraryItem(log.name);
     } else {
+        window.openFoodModal('manual');
         window.showCustomFoodForm();
         document.getElementById('custom-name').value = log.name;
         const list = document.getElementById('ingredient-list');
@@ -503,8 +683,12 @@ window.sendFoodChat = async function () {
         }
 
         if (data.extracted_time) {
+            const time12 = window.formatTo12H(data.extracted_time);
+            const time24 = window.parseTimeString(data.extracted_time) || data.extracted_time;
             const timeInput = document.getElementById('food-log-time');
-            if (timeInput) timeInput.value = data.extracted_time;
+            const pickerInput = document.getElementById('food-log-time-picker');
+            if (timeInput) timeInput.value = time12;
+            if (pickerInput) pickerInput.value = time24;
         }
 
         if (data.items && data.items.length > 0) {
@@ -658,8 +842,23 @@ window.addClarifyMessage = function (role, text) {
 }
 
 window.showCustomFoodForm = function () {
-    document.getElementById('food-chat-view').style.display = 'none';
-    document.getElementById('custom-food-form').style.display = 'flex';
+    const chatView = document.getElementById('food-chat-view');
+    const customForm = document.getElementById('custom-food-form');
+    if (chatView) chatView.style.display = 'none';
+    if (customForm) customForm.style.display = 'flex';
+
+    const aiBtn = document.getElementById('food-mode-ai-btn');
+    const manualBtn = document.getElementById('food-mode-manual-btn');
+    const titleEl = document.getElementById('food-modal-title');
+    if (aiBtn) {
+        aiBtn.style.background = 'transparent';
+        aiBtn.style.color = 'var(--text-secondary)';
+    }
+    if (manualBtn) {
+        manualBtn.style.background = '#10b981';
+        manualBtn.style.color = 'white';
+    }
+    if (titleEl) titleEl.textContent = 'Meal Breakdown & Review';
 
     // Reset AI Sidebar
     const history = document.getElementById('clarify-history');
@@ -676,12 +875,11 @@ window.showCustomFoodForm = function () {
     if (healthTip) healthTip.textContent = 'Waiting for details to provide a personalized health tip...';
 
     window.toggleAIAssistant(false);
-}
+};
 
 window.hideCustomFoodForm = function () {
-    document.getElementById('food-chat-view').style.display = 'flex';
-    document.getElementById('custom-food-form').style.display = 'none';
-}
+    window.switchFoodModalMode('ai');
+};
 
 window.estimateAllIngredients = async function () {
     const rows = document.querySelectorAll('.ingredient-row');
@@ -730,6 +928,7 @@ window.estimateAllIngredients = async function () {
 
 window.addIngredientRow = function (data = null) {
     const list = document.getElementById('ingredient-list');
+    if (!list) return;
     const rowId = `ing-row-${ingredientIndex++}`;
     const div = document.createElement('div');
     div.id = rowId;
@@ -737,58 +936,70 @@ window.addIngredientRow = function (data = null) {
     div.style.cssText = 'background: rgba(255,255,255,0.02); padding: 0.5rem; border-radius: 0.5rem;';
 
     const units = ['serving', 'package', 'container', 'oz', 'grams', 'cups', 'tbsp', 'slices', 'piece', 'bowl', 'plate'];
-    const unitOptions = units.map(u => `<option value="${u}" ${data?.unit === u ? 'selected' : ''}>${u.charAt(0).toUpperCase() + u.slice(1)}</option>`).join('');
+    const currentUnit = (data?.unit || 'serving').toLowerCase();
+    const unitOptions = units.map(u => `<option value="${u}" ${currentUnit === u ? 'selected' : ''}>${u.charAt(0).toUpperCase() + u.slice(1)}</option>`).join('');
 
     div.innerHTML = `
         <div style="min-width: 0;">
-            <input type="text" class="ing-name" placeholder="Item" value="${data?.name || ''}" 
-                style="width: 100%; height: 30px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.4rem; font-size: 0.8rem;">
+            <input type="text" class="ing-name" placeholder="Item Name" value="${data?.name || ''}" 
+                style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.5rem; font-size: 0.85rem;"
+                aria-label="Item name">
         </div>
         <div>
-            <input type="number" class="ing-qty" placeholder="Qty" value="${data?.qty || 1}" 
+            <input type="number" step="any" class="ing-qty" placeholder="Qty" value="${data?.qty ?? 1}" 
                 oninput="window.onQtyChange(this)"
-                style="width: 100%; height: 30px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.4rem; font-size: 0.8rem;">
+                style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.4rem; font-size: 0.85rem;"
+                aria-label="Quantity">
         </div>
         <div>
-            <select class="ing-unit" onchange="window.updateNutrientSummary()" style="width: 100%; height: 30px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; font-size: 0.75rem;">
+            <select class="ing-unit" onchange="window.updateNutrientSummary()" 
+                style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; font-size: 0.8rem;"
+                aria-label="Unit">
                 ${unitOptions}
             </select>
         </div>
         <div>
-            <input type="number" class="ing-pro" placeholder="P" value="${data?.protein_g || 0}" oninput="window.updateNutrientSummary()"
-                style="width: 100%; height: 30px; background: rgba(244, 114, 182, 0.05); border: 1px solid rgba(244, 114, 182, 0.2); color: #f472b6; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.75rem; font-weight: 700;">
+            <input type="number" step="any" class="ing-pro" placeholder="P" value="${data?.protein_g ?? 0}" oninput="window.updateNutrientSummary()"
+                style="width: 100%; height: 32px; background: rgba(244, 114, 182, 0.05); border: 1px solid rgba(244, 114, 182, 0.2); color: #f472b6; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
+                aria-label="Protein (g)">
         </div>
         <div>
-            <input type="number" class="ing-carb" placeholder="C" value="${data?.carbs_g || 0}" oninput="window.updateNutrientSummary()"
-                style="width: 100%; height: 30px; background: rgba(234, 179, 8, 0.05); border: 1px solid rgba(234, 179, 8, 0.2); color: #eab308; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.75rem; font-weight: 700;">
+            <input type="number" step="any" class="ing-carb" placeholder="C" value="${data?.carbs_g ?? 0}" oninput="window.updateNutrientSummary()"
+                style="width: 100%; height: 32px; background: rgba(234, 179, 8, 0.05); border: 1px solid rgba(234, 179, 8, 0.2); color: #eab308; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
+                aria-label="Carbs (g)">
         </div>
         <div>
-            <input type="number" class="ing-fat" placeholder="F" value="${data?.fat_g || 0}" oninput="window.updateNutrientSummary()"
-                style="width: 100%; height: 30px; background: rgba(249, 115, 22, 0.05); border: 1px solid rgba(249, 115, 22, 0.2); color: #f97316; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.75rem; font-weight: 700;">
+            <input type="number" step="any" class="ing-fat" placeholder="F" value="${data?.fat_g ?? 0}" oninput="window.updateNutrientSummary()"
+                style="width: 100%; height: 32px; background: rgba(249, 115, 22, 0.05); border: 1px solid rgba(249, 115, 22, 0.2); color: #f97316; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
+                aria-label="Fat (g)">
         </div>
         <div>
-            <input type="number" class="ing-sugar" placeholder="S" value="${data?.sugar_g || 0}" oninput="window.updateNutrientSummary()"
-                style="width: 100%; height: 30px; background: rgba(96, 165, 250, 0.05); border: 1px solid rgba(96, 165, 250, 0.2); color: #60a5fa; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.75rem; font-weight: 700;">
+            <input type="number" step="any" class="ing-sugar" placeholder="S" value="${data?.sugar_g ?? 0}" oninput="window.updateNutrientSummary()"
+                style="width: 100%; height: 32px; background: rgba(96, 165, 250, 0.05); border: 1px solid rgba(96, 165, 250, 0.2); color: #60a5fa; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
+                aria-label="Sugar (g)">
         </div>
         <div>
-            <input type="number" class="ing-caffeine" placeholder="Caf" value="${data?.caffeine_mg || 0}" oninput="window.updateNutrientSummary()"
-                style="width: 100%; height: 30px; background: rgba(167, 139, 250, 0.05); border: 1px solid rgba(167, 139, 250, 0.2); color: #a78bfa; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.75rem; font-weight: 700;">
+            <input type="number" step="any" class="ing-caffeine" placeholder="Caf" value="${data?.caffeine_mg ?? 0}" oninput="window.updateNutrientSummary()"
+                style="width: 100%; height: 32px; background: rgba(167, 139, 250, 0.05); border: 1px solid rgba(167, 139, 250, 0.2); color: #a78bfa; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
+                aria-label="Caffeine (mg)">
         </div>
         <div>
-            <input type="number" class="ing-chol" placeholder="Chol" value="${data?.cholesterol_mg || 0}" oninput="window.updateNutrientSummary()"
-                style="width: 100%; height: 30px; background: rgba(251, 146, 60, 0.05); border: 1px solid rgba(251, 146, 60, 0.2); color: #fb923c; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.75rem; font-weight: 700;">
+            <input type="number" step="any" class="ing-chol" placeholder="Chol" value="${data?.cholesterol_mg ?? 0}" oninput="window.updateNutrientSummary()"
+                style="width: 100%; height: 32px; background: rgba(251, 146, 60, 0.05); border: 1px solid rgba(251, 146, 60, 0.2); color: #fb923c; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
+                aria-label="Cholesterol (mg)">
         </div>
         <div>
-            <input type="number" class="ing-cal" placeholder="kcal" value="${data?.calories || 0}" 
+            <input type="number" step="any" class="ing-cal" placeholder="kcal" value="${data?.calories ?? 0}" 
                 oninput="window.updateNutrientSummary()"
                 data-base-qty="${data?.qty || 1}"
-                style="width: 100%; height: 30px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #10b981; border-radius: 0.4rem; padding: 0 0.4rem; font-size: 0.75rem; font-weight: 800;">
+                style="width: 100%; height: 32px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #10b981; border-radius: 0.4rem; padding: 0 0.4rem; font-size: 0.8rem; font-weight: 800;"
+                aria-label="Calories (kcal)">
         </div>
-        <button onclick="document.getElementById('${rowId}').remove(); window.updateNutrientSummary();" 
-            style="background:none; border:none; color:#f87171; cursor:pointer; padding: 0 0.2rem;">✕</button>
+        <button type="button" onclick="document.getElementById('${rowId}').remove(); window.updateNutrientSummary();" 
+            style="background:none; border:none; color:#f87171; cursor:pointer; padding: 0 0.3rem; font-size: 1rem; line-height: 1;" title="Remove row">✕</button>
     `;
     list.appendChild(div);
-}
+};
 
 window.onQtyChange = function (input) {
     const row = input.closest('.ingredient-row');
@@ -796,7 +1007,7 @@ window.onQtyChange = function (input) {
     const newQty = parseFloat(input.value) || 0;
     const baseQty = parseFloat(calInput.getAttribute('data-base-qty')) || 1;
 
-    if (newQty > 0 && baseQty > 0) {
+    if (newQty > 0 && baseQty > 0 && newQty !== baseQty) {
         const ratio = newQty / baseQty;
 
         const inputs = [
@@ -820,47 +1031,73 @@ window.onQtyChange = function (input) {
         calInput.setAttribute('data-base-qty', newQty);
     }
     window.updateNutrientSummary();
-}
+};
 
 window.updateNutrientSummary = function () {
     let totals = { cal: 0, chol: 0, pro: 0, carb: 0, sugar: 0, fat: 0, caffeine: 0 };
     document.querySelectorAll('.ingredient-row').forEach(row => {
-        totals.cal += parseInt(row.querySelector('.ing-cal').value) || 0;
-        totals.chol += parseInt(row.querySelector('.ing-chol').value) || 0;
-        totals.pro += parseInt(row.querySelector('.ing-pro').value) || 0;
-        totals.carb += parseInt(row.querySelector('.ing-carb').value) || 0;
-        totals.sugar += parseInt(row.querySelector('.ing-sugar').value) || 0;
-        totals.fat += parseInt(row.querySelector('.ing-fat').value) || 0;
-        totals.caffeine += parseInt(row.querySelector('.ing-caffeine').value) || 0;
+        totals.cal += parseInt(row.querySelector('.ing-cal')?.value) || 0;
+        totals.chol += parseInt(row.querySelector('.ing-chol')?.value) || 0;
+        totals.pro += parseInt(row.querySelector('.ing-pro')?.value) || 0;
+        totals.carb += parseInt(row.querySelector('.ing-carb')?.value) || 0;
+        totals.sugar += parseInt(row.querySelector('.ing-sugar')?.value) || 0;
+        totals.fat += parseInt(row.querySelector('.ing-fat')?.value) || 0;
+        totals.caffeine += parseInt(row.querySelector('.ing-caffeine')?.value) || 0;
     });
 
     window.safeSetText('summary-cal', totals.cal);
+    window.safeSetText('summary-pro', totals.pro + 'g');
+    window.safeSetText('summary-carb', totals.carb + 'g');
+    window.safeSetText('summary-fat', totals.fat + 'g');
     window.safeSetText('summary-chol', totals.chol + 'mg');
     window.safeSetText('summary-sugar', totals.sugar + 'g');
     window.safeSetText('summary-caffeine', totals.caffeine + 'mg');
-}
+};
 
 window.saveCustomFood = async function (alsoLog = true) {
-    const name = document.getElementById('custom-name').value;
-    const category = document.getElementById('custom-category').value;
-    if (!name) return alert("Please name your recipe.");
+    let name = document.getElementById('custom-name')?.value?.trim();
+    const category = document.getElementById('custom-category')?.value || 'Meal';
+
+    const rows = document.querySelectorAll('.ingredient-row');
+    if (rows.length === 0) {
+        return alert("Please add at least one food item.");
+    }
+
+    // Fallback: If user/agent didn't enter a meal name, default to the first item's name
+    const firstIngName = rows[0]?.querySelector('.ing-name')?.value?.trim();
+    if (!name && firstIngName) {
+        name = firstIngName;
+        const nameInput = document.getElementById('custom-name');
+        if (nameInput) nameInput.value = name;
+    }
+
+    if (!name) return alert("Please enter a name for this meal or food item.");
 
     const ingredients = [];
     let totalCal = 0, totalChol = 0, totalPro = 0, totalCarb = 0, totalSugar = 0, totalFat = 0, totalCaffeine = 0;
 
-    document.querySelectorAll('.ingredient-row').forEach(row => {
-        const cal = parseInt(row.querySelector('.ing-cal').value) || 0;
-        const cholVal = parseInt(row.querySelector('.ing-chol').value) || 0;
-        const pro = parseInt(row.querySelector('.ing-pro').value) || 0;
-        const carb = parseInt(row.querySelector('.ing-carb').value) || 0;
-        const sugar = parseInt(row.querySelector('.ing-sugar').value) || 0;
-        const fat = parseInt(row.querySelector('.ing-fat').value) || 0;
-        const caffeine = parseInt(row.querySelector('.ing-caffeine').value) || 0;
+    rows.forEach(row => {
+        let cal = parseInt(row.querySelector('.ing-cal')?.value) || 0;
+        const cholVal = parseInt(row.querySelector('.ing-chol')?.value) || 0;
+        const pro = parseInt(row.querySelector('.ing-pro')?.value) || 0;
+        const carb = parseInt(row.querySelector('.ing-carb')?.value) || 0;
+        const sugar = parseInt(row.querySelector('.ing-sugar')?.value) || 0;
+        const fat = parseInt(row.querySelector('.ing-fat')?.value) || 0;
+        const caffeine = parseInt(row.querySelector('.ing-caffeine')?.value) || 0;
+
+        // Auto-calculate calories if 0 but macronutrients were specified
+        if (cal === 0 && (pro > 0 || carb > 0 || fat > 0)) {
+            cal = Math.round(pro * 4 + carb * 4 + fat * 9);
+            const calInput = row.querySelector('.ing-cal');
+            if (calInput) calInput.value = cal;
+        }
+
+        const ingName = row.querySelector('.ing-name')?.value?.trim() || name;
 
         ingredients.push({
-            name: row.querySelector('.ing-name').value,
-            qty: row.querySelector('.ing-qty').value,
-            unit: row.querySelector('.ing-unit').value,
+            name: ingName,
+            qty: parseFloat(row.querySelector('.ing-qty')?.value) || 1,
+            unit: row.querySelector('.ing-unit')?.value || 'serving',
             calories: cal,
             cholesterol_mg: cholVal,
             protein_g: pro,
@@ -879,16 +1116,21 @@ window.saveCustomFood = async function (alsoLog = true) {
     });
 
     try {
-        await fetch('/api/nutrition/custom_foods', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name, category, ingredients,
-                calories: totalCal, cholesterol_mg: totalChol,
-                protein_g: totalPro, carbs_g: totalCarb,
-                sugar_g: totalSugar, fat_g: totalFat, caffeine_mg: totalCaffeine
-            })
-        });
+        // Try saving to library (silent if fails)
+        try {
+            await fetch('/api/nutrition/custom_foods', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name, category, ingredients,
+                    calories: totalCal, cholesterol_mg: totalChol,
+                    protein_g: totalPro, carbs_g: totalCarb,
+                    sugar_g: totalSugar, fat_g: totalFat, caffeine_mg: totalCaffeine
+                })
+            });
+        } catch (libErr) {
+            console.warn("Could not save to custom food library:", libErr);
+        }
 
         if (window.editingLogId) {
             await fetch('/api/nutrition/delete', {
@@ -899,8 +1141,8 @@ window.saveCustomFood = async function (alsoLog = true) {
         }
 
         if (alsoLog || window.editingLogId) {
-            const rawTime = document.getElementById('food-log-time')?.value;
-            const timeStr = window.parseTimeString(rawTime) || rawTime || (new Date().getHours().toString().padStart(2, '0') + ':' + new Date().getMinutes().toString().padStart(2, '0'));
+            const rawTime = document.getElementById('food-log-time')?.value || document.getElementById('food-log-time-picker')?.value;
+            const timeStr = window.parseTimeString(rawTime) || rawTime || window.getEasternTime24H();
             const dateStr = window.getLocalDateStr(window.activeNutritionDate);
             const logRes = await fetch('/api/nutrition/log', {
                 method: 'POST',
@@ -928,14 +1170,13 @@ window.saveCustomFood = async function (alsoLog = true) {
         }
 
         window.editingLogId = null;
-        window.hideCustomFoodForm();
         window.closeFoodModal();
         if (window.fetchNutritionData) window.fetchNutritionData();
     } catch (err) {
         console.error("Save custom food error:", err);
         alert(`Could not log food: ${err.message || 'Please check your inputs and try again.'}`);
     }
-}
+};
 
 window.openLibraryModal = function () {
     const modal = document.getElementById('libraryModal');
@@ -999,7 +1240,7 @@ window.editLibraryItem = async function (name) {
         if (!data) return;
 
         window.closeLibraryModal();
-        window.openFoodModal();
+        window.openFoodModal('manual');
         window.showCustomFoodForm();
 
         document.getElementById('custom-name').value = name;
@@ -1023,8 +1264,7 @@ window.logFromLibrary = async function (name) {
     if (timeInput && timeInput.value) {
         timeStr = window.parseTimeString(timeInput.value) || timeInput.value;
     } else {
-        const now = new Date();
-        timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+        timeStr = window.getEasternTime24H ? window.getEasternTime24H() : (new Date().getHours().toString().padStart(2, '0') + ':' + new Date().getMinutes().toString().padStart(2, '0'));
     }
 
     await fetch('/api/nutrition/log', {
@@ -1083,8 +1323,7 @@ window.fetchProactiveSuggestions = async function() {
             
             // Check for danger state
             const progress = data.today_progress;
-            const now = new Date();
-            const hour = now.getHours();
+            const hour = window.getEasternHour ? window.getEasternHour() : new Date().getHours();
             let inDanger = false;
             if (data.streak > 0) {
                 if (hour >= 11 && !progress.breakfast) inDanger = true;
@@ -1141,7 +1380,7 @@ window.fetchProactiveSuggestions = async function() {
                     <button class="quick-log-btn" onclick="window.quickLogOneShot('Small Dinner')" style="font-size: 0.75rem; padding: 0.5rem;">Small (400)</button>
                     <button class="quick-log-btn" onclick="window.quickLogOneShot('Med Dinner')" style="font-size: 0.75rem; padding: 0.5rem;">Med (700)</button>
                     <button class="quick-log-btn" onclick="window.quickLogOneShot('Large Dinner')" style="font-size: 0.75rem; padding: 0.5rem;">Large (1000)</button>
-                    <button class="quick-log-btn" onclick="window.openFoodModal()" style="font-size: 0.75rem; padding: 0.5rem; background: rgba(255,255,255,0.05);">📝 Manual</button>
+                    <button class="quick-log-btn" onclick="window.openFoodModal('manual')" style="font-size: 0.75rem; padding: 0.5rem; background: rgba(255,255,255,0.05);">📝 Manual</button>
                 </div>
             `;
             floatBar.innerHTML = itemsHtml;
@@ -1175,10 +1414,10 @@ window.fetchProactiveSuggestions = async function() {
                         <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;">
                             ${nudge.options.map(opt => `
                                 <button class="quick-log-btn" style="background: var(--accent-color); color: white;" onclick="window.quickLogOneShot('${opt.item}')">
-                                    ${opt.label}
+                                     ${opt.label}
                                 </button>
                             `).join('')}
-                            <button class="quick-log-btn" style="background: rgba(255,255,255,0.1);" onclick="window.openFoodModal()">
+                            <button class="quick-log-btn" style="background: rgba(255,255,255,0.1);" onclick="window.openFoodModal('manual')">
                                 📝 Manual
                             </button>
                         </div>
@@ -1233,7 +1472,7 @@ window.showCoachToast = function(nudge) {
                         ${opt.label}
                     </button>
                 `).join('')}
-                <button onclick="window.openFoodModal(); this.closest('.coach-toast').remove();" 
+                <button onclick="window.openFoodModal('manual'); this.closest('.coach-toast').remove();" 
                     style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 0.5rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700; cursor: pointer; grid-column: span 2;">
                     📝 Detailed Manual Log
                 </button>
@@ -1279,8 +1518,7 @@ window.quickLogOneShot = async function(name) {
     if (toastContainer) toastContainer.appendChild(tempToast);
 
     try {
-        const now = new Date();
-        const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+        const timeStr = window.getEasternTime24H ? window.getEasternTime24H() : (new Date().getHours().toString().padStart(2, '0') + ':' + new Date().getMinutes().toString().padStart(2, '0'));
         
         // Capture streak BEFORE log to check if completing day
         const oldStreakRes = await fetch('/api/nutrition/streak');

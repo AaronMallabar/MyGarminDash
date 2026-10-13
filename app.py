@@ -682,8 +682,8 @@ class GarminSyncManager:
             by_date = {}
             for act in activities:
                 start_local = act.get('startTimeLocal')
-                if start_local:
-                    d_str = start_local.split(' ')[0]
+                if start_local and len(start_local) >= 10:
+                    d_str = start_local[:10]
                     if d_str not in by_date: by_date[d_str] = []
                     by_date[d_str].append(act)
             
@@ -4735,6 +4735,46 @@ def api_personal_bests():
         today_date = get_today()
         month_prefix = today_date.strftime('%Y-%m')
         year_prefix = today_date.strftime('%Y')
+
+        # Proactively check for recent cycling/running activities (last 14 days) missing from pts
+        # so fresh rides immediately display in power graphs and comparison tables
+        recent_threshold = (today_date - timedelta(days=14)).isoformat()
+        missing_recent = []
+        for a in activities:
+            aid = str(a.get('activityId', ''))
+            start_str = a.get('startTimeLocal', '')
+            if not aid or start_str < recent_threshold or aid in excluded_ids:
+                continue
+            if aid not in pts and (is_running_activity(a) or is_cycling_activity(a)):
+                missing_recent.append(a)
+
+        if missing_recent:
+            try:
+                client = get_garmin_client()
+                if client:
+                    for a in missing_recent:
+                        aid = str(a.get('activityId'))
+                        start_str = a.get('startTimeLocal', '')
+                        is_run = is_running_activity(a)
+                        is_bike = is_cycling_activity(a)
+                        try:
+                            details = client.get_activity_details(aid)
+                            if details:
+                                pow_bests, pace_bests = pb_parse_activity_details(details)
+                                pts[aid] = {
+                                    'power': pow_bests if is_bike else {},
+                                    'pace': pace_bests if is_run else {},
+                                    'timestamp': time.time(),
+                                    'date': start_str,
+                                    'is_run': is_run,
+                                    'is_bike': is_bike
+                                }
+                                save_json('garmin_cache/personal_bests_details.json', pts)
+                        except Exception as err:
+                            logger.warning(f"Auto-fetch PB details failed for {aid}: {err}")
+            except Exception as ex:
+                logger.warning(f"Could not connect to Garmin for recent PB check: {ex}")
+
         def init_record():
             return {
                 'run': {
@@ -4880,6 +4920,9 @@ def trigger_pb_sync():
             pb_year = str(settings.get('pb_start_year', 2025))
             pb_date_threshold = f"{pb_year}-01-01"
             
+            # Sort newest activities first so recent rides/runs are processed first
+            acts.sort(key=lambda x: x.get('startTimeLocal', ''), reverse=True)
+
             for a in acts:
                 aid = str(a.get('activityId', ''))
                 start_str = a.get('startTimeLocal', '')

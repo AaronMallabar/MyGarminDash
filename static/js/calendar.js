@@ -47,7 +47,9 @@ window.renderDetailedCalendar = function (activities, currentYear, currentMonth)
 
     const activitiesByDate = {};
     activities.forEach(act => {
-        const dateStr = act.startTimeLocal.split(' ')[0];
+        const rawDate = act.startTimeLocal || act.calendarDate || act.date || '';
+        const dateStr = rawDate.slice(0, 10);
+        if (!dateStr) return;
         if (!activitiesByDate[dateStr]) activitiesByDate[dateStr] = [];
         activitiesByDate[dateStr].push(act);
     });
@@ -58,17 +60,23 @@ window.renderDetailedCalendar = function (activities, currentYear, currentMonth)
         const first = new Date(currentYear, currentMonth, 1);
         const startPad = (first.getDay() + 6) % 7;
         const startDate = new Date(currentYear, currentMonth, 1 - startPad);
+        const todayStr = window.getLocalDateStr();
         for (let i = 0; i < 42; i++) {
             const d = new Date(startDate); d.setDate(d.getDate() + i);
             const dateStr = window.getLocalDateStr(d);
             const cell = document.createElement('div');
-            cell.className = `calendar-cell ${dateStr === window.getLocalDateStr(new Date()) ? 'today' : ''} ${d.getMonth() !== currentMonth ? 'other-month' : ''}`;
+            cell.className = `calendar-cell ${dateStr === todayStr ? 'today' : ''} ${d.getMonth() !== currentMonth ? 'other-month' : ''}`;
             cell.innerHTML = `<div class="calendar-date">${d.getDate()}</div>`;
             if (activitiesByDate[dateStr]) {
                 activitiesByDate[dateStr].forEach(act => {
+                    const typeKey = (act.activityType && act.activityType.typeKey) || act.activityType || 'other';
                     const pill = document.createElement('div');
-                    pill.className = `activity-pill ${window.getActivityPillClass(act.activityType.typeKey)}`;
-                    pill.innerHTML = `<span>${window.getActivityIcon(act.activityType.typeKey)}</span> ${act.distance > 0 ? (act.distance * 0.000621371).toFixed(1) + 'mi' : Math.round(act.duration / 60) + 'm'}`;
+                    pill.className = `activity-pill ${window.getActivityPillClass(typeKey)}`;
+                    pill.innerHTML = `<span>${window.getActivityIcon(typeKey)}</span> ${act.distance > 0 ? (act.distance * 0.000621371).toFixed(1) + 'mi' : Math.round((act.duration || 0) / 60) + 'm'}`;
+                    pill.onclick = (e) => {
+                        e.stopPropagation();
+                        if (window.openActivityDetail) window.openActivityDetail(act.activityId, act);
+                    };
                     cell.appendChild(pill);
                 });
             }
@@ -87,9 +95,14 @@ window.renderDetailedCalendar = function (activities, currentYear, currentMonth)
             cell.innerHTML = `<div class="calendar-date">${d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })}</div>`;
             if (activitiesByDate[dateStr]) {
                 activitiesByDate[dateStr].forEach(act => {
+                    const typeKey = (act.activityType && act.activityType.typeKey) || act.activityType || 'other';
                     const pill = document.createElement('div');
-                    pill.className = `activity-pill ${window.getActivityPillClass(act.activityType.typeKey)}`;
-                    pill.innerHTML = `<strong>${act.activityName}</strong><br>${act.distance > 0 ? (act.distance * 0.000621371).toFixed(2) + ' mi' : ''} | ${(act.duration / 60).toFixed(0)}m`;
+                    pill.className = `activity-pill ${window.getActivityPillClass(typeKey)}`;
+                    pill.innerHTML = `<strong>${act.activityName || 'Activity'}</strong><br>${act.distance > 0 ? (act.distance * 0.000621371).toFixed(2) + ' mi' : ''} | ${((act.duration || 0) / 60).toFixed(0)}m`;
+                    pill.onclick = (e) => {
+                        e.stopPropagation();
+                        if (window.openActivityDetail) window.openActivityDetail(act.activityId, act);
+                    };
                     cell.appendChild(pill);
                 });
             }
@@ -124,10 +137,10 @@ window.renderYearView = function (container, data, year) {
 }
 
 window.getActivityPillClass = function (type) {
-    const t = type.toLowerCase();
+    const t = (type || '').toLowerCase();
     if (t.includes('running')) return 'act-running';
     if (t.includes('virtual_ride')) return 'act-virtual-ride';
-    if (t.includes('cycling') || t.includes('ride')) return 'act-cycling';
+    if (t.includes('cycling') || t.includes('ride') || t.includes('biking') || t.includes('bike')) return 'act-cycling';
     if (t.includes('swimming')) return 'act-swimming';
     if (t.includes('walking')) return 'act-walking';
     if (t.includes('strength')) return 'act-strength';
@@ -135,10 +148,10 @@ window.getActivityPillClass = function (type) {
 }
 
 window.getActivityColor = function (type) {
-    const t = type.toLowerCase();
+    const t = (type || '').toLowerCase();
     if (t.includes('running')) return '#3b82f6';
     if (t.includes('virtual_ride')) return '#f59e0b';
-    if (t.includes('cycling') || t.includes('ride')) return '#f97316';
+    if (t.includes('cycling') || t.includes('ride') || t.includes('biking') || t.includes('bike')) return '#f97316';
     if (t.includes('swimming')) return '#06b6d4';
     return '#64748b';
 }
