@@ -179,7 +179,8 @@ window.updateNutritionDateUI = function () {
         if (display) display.textContent = window.activeNutritionDate.toLocaleDateString(undefined, options);
         if (todayBtn) todayBtn.style.display = 'inline-block';
         if (title) title.textContent = `Food for ${window.activeNutritionDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
-}
+    }
+};
 
 window.updateFoodModalDateLabel = function () {
     const label = document.getElementById('food-modal-date-label');
@@ -193,8 +194,9 @@ window.updateFoodModalDateLabel = function () {
         const options = { month: 'short', day: 'numeric', year: 'numeric' };
         label.textContent = activeDate.toLocaleDateString(undefined, options);
     }
-}
+};
 
+window.updateNutritionUI = function (logs, metabolicData, aiAnalysis) {
     window.currentNutritionLogs = logs;
 
     let outtakeTotal = 0;
