@@ -179,10 +179,22 @@ window.updateNutritionDateUI = function () {
         if (display) display.textContent = window.activeNutritionDate.toLocaleDateString(undefined, options);
         if (todayBtn) todayBtn.style.display = 'inline-block';
         if (title) title.textContent = `Food for ${window.activeNutritionDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
+
+window.updateFoodModalDateLabel = function () {
+    const label = document.getElementById('food-modal-date-label');
+    if (!label) return;
+    const activeDate = window.activeNutritionDate || new Date();
+    const dateStr = window.getLocalDateStr(activeDate);
+    const todayStr = window.getLocalDateStr(new Date());
+    if (dateStr === todayStr) {
+        label.textContent = 'Today';
+    } else {
+        const options = { month: 'short', day: 'numeric', year: 'numeric' };
+        label.textContent = activeDate.toLocaleDateString(undefined, options);
     }
 }
 
-window.updateNutritionUI = function (logs, metabolicData, aiAnalysis) {
     window.currentNutritionLogs = logs;
 
     let outtakeTotal = 0;
@@ -372,7 +384,7 @@ window.openManualTableDirectly = function () {
     window.toggleAIAssistant(false);
 
     const list = document.getElementById('ingredient-list');
-    if (list && (!list.children.length || !window.editingLogId)) {
+    if (list && !window.editingLogId && !list.children.length) {
         list.innerHTML = '';
         ingredientIndex = 0;
         window.addIngredientRow({
@@ -406,6 +418,11 @@ window.clearManualFoodForm = function () {
     if (catInput) catInput.value = 'Meal';
     window.editingLogId = null;
 
+    const saveBtn = document.getElementById('btn-save-custom-food');
+    if (saveBtn) saveBtn.textContent = 'Log Food';
+    const titleEl = document.getElementById('food-modal-title');
+    if (titleEl) titleEl.textContent = 'Manual Food Log';
+
     const list = document.getElementById('ingredient-list');
     if (list) {
         list.innerHTML = '';
@@ -431,6 +448,10 @@ window.closeFoodModal = function () {
     const modal = document.getElementById('foodModal');
     if (modal) modal.classList.remove('active');
     window.editingLogId = null;
+    const saveBtn = document.getElementById('btn-save-custom-food');
+    if (saveBtn) saveBtn.textContent = 'Log Food';
+    const titleEl = document.getElementById('food-modal-title');
+    if (titleEl) titleEl.textContent = 'Log Food';
 };
 
 window.onFoodSearchInput = function () {
@@ -527,11 +548,40 @@ window.submitFoodLog = async function () {
 }
 
 window.editAnyMeal = async function (logId) {
-    const log = window.currentNutritionLogs.find(l => l.id === logId);
-    if (!log) return;
+    const log = window.currentNutritionLogs.find(l => String(l.id) === String(logId));
+    if (!log) {
+        console.warn("Food log not found for ID:", logId);
+        return;
+    }
 
-    window.editingLogId = logId;
+    window.editingLogId = log.id;
 
+    // 1. Open the food modal in manual mode
+    window.openFoodModal('manual');
+    window.showCustomFoodForm();
+
+    // 2. Populate Meal Name
+    const nameInput = document.getElementById('custom-name');
+    if (nameInput) nameInput.value = log.name || '';
+
+    // 3. Populate Category
+    const catInput = document.getElementById('custom-category');
+    if (catInput) {
+        const cat = log.category || 'Meal';
+        let found = false;
+        for (let i = 0; i < catInput.options.length; i++) {
+            if (catInput.options[i].value.toLowerCase() === cat.toLowerCase()) {
+                catInput.selectedIndex = i;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            catInput.value = 'Meal';
+        }
+    }
+
+    // 4. Populate Time
     if (log.time) {
         const time12 = window.formatTo12H(log.time);
         const time24 = window.parseTimeString(log.time) || log.time;
@@ -541,27 +591,70 @@ window.editAnyMeal = async function (logId) {
         if (clockInput) clockInput.value = time24;
     }
 
-    if (window.customFoods[log.name]) {
-        window.editLibraryItem(log.name);
-    } else {
-        window.openFoodModal('manual');
-        window.showCustomFoodForm();
-        document.getElementById('custom-name').value = log.name;
-        const list = document.getElementById('ingredient-list');
+    // 5. Populate Date if present and differs from activeNutritionDate
+    if (log.date) {
+        const activeStr = window.getLocalDateStr(window.activeNutritionDate || new Date());
+        if (activeStr !== log.date) {
+            window.activeNutritionDate = new Date(log.date + 'T12:00:00');
+            if (window.updateNutritionDateUI) window.updateNutritionDateUI();
+            if (window.updateFoodModalDateLabel) window.updateFoodModalDateLabel();
+        }
+    }
+
+    // 6. Populate Ingredients / items breakdown table
+    const list = document.getElementById('ingredient-list');
+    if (list) {
         list.innerHTML = '';
-        window.addIngredientRow({
-            name: log.name,
-            qty: log.qty || 1,
-            unit: log.unit || 'serving',
-            calories: log.calories,
-            cholesterol_mg: log.cholesterol_mg || 0,
-            protein_g: log.protein_g || 0,
-            carbs_g: log.carbs_g || 0,
-            fat_g: log.fat_g || 0
+        ingredientIndex = 0;
+
+        let rowsToLoad = [];
+        if (Array.isArray(log.ingredients) && log.ingredients.length > 0) {
+            rowsToLoad = log.ingredients;
+        } else if (window.customFoods && window.customFoods[log.name] && Array.isArray(window.customFoods[log.name].ingredients) && window.customFoods[log.name].ingredients.length > 0) {
+            rowsToLoad = window.customFoods[log.name].ingredients;
+        } else {
+            rowsToLoad = [{
+                name: log.name,
+                qty: log.qty || 1,
+                unit: log.unit || 'serving',
+                calories: log.calories ?? 0,
+                protein_g: log.protein_g ?? 0,
+                carbs_g: log.carbs_g ?? 0,
+                fat_g: log.fat_g ?? 0,
+                sugar_g: log.sugar_g ?? 0,
+                caffeine_mg: log.caffeine_mg ?? 0,
+                cholesterol_mg: log.cholesterol_mg ?? 0
+            }];
+        }
+
+        rowsToLoad.forEach(item => {
+            if (typeof item === 'string') {
+                window.addIngredientRow({
+                    name: item.replace(/^-\s*/, '').trim(),
+                    qty: 1,
+                    unit: 'serving',
+                    calories: 0,
+                    protein_g: 0,
+                    carbs_g: 0,
+                    fat_g: 0,
+                    sugar_g: 0,
+                    caffeine_mg: 0,
+                    cholesterol_mg: 0
+                });
+            } else if (item && typeof item === 'object') {
+                window.addIngredientRow(item);
+            }
         });
+
         window.updateNutrientSummary();
     }
-}
+
+    // 7. Update UI elements for edit state
+    const titleEl = document.getElementById('food-modal-title');
+    if (titleEl) titleEl.textContent = 'Edit Food Log';
+    const saveBtn = document.getElementById('btn-save-custom-food');
+    if (saveBtn) saveBtn.textContent = 'Update Food';
+};
 
 window.deleteFoodLog = async function (id) {
     if (!confirm("Remove this entry?")) return;
@@ -935,8 +1028,11 @@ window.addIngredientRow = function (data = null) {
     div.className = 'ingredient-row ingredient-grid';
     div.style.cssText = 'background: rgba(255,255,255,0.02); padding: 0.5rem; border-radius: 0.5rem;';
 
-    const units = ['serving', 'package', 'container', 'oz', 'grams', 'cups', 'tbsp', 'slices', 'piece', 'bowl', 'plate'];
+    const units = ['serving', 'package', 'container', 'oz', 'grams', 'cups', 'tbsp', 'slices', 'piece', 'pieces', 'bowl', 'plate'];
     const currentUnit = (data?.unit || 'serving').toLowerCase();
+    if (currentUnit && !units.includes(currentUnit)) {
+        units.push(currentUnit);
+    }
     const unitOptions = units.map(u => `<option value="${u}" ${currentUnit === u ? 'selected' : ''}>${u.charAt(0).toUpperCase() + u.slice(1)}</option>`).join('');
 
     div.innerHTML = `
@@ -1116,20 +1212,22 @@ window.saveCustomFood = async function (alsoLog = true) {
     });
 
     try {
-        // Try saving to library (silent if fails)
-        try {
-            await fetch('/api/nutrition/custom_foods', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name, category, ingredients,
-                    calories: totalCal, cholesterol_mg: totalChol,
-                    protein_g: totalPro, carbs_g: totalCarb,
-                    sugar_g: totalSugar, fat_g: totalFat, caffeine_mg: totalCaffeine
-                })
-            });
-        } catch (libErr) {
-            console.warn("Could not save to custom food library:", libErr);
+        if (!window.editingLogId) {
+            // Try saving to library (silent if fails)
+            try {
+                await fetch('/api/nutrition/custom_foods', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name, category, ingredients,
+                        calories: totalCal, cholesterol_mg: totalChol,
+                        protein_g: totalPro, carbs_g: totalCarb,
+                        sugar_g: totalSugar, fat_g: totalFat, caffeine_mg: totalCaffeine
+                    })
+                });
+            } catch (libErr) {
+                console.warn("Could not save to custom food library:", libErr);
+            }
         }
 
         if (window.editingLogId) {
@@ -1250,12 +1348,37 @@ window.editLibraryItem = async function (name) {
         list.innerHTML = '';
         ingredientIndex = 0;
 
-        (data.ingredients || []).forEach(ing => {
+        let ingredients = [];
+        if (Array.isArray(data.ingredients) && data.ingredients.length > 0) {
+            ingredients = data.ingredients;
+        } else if (typeof data.ingredients === 'string' && data.ingredients.trim()) {
+            ingredients = data.ingredients.split('\n').filter(s => s.trim()).map(s => ({
+                name: s.replace(/^-\s*/, '').trim(),
+                qty: 1,
+                unit: 'serving',
+                calories: 0
+            }));
+        } else {
+            ingredients = [{
+                name: name,
+                qty: 1,
+                unit: 'serving',
+                calories: data.calories || 0,
+                protein_g: data.protein_g || 0,
+                carbs_g: data.carbs_g || 0,
+                fat_g: data.fat_g || 0,
+                sugar_g: data.sugar_g || 0,
+                caffeine_mg: data.caffeine_mg || 0,
+                cholesterol_mg: data.cholesterol_mg || 0
+            }];
+        }
+
+        ingredients.forEach(ing => {
             window.addIngredientRow(ing);
         });
 
         window.updateNutrientSummary();
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error("Edit library item error:", err); }
 }
 
 window.logFromLibrary = async function (name) {
