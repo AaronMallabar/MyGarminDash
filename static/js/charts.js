@@ -642,6 +642,7 @@ window.renderHRVisual = function (data) {
         const dailyMin = parseInt(summary.min) || 0;
         const zones = data.zones || [95, 114, 133, 152, 171];
         safeSetText('hr-max-val', `Max: ${dailyMax || '--'}`);
+        safeSetText('hr-drilldown-avg-label', 'Resting HR');
         safeSetText('hr-drilldown-current', `${dailyRhr || '--'} bpm`);
         safeSetText('hr-drilldown-7d', `${dailyRhr || '--'} bpm`);
         safeSetText('hr-drilldown-max', `${dailyMax || '--'} bpm`);
@@ -718,33 +719,57 @@ window.renderHRVisual = function (data) {
         const minRecorded = Math.min(...history.map(d => d.min || 999).filter(v => v < 999));
         const currentRhr = history.length > 0 ? (history[history.length - 1].rhr || '--') : '--';
 
+        const avgLabel = range === '1m' ? '4-Week Avg RHR' : (range === '1y' ? '1-Year Avg RHR' : '7-Day Avg RHR');
+        safeSetText('hr-drilldown-avg-label', avgLabel);
         safeSetText('hr-drilldown-current', `${currentRhr} bpm`);
         safeSetText('hr-drilldown-7d', `${avgRhr} bpm`);
         safeSetText('hr-drilldown-max', `${maxRecorded > 0 ? maxRecorded : '--'} bpm`);
         safeSetText('hr-drilldown-min', `${minRecorded < 999 ? minRecorded : '--'} bpm`);
 
+        const isLong = history.length > 35;
         const labels = history.map(d => {
             if (!d.date) return '';
             const p = d.date.split('-');
-            return p[1] ? p[1] + '/' + p[2] : d.date;
+            return p.length >= 3 ? `${p[1]}/${p[2]}` : d.date;
         });
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
             data: {
                 labels,
                 datasets: [
-                    { label: 'Resting', data: history.map(d => d.rhr), borderColor: '#38bdf8', borderWidth: 3, tension: 0.4, fill: false },
-                    { label: 'Max', data: history.map(d => d.max), borderColor: '#ef4444', borderWidth: 2, tension: 0.4, fill: false }
+                    {
+                        label: 'Resting',
+                        data: history.map(d => d.rhr),
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                        borderWidth: isLong ? 2 : 3,
+                        pointRadius: isLong ? 0 : 3,
+                        pointHoverRadius: 5,
+                        tension: 0.3,
+                        fill: false
+                    },
+                    {
+                        label: 'Max',
+                        data: history.map(d => d.max),
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        borderWidth: isLong ? 1.5 : 2,
+                        pointRadius: isLong ? 0 : 3,
+                        pointHoverRadius: 5,
+                        tension: 0.3,
+                        fill: false
+                    }
                 ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { display: true, labels: { color: '#94a3b8' } }
+                    legend: { display: true, labels: { color: '#94a3b8' } },
+                    zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
                 },
                 scales: {
-                    x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+                    x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 12 } },
                     y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
                 }
             }
