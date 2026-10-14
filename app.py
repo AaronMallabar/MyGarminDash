@@ -25,27 +25,66 @@ n = lambda x: x if x is not None else 0
 EXCLUDED_ACTS_FILE = 'garmin_cache/excluded_activities.json'
 
 def is_cycling_activity(act):
-    """Reliably determine if an activity is cycling-related."""
-    if not act or not isinstance(act, dict): return False
-    tk = act.get('activityType', {}).get('typeKey', '').lower()
-    an = act.get('activityName', '').lower()
-    # Check typeKey and activityName for various cycling indicators
-    return any(k in tk for k in ['cycling', 'ride', 'biking', 'virtual', 'indoor', 'road']) or \
-           any(k in an for k in ['zwift', 'ride', 'cycling', 'peloton', 'trainerroad', 'road biking', 'mountain biking', 'road cycling'])
+    """Reliably determine if an activity is cycling-related (road, virtual, mountain, gravel, indoor, etc.)."""
+    if not act: return False
+    if isinstance(act, dict):
+        at = act.get('activityType')
+        if isinstance(at, dict):
+            tk = str(at.get('typeKey', '')).lower()
+        else:
+            tk = str(at or '').lower()
+        an = str(act.get('activityName', '')).lower()
+    else:
+        tk = str(act).lower()
+        an = ''
+    cycling_keys = ['cycling', 'cycl', 'biking', 'bike', 'ride', 'virtual', 'indoor', 'road', 'gravel', 'mountain', 'velo']
+    return any(k in tk for k in cycling_keys) or \
+           any(k in an for k in ['zwift', 'ride', 'cycling', 'cycl', 'biking', 'bike', 'peloton', 'trainerroad', 'road biking', 'mountain biking', 'road cycling', 'gravel'])
 
 def is_running_activity(act):
     """Reliably determine if an activity is running-related."""
-    if not act or not isinstance(act, dict): return False
-    tk = act.get('activityType', {}).get('typeKey', '').lower()
-    an = act.get('activityName', '').lower()
-    return 'running' in tk or 'run' in tk or 'run' in an or 'running' in an
+    if not act: return False
+    if isinstance(act, dict):
+        at = act.get('activityType')
+        if isinstance(at, dict):
+            tk = str(at.get('typeKey', '')).lower()
+        else:
+            tk = str(at or '').lower()
+        an = str(act.get('activityName', '')).lower()
+    else:
+        tk = str(act).lower()
+        an = ''
+    return any(k in tk for k in ['running', 'run', 'treadmill', 'trail_running']) or \
+           any(k in an for k in ['running', 'run', 'treadmill'])
 
 def is_virtual_ride(act):
     """Identify if a cycling activity is virtual (indoor)."""
     if not act or not isinstance(act, dict): return False
-    tk = act.get('activityType', {}).get('typeKey', '').lower()
-    an = act.get('activityName', '').lower()
+    at = act.get('activityType')
+    tk = str(at.get('typeKey', '') if isinstance(at, dict) else (at or '')).lower()
+    an = str(act.get('activityName', '')).lower()
     return any(k in tk for k in ['virtual', 'indoor']) or any(k in an for k in ['zwift', 'peloton', 'trainerroad'])
+
+def parse_activity_date(act_or_str):
+    """Safely extract a date object from an activity dict or timestamp string (handles T, space, ms)."""
+    if not act_or_str:
+        return None
+    if isinstance(act_or_str, dict):
+        s = act_or_str.get('startTimeLocal') or act_or_str.get('calendarDate') or act_or_str.get('date') or ''
+    else:
+        s = str(act_or_str)
+    s = s.strip()
+    if not s:
+        return None
+    date_part = s[:10]
+    try:
+        return date.fromisoformat(date_part)
+    except Exception:
+        pass
+    try:
+        return datetime.strptime(date_part, '%Y-%m-%d').date()
+    except Exception:
+        return None
 
 # Timezone Configuration
 EST = ZoneInfo("America/New_York")
@@ -899,8 +938,12 @@ def group_activities_into_sessions(activities, hours_gap=2):
         if dur is None: dur = 0
             
         try:
-            # Garmin format is usually YYYY-MM-DD HH:MM:SS
-            start_dt = datetime.strptime(start_str, '%Y-%m-%d %H:%M:%S')
+            # Garmin format is usually YYYY-MM-DD HH:MM:SS or ISO with 'T'
+            if 'T' in start_str:
+                clean_str = start_str.split('.')[0].replace('Z', '')
+                start_dt = datetime.fromisoformat(clean_str)
+            else:
+                start_dt = datetime.strptime(start_str, '%Y-%m-%d %H:%M:%S')
         except:
             start_dt = None
             
@@ -1704,21 +1747,16 @@ def generate_insights_logic():
         durations = []
         
         for a in acts_hist:
-            start_time_str = a.get('startTimeLocal', '')
-            if not start_time_str: continue
-            
-            try:
-                act_date = datetime.strptime(start_time_str.split(' ')[0], '%Y-%m-%d').date()
-            except:
+            act_date = parse_activity_date(a)
+            if not act_date:
                 continue
             
             d_mi = n(a.get('distance', 0)) * 0.000621371
             dur_m = n(a.get('duration', 0)) / 60
-            type_key = a.get('activityType', {}).get('typeKey', '')
             
             # YTD Records Tracking
             if act_date >= ytd_start:
-                if 'running' in type_key:
+                if is_running_activity(a):
                     baselines['ytd_run_max_dist_mi'] = max(baselines['ytd_run_max_dist_mi'], d_mi)
                 elif is_cycling_activity(a):
                     baselines['ytd_cycle_max_dist_mi'] = max(baselines['ytd_cycle_max_dist_mi'], d_mi)
@@ -1795,7 +1833,7 @@ def generate_insights_logic():
                         "name": a.get('activityName'),
                         "distance_mi": round(d_mi, 2),
                         "duration_min": round(dur_m),
-                        "date": a.get('startTimeLocal', '').split(' ')[0],
+                        "date": str(parse_activity_date(a) or a.get('startTimeLocal', '')[:10]),
                         "avg_hr": a.get('averageHR'),
                         "avg_cadence": a.get('averageBikeCadence') or a.get('averageRunCadence') or a.get('averageCadence'),
                         "elevation_gain_ft": round(n(a.get('elevationGain')) * 3.28084) if a.get('elevationGain') else 0
@@ -1885,25 +1923,22 @@ def generate_insights_logic():
         # Most recent workout before or on today
         last_workout = None
         for a in acts_raw:
-            sl = a.get('startTimeLocal', '')
-            if sl:
-                ad_str = sl.split(' ')[0]
-                if ad_str <= today_str:
-                    try:
-                        ad = date.fromisoformat(ad_str)
-                        days_ago = (today - ad).days
-                        timing_lbl = "Today" if days_ago == 0 else ("Yesterday" if days_ago == 1 else f"{days_ago} days ago ({ad.strftime('%A, %b %d')})")
-                        last_workout = {
-                            "name": a.get('activityName', 'Workout'),
-                            "date": ad_str,
-                            "days_ago": days_ago,
-                            "timing_label": timing_lbl,
-                            "distance_mi": round(n(a.get('distance', 0)) * 0.000621371, 1),
-                            "duration_min": round(n(a.get('duration', 0)) / 60)
-                        }
-                        break
-                    except Exception:
-                        pass
+            ad = parse_activity_date(a)
+            if ad and ad <= today:
+                try:
+                    days_ago = (today - ad).days
+                    timing_lbl = "Today" if days_ago == 0 else ("Yesterday" if days_ago == 1 else f"{days_ago} days ago ({ad.strftime('%A, %b %d')})")
+                    last_workout = {
+                        "name": a.get('activityName', 'Workout'),
+                        "date": ad.isoformat(),
+                        "days_ago": days_ago,
+                        "timing_label": timing_lbl,
+                        "distance_mi": round(n(a.get('distance', 0)) * 0.000621371, 1),
+                        "duration_min": round(n(a.get('duration', 0)) / 60)
+                    }
+                    break
+                except Exception:
+                    pass
 
         # Week-to-date (Monday to today)
         start_of_week = today - timedelta(days=today.weekday())
@@ -2353,16 +2388,11 @@ def get_longterm_stats():
             cycling = 0
             for a in activities:
                 # Filter by date
-                start_str = a.get('startTimeLocal', '')
-                if not start_str: continue
-                try:
-                    act_date = datetime.strptime(start_str.split(' ')[0], '%Y-%m-%d').date()
-                    if act_date < start_date: continue
-                except: continue
+                act_date = parse_activity_date(a)
+                if not act_date or act_date < start_date:
+                    continue
                 
                 dist_mi = n(a.get('distance', 0)) * 0.000621371
-                type_key = a.get('activityType', {}).get('typeKey', '').lower()
-                
                 if is_running_activity(a):
                     running += dist_mi
                 elif is_cycling_activity(a):
@@ -2427,17 +2457,12 @@ def get_ytd_mileage_comparison():
                 day_map_run = {}
                 
                 for act in activities:
-                    start_local = act.get('startTimeLocal')
-                    if not start_local: continue
-                    
+                    d = parse_activity_date(act)
+                    if not d or d.year != year:
+                        continue
                     try:
-                        d_str = start_local.split(' ')[0]
-                        d = date.fromisoformat(d_str)
-                        if d.year != year: continue # Hygiene
                         d_num = d.timetuple().tm_yday
-                        
                         dist_meters = n(act.get('distance', 0))
-                        type_key = act.get('activityType', {}).get('typeKey', '').lower()
                         
                         # Cycling
                         if is_cycling_activity(act):
@@ -2607,12 +2632,8 @@ def get_dashboard_bootstrap():
         def calc_mileage(acts, s_date):
             r, c = 0, 0
             for a in acts:
-                sl = a.get('startTimeLocal', '')
-                if not sl: continue
-                try:
-                    ad = datetime.strptime(sl.split(' ')[0], '%Y-%m-%d').date()
-                    if ad < s_date: continue
-                except: continue
+                ad = parse_activity_date(a)
+                if not ad or ad < s_date: continue
                 dist_mi = n(a.get('distance', 0)) * 0.000621371
                 if is_running_activity(a): r += dist_mi
                 elif is_cycling_activity(a): c += dist_mi
@@ -2660,11 +2681,9 @@ def get_dashboard_bootstrap():
                 yr_acts = mgr.get_range('activities', s_date, e_fetch)
                 d_map_c, d_map_r = {}, {}
                 for act in yr_acts:
-                    sl = act.get('startTimeLocal')
-                    if not sl: continue
+                    d = parse_activity_date(act)
+                    if not d or d.year != yr: continue
                     try:
-                        d = date.fromisoformat(sl.split(' ')[0])
-                        if d.year != yr: continue
                         dn = d.timetuple().tm_yday
                         dist_m = n(act.get('distance', 0))
                         if is_cycling_activity(act): d_map_c[dn] = d_map_c.get(dn, 0) + dist_m

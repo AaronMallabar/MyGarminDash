@@ -69,10 +69,9 @@ window.renderDetailedCalendar = function (activities, currentYear, currentMonth)
             cell.innerHTML = `<div class="calendar-date">${d.getDate()}</div>`;
             if (activitiesByDate[dateStr]) {
                 activitiesByDate[dateStr].forEach(act => {
-                    const typeKey = (act.activityType && act.activityType.typeKey) || act.activityType || 'other';
                     const pill = document.createElement('div');
-                    pill.className = `activity-pill ${window.getActivityPillClass(typeKey)}`;
-                    pill.innerHTML = `<span>${window.getActivityIcon(typeKey)}</span> ${act.distance > 0 ? (act.distance * 0.000621371).toFixed(1) + 'mi' : Math.round((act.duration || 0) / 60) + 'm'}`;
+                    pill.className = `activity-pill ${window.getActivityPillClass(act)}`;
+                    pill.innerHTML = `<span>${window.getActivityIcon(act)}</span> ${act.distance > 0 ? (act.distance * 0.000621371).toFixed(1) + 'mi' : Math.round((act.duration || 0) / 60) + 'm'}`;
                     pill.onclick = (e) => {
                         e.stopPropagation();
                         if (window.openActivityDetail) window.openActivityDetail(act.activityId, act);
@@ -95,9 +94,8 @@ window.renderDetailedCalendar = function (activities, currentYear, currentMonth)
             cell.innerHTML = `<div class="calendar-date">${d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' })}</div>`;
             if (activitiesByDate[dateStr]) {
                 activitiesByDate[dateStr].forEach(act => {
-                    const typeKey = (act.activityType && act.activityType.typeKey) || act.activityType || 'other';
                     const pill = document.createElement('div');
-                    pill.className = `activity-pill ${window.getActivityPillClass(typeKey)}`;
+                    pill.className = `activity-pill ${window.getActivityPillClass(act)}`;
                     pill.innerHTML = `<strong>${act.activityName || 'Activity'}</strong><br>${act.distance > 0 ? (act.distance * 0.000621371).toFixed(2) + ' mi' : ''} | ${((act.duration || 0) / 60).toFixed(0)}m`;
                     pill.onclick = (e) => {
                         e.stopPropagation();
@@ -127,7 +125,7 @@ window.renderYearView = function (container, data, year) {
             const dayEl = document.createElement('div'); dayEl.className = 'small-day'; dayEl.textContent = d;
             if (data[dateStr]) {
                 const dot = document.createElement('div'); dot.className = 'day-dot';
-                dot.style.background = window.getActivityColor(data[dateStr][0].activityType.typeKey);
+                dot.style.background = window.getActivityColor(data[dateStr][0]);
                 dayEl.appendChild(dot);
             }
             mGrid.appendChild(dayEl);
@@ -136,23 +134,29 @@ window.renderYearView = function (container, data, year) {
     }
 }
 
-window.getActivityPillClass = function (type) {
-    const t = (type || '').toLowerCase();
-    if (t.includes('running')) return 'act-running';
+window.getActivityPillClass = function (actOrType) {
+    if (window.isCyclingActivity && window.isCyclingActivity(actOrType)) return 'act-cycling';
+    if (window.isRunningActivity && window.isRunningActivity(actOrType)) return 'act-running';
+    const t = (typeof actOrType === 'object' ? (actOrType.activityType?.typeKey || actOrType.activityType || '') : String(actOrType || '')).toLowerCase();
     if (t.includes('virtual_ride')) return 'act-virtual-ride';
-    if (t.includes('cycling') || t.includes('ride') || t.includes('biking') || t.includes('bike')) return 'act-cycling';
-    if (t.includes('swimming')) return 'act-swimming';
-    if (t.includes('walking')) return 'act-walking';
-    if (t.includes('strength')) return 'act-strength';
+    if (t.includes('cycling') || t.includes('ride') || t.includes('biking') || t.includes('bike') || t.includes('road')) return 'act-cycling';
+    if (t.includes('running') || t.includes('run')) return 'act-running';
+    if (t.includes('swimming') || t.includes('swim')) return 'act-swimming';
+    if (t.includes('walking') || t.includes('walk') || t.includes('hike')) return 'act-walking';
+    if (t.includes('strength') || t.includes('weight')) return 'act-strength';
     return 'act-other';
 }
 
-window.getActivityColor = function (type) {
-    const t = (type || '').toLowerCase();
-    if (t.includes('running')) return '#3b82f6';
+window.getActivityColor = function (actOrType) {
+    if (window.isCyclingActivity && window.isCyclingActivity(actOrType)) return '#f97316';
+    if (window.isRunningActivity && window.isRunningActivity(actOrType)) return '#3b82f6';
+    const t = (typeof actOrType === 'object' ? (actOrType.activityType?.typeKey || actOrType.activityType || '') : String(actOrType || '')).toLowerCase();
     if (t.includes('virtual_ride')) return '#f59e0b';
-    if (t.includes('cycling') || t.includes('ride') || t.includes('biking') || t.includes('bike')) return '#f97316';
-    if (t.includes('swimming')) return '#06b6d4';
+    if (t.includes('cycling') || t.includes('ride') || t.includes('biking') || t.includes('bike') || t.includes('road')) return '#f97316';
+    if (t.includes('running') || t.includes('run')) return '#3b82f6';
+    if (t.includes('swimming') || t.includes('swim')) return '#06b6d4';
+    if (t.includes('walking') || t.includes('walk') || t.includes('hike')) return '#10b981';
+    if (t.includes('strength') || t.includes('weight')) return '#8b5cf6';
     return '#64748b';
 }
 
@@ -163,20 +167,59 @@ window.updateCalendarTotals = function (activities, currentYear, currentMonth) {
     let totals = { count: 0, distance: 0, duration: 0, types: {} };
 
     activities.forEach(act => {
-        const date = window.parseLocalDate(act.startTimeLocal.split(' ')[0]);
+        const rawDate = act.startTimeLocal || act.calendarDate || act.date || '';
+        const date = window.parseLocalDate(rawDate);
         const inRange = (window.currentCalendarView === 'year') ||
-            (window.currentCalendarView === 'month' && date.getMonth() === currentMonth) ||
+            (window.currentCalendarView === 'month' && date.getFullYear() === currentYear && date.getMonth() === currentMonth) ||
             (window.currentCalendarView === 'week');
 
         if (inRange) {
             totals.count++;
             totals.distance += act.distance || 0;
             totals.duration += act.duration || 0;
-            const type = act.activityType.typeKey;
-            if (!totals.types[type]) totals.types[type] = { count: 0, distance: 0, time: 0 };
-            totals.types[type].count++;
-            totals.types[type].distance += act.distance || 0;
-            totals.types[type].time += act.duration || 0;
+
+            let groupName = 'Other';
+            let groupColor = '#64748b';
+            let groupIcon = '🏁';
+            if (window.isCyclingActivity && window.isCyclingActivity(act)) {
+                groupName = 'Cycling';
+                groupColor = '#f97316';
+                groupIcon = '🚴';
+            } else if (window.isRunningActivity && window.isRunningActivity(act)) {
+                groupName = 'Running';
+                groupColor = '#3b82f6';
+                groupIcon = '🏃';
+            } else {
+                const rawType = (act.activityType?.typeKey || act.activityType || '').toLowerCase();
+                if (rawType.includes('swim')) {
+                    groupName = 'Swimming';
+                    groupColor = '#06b6d4';
+                    groupIcon = '🏊';
+                } else if (rawType.includes('walk') || rawType.includes('hike')) {
+                    groupName = 'Walking';
+                    groupColor = '#10b981';
+                    groupIcon = '🥾';
+                } else if (rawType.includes('strength') || rawType.includes('weight')) {
+                    groupName = 'Strength';
+                    groupColor = '#8b5cf6';
+                    groupIcon = '💪';
+                } else if (rawType.includes('yoga')) {
+                    groupName = 'Yoga';
+                    groupColor = '#ec4899';
+                    groupIcon = '🧘';
+                } else {
+                    groupName = (rawType || 'Other').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    groupColor = window.getActivityColor(act);
+                    groupIcon = window.getActivityIcon(act);
+                }
+            }
+
+            if (!totals.types[groupName]) {
+                totals.types[groupName] = { count: 0, distance: 0, time: 0, color: groupColor, icon: groupIcon };
+            }
+            totals.types[groupName].count++;
+            totals.types[groupName].distance += act.distance || 0;
+            totals.types[groupName].time += act.duration || 0;
         }
     });
 
@@ -188,13 +231,14 @@ window.updateCalendarTotals = function (activities, currentYear, currentMonth) {
             <div class="total-value-row"><span>Time</span><span>${Math.floor(totals.duration / 3600)}h ${Math.round((totals.duration % 3600) / 60)}m</span></div>
         </div>`;
 
-    Object.keys(totals.types).forEach(type => {
-        const data = totals.types[type];
+    Object.keys(totals.types).forEach(groupName => {
+        const data = totals.types[groupName];
         container.innerHTML += `
-            <div class="total-card" style="border-left: 4px solid ${window.getActivityColor(type)};">
-                <div class="total-type">${type.replace(/_/g, ' ')}</div>
+            <div class="total-card" style="border-left: 4px solid ${data.color};">
+                <div class="total-type">${data.icon} ${groupName}</div>
                 <div class="total-value-row"><span>Count</span><span>${data.count}</span></div>
                 <div class="total-value-row"><span>Distance</span><span>${(data.distance * 0.000621371).toFixed(1)} mi</span></div>
+                <div class="total-value-row"><span>Time</span><span>${Math.floor(data.time / 3600)}h ${Math.round((data.time % 3600) / 60)}m</span></div>
             </div>`;
     });
 }

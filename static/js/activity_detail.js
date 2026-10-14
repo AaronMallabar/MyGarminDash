@@ -67,7 +67,7 @@ window.renderStage = function (data, basic, num) {
 
     const type = (basic.activityType?.typeKey || '').toLowerCase();
     const isRun = type.includes('run') || type.includes('walk');
-    const isCycle = type.includes('cycling') || type.includes('ride') || type.includes('virtual') || type.includes('biking');
+    const isCycle = (window.isCyclingActivity && window.isCyclingActivity(basic)) || type.includes('cycling') || type.includes('ride') || type.includes('virtual') || type.includes('biking') || type.includes('bike') || type.includes('road');
     const isStrength = type.includes('strength');
     const prefix = `stage-${basic.activityId}`;
     const summary = data.summary || basic;

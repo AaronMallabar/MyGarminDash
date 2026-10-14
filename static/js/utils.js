@@ -10,17 +10,55 @@ window.parseMarkdown = function (text) {
         .replace(/\n/g, '<br>');
 }
 
-window.getActivityIcon = function (type) {
-    const t = (type || '').toLowerCase();
-    if (t.includes('running')) return '🏃';
-    if (t.includes('cycling') || t.includes('ride') || t.includes('biking') || t.includes('bike')) return '🚴';
-    if (t.includes('virtual_ride')) return '🎮';
-    if (t.includes('swimming')) return '🏊';
-    if (t.includes('walking') || t.includes('hike')) return '🥾';
-    if (t.includes('strength')) return '💪';
+window.isCyclingActivity = function (actOrType) {
+    if (!actOrType) return false;
+    let tk = '';
+    let an = '';
+    if (typeof actOrType === 'object') {
+        const at = actOrType.activityType;
+        if (typeof at === 'object' && at !== null) {
+            tk = String(at.typeKey || '').toLowerCase();
+        } else {
+            tk = String(at || '').toLowerCase();
+        }
+        an = String(actOrType.activityName || '').toLowerCase();
+    } else {
+        tk = String(actOrType).toLowerCase();
+    }
+    const cyclingKeys = ['cycling', 'cycl', 'biking', 'bike', 'ride', 'virtual', 'indoor', 'road', 'gravel', 'mountain', 'velo'];
+    if (cyclingKeys.some(k => tk.includes(k))) return true;
+    const nameKeys = ['zwift', 'ride', 'cycling', 'cycl', 'biking', 'bike', 'peloton', 'trainerroad', 'road biking', 'mountain biking', 'road cycling', 'gravel'];
+    return nameKeys.some(k => an.includes(k));
+};
+
+window.isRunningActivity = function (actOrType) {
+    if (!actOrType) return false;
+    let tk = '';
+    let an = '';
+    if (typeof actOrType === 'object') {
+        const at = actOrType.activityType;
+        if (typeof at === 'object' && at !== null) {
+            tk = String(at.typeKey || '').toLowerCase();
+        } else {
+            tk = String(at || '').toLowerCase();
+        }
+        an = String(actOrType.activityName || '').toLowerCase();
+    } else {
+        tk = String(actOrType).toLowerCase();
+    }
+    return tk.includes('run') || tk.includes('treadmill') || an.includes('run') || an.includes('treadmill');
+};
+
+window.getActivityIcon = function (actOrType) {
+    if (window.isCyclingActivity(actOrType)) return '🚴';
+    if (window.isRunningActivity(actOrType)) return '🏃';
+    const t = (typeof actOrType === 'object' ? (actOrType.activityType?.typeKey || actOrType.activityType || '') : String(actOrType || '')).toLowerCase();
+    if (t.includes('swimming') || t.includes('swim')) return '🏊';
+    if (t.includes('walking') || t.includes('walk') || t.includes('hike')) return '🥾';
+    if (t.includes('strength') || t.includes('weight')) return '💪';
     if (t.includes('yoga')) return '🧘';
     return '🏁';
-}
+};
 
 // ============================================================================
 // DATE & TIME UTILITIES
@@ -117,9 +155,15 @@ window.getLocalDateStr = function (date) {
 };
 
 window.parseLocalDate = function (dateStr) {
-    const [y, m, d] = dateStr.split('-').map(Number);
+    if (!dateStr) return new Date();
+    if (dateStr instanceof Date) return dateStr;
+    const cleanStr = String(dateStr).split('T')[0].split(' ')[0];
+    const [y, m, d] = cleanStr.split('-').map(Number);
+    if (!y || !m || !d || isNaN(y) || isNaN(m) || isNaN(d)) {
+        return new Date(cleanStr);
+    }
     return new Date(y, m - 1, d);
-}
+};
 
 window.isDateToday = function (date) {
     const d = new Date(date);
@@ -174,11 +218,6 @@ window.safeSetHTML = function (id, text) {
     }
 }
 
-window.parseMarkdown = function (text) {
-    if (!text) return '';
-    return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-}
-
 window.showError = function (msg) {
     const el = document.getElementById('error-message');
     if (el) {
@@ -186,15 +225,6 @@ window.showError = function (msg) {
         el.style.display = 'block';
     }
     window.safeSetText('last-sync', 'Error');
-}
-
-window.getActivityIcon = function (type) {
-    if (type.includes('running')) return '🏃';
-    if (type.includes('cycling') || type.includes('ride')) return '🚴';
-    if (type.includes('swimming')) return '🏊';
-    if (type.includes('walking')) return '🚶';
-    if (type.includes('strength')) return '💪';
-    return '⚡';
 }
 
 window.getPowerZoneColor = function (power) {
