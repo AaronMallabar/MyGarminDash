@@ -169,7 +169,7 @@ garmin_client = None
 # Settings management
 SETTINGS_FILE = 'settings.json'
 DEFAULT_SETTINGS = {
-    'ai_model': 'gemini-3.7-flash',
+    'ai_model': 'gemini-3.5-flash',
     'pb_start_year': 2025
 }
 
@@ -245,8 +245,50 @@ def load_json(path, default):
     return default
 
 def save_json(path, data):
+    try:
+        data_to_dump = dict(data) if isinstance(data, dict) else (list(data) if isinstance(data, list) else data)
+    except Exception:
+        data_to_dump = data
     with open(path, 'w') as f:
-        json.dump(data, f, indent=2)
+        json.dump(data_to_dump, f, indent=2)
+
+def generate_gemini_content(client, model, contents, config=None, fallback_models=None):
+    """
+    Call Gemini with exponential backoff for transient errors, and automatically fall back
+    to an alternate model (gemini-2.5-flash or gemini-2.5-flash-lite) if the primary
+    model hits 503 (high demand) or 429 (quota exhausted).
+    """
+    if fallback_models is None:
+        candidates = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']
+        fallback_models = [m for m in candidates if m != model]
+    
+    models_to_try = [model] + [m for m in fallback_models if m != model]
+    
+    last_exception = None
+    for m in models_to_try:
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                if config:
+                    return client.models.generate_content(model=m, contents=contents, config=config)
+                else:
+                    return client.models.generate_content(model=m, contents=contents)
+            except Exception as e:
+                last_exception = e
+                err_str = str(e)
+                is_transient = any(code in err_str for code in
+                                   ['503', '504', 'overloaded', 'unavailable', 'Service Unavailable',
+                                    'UNAVAILABLE', 'resource_exhausted', 'RESOURCE_EXHAUSTED', '429'])
+                if is_transient and attempt < max_retries - 1:
+                    wait_secs = 1.5 * (attempt + 1)
+                    logger.warning(f"Gemini {m} transient error (attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait_secs}s...")
+                    time.sleep(wait_secs)
+                else:
+                    logger.warning(f"Gemini model {m} failed ({e}). Attempting next fallback model...")
+                    break
+    if last_exception:
+        raise last_exception
+    raise RuntimeError("All Gemini models failed")
 
 def load_settings():
     """Load settings from JSON file, return defaults if not found."""
@@ -499,31 +541,35 @@ class GarminPersistence:
                 try:
                     mtime = os.path.getmtime(path)
                     if cache_key in GarminPersistence._month_cache and GarminPersistence._cache_mtimes.get(cache_key) == mtime:
-                        return GarminPersistence._month_cache[cache_key]
+                        cached = GarminPersistence._month_cache[cache_key]
+                        return dict(cached) if isinstance(cached, dict) else list(cached)
                     
                     data = load_json(path, {})
                     GarminPersistence._month_cache[cache_key] = data
                     GarminPersistence._cache_mtimes[cache_key] = mtime
-                    return data
+                    return dict(data) if isinstance(data, dict) else list(data)
                 except Exception:
                     pass
             elif cache_key in GarminPersistence._month_cache:
-                return GarminPersistence._month_cache[cache_key]
-        return load_json(path, {})
+                cached = GarminPersistence._month_cache[cache_key]
+                return dict(cached) if isinstance(cached, dict) else list(cached)
+        res = load_json(path, {})
+        return dict(res) if isinstance(res, dict) else list(res)
 
     @staticmethod
     def save_month(metric, date_str, data):
         path = GarminPersistence._get_path(metric, date_str)
         cache_key = f"{metric}:{date_str[:7]}"
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        save_json(path, data)
         with GarminPersistence._lock:
+            data_copy = dict(data) if isinstance(data, dict) else (list(data) if isinstance(data, list) else data)
+            save_json(path, data_copy)
+            GarminPersistence._month_cache[cache_key] = data_copy
             try:
-                GarminPersistence._month_cache[cache_key] = data
                 if os.path.exists(path):
                     GarminPersistence._cache_mtimes[cache_key] = os.path.getmtime(path)
             except Exception:
-                GarminPersistence._month_cache[cache_key] = data
+                GarminPersistence._month_cache[cache_key] = data_copy
 
     @staticmethod
     def get_singleton(metric):
@@ -1232,11 +1278,10 @@ def get_settings():
         settings['app_version'] = APP_VERSION
         # Add available models list
         settings['available_models'] = [
-            {'id': 'gemini-3.7-flash', 'name': 'Gemini 3.7 Flash (Recommended)', 'description': 'Flagship model with advanced reasoning and high speed'},
-            {'id': 'gemini-3.5-flash', 'name': 'Gemini 3.5 Flash', 'description': 'Next-gen fast intelligence and analysis'},
-            {'id': 'gemini-3.5-flash-lite', 'name': 'Gemini 3.5 Flash Lite', 'description': 'Ultra low-latency and high throughput'},
-            {'id': 'gemini-2.5-flash', 'name': 'Gemini 2.5 Flash', 'description': 'Reliable balanced performance'},
+            {'id': 'gemini-3.5-flash', 'name': 'Gemini 3.5 Flash (Recommended)', 'description': 'Next-gen fast intelligence and analysis with auto-fallback to 2.5 Flash'},
+            {'id': 'gemini-2.5-flash', 'name': 'Gemini 2.5 Flash', 'description': 'Reliable balanced performance and higher daily free quota'},
             {'id': 'gemini-2.5-flash-lite', 'name': 'Gemini 2.5 Flash Lite', 'description': 'Lowest cost & lightweight summaries'},
+            {'id': 'gemini-3.7-flash', 'name': 'Gemini 3.7 Flash', 'description': 'Advanced reasoning (limited daily quota on free tier)'},
             {'id': 'gemini-2.5-pro', 'name': 'Gemini 2.5 Pro', 'description': 'Deep reasoning for comprehensive training plans'},
             {'id': 'gemma-3-27b-it', 'name': 'Gemma 3 27B', 'description': 'High quota, great open-model performance'}
         ]
@@ -2057,7 +2102,7 @@ def generate_insights_logic():
         # ── 6. GEMINI CALL WITH STRUCTURED SYSTEM INSTRUCTION & RETRY ───────────
         ai_client  = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         settings   = load_settings()
-        model_name = settings.get('ai_model', 'gemini-3.7-flash')
+        model_name = settings.get('ai_model', 'gemini-3.5-flash')
 
         last_timing_hint = last_workout['timing_label'] if last_workout else 'earlier this week'
         system_instruction = (
@@ -2072,34 +2117,6 @@ def generate_insights_logic():
             "6. Specific Units: Weight in lbs, hydration in oz, running pace in min/mi, cycling power in watts, cycling speed in mph.\n"
             "7. Baseline Comparisons: Compare current metrics directly to 30-day baselines and personal bests."
         )
-
-        def call_gemini_with_retry(client, model, sys_inst, prompt_text, max_retries=3):
-            """Call Gemini with system_instruction and exponential backoff for transient errors."""
-            for attempt in range(max_retries):
-                try:
-                    return client.models.generate_content(
-                        model=model,
-                        contents=prompt_text,
-                        config={
-                            'system_instruction': sys_inst,
-                            'response_mime_type': 'application/json',
-                            'temperature': 0.4
-                        }
-                    )
-                except Exception as e:
-                    err_str = str(e)
-                    is_transient = any(code in err_str for code in
-                                       ['503', '504', 'overloaded', 'unavailable', 'Service Unavailable',
-                                        'UNAVAILABLE', 'resource_exhausted', 'RESOURCE_EXHAUSTED'])
-                    if is_transient and attempt < max_retries - 1:
-                        wait_secs = 2 ** attempt  # 1s, 2s, 4s
-                        logger.warning(
-                            f"Gemini transient error (attempt {attempt+1}/{max_retries}): {e}. "
-                            f"Retrying in {wait_secs}s..."
-                        )
-                        time.sleep(wait_secs)
-                    else:
-                        raise
 
         # ═══════════════════════════════════════════════════════════════════════
         # 7. THE PROMPT
@@ -2146,7 +2163,12 @@ JSON SCHEMA REQUIREMENT:
 """
         # ═══════════════════════════════════════════════════════════════════════
 
-        response = call_gemini_with_retry(ai_client, model_name, system_instruction, prompt)
+        ai_config = {
+            'system_instruction': system_instruction,
+            'response_mime_type': 'application/json',
+            'temperature': 0.4
+        }
+        response = generate_gemini_content(ai_client, model_name, prompt, config=ai_config)
         raw_text = response.text
         
         # Robust JSON extraction
@@ -3950,7 +3972,7 @@ def log_food():
             try:
                 ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
                 settings = load_settings()
-                model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
+                model_name = settings.get('ai_model', 'gemini-3.5-flash')
                 
                 prompt = f"""
                 Analyze these food items: {", ".join(ai_items)}
@@ -3959,7 +3981,7 @@ def log_food():
                 name (string), calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), sugar_g (int), fat_g (int), caffeine_mg (int), ai_note (str).
                 """
                 
-                response = ai_client.models.generate_content(model=model_name, contents=prompt)
+                response = generate_gemini_content(ai_client, model_name, contents=prompt)
                 clean_text = response.text.replace('```json', '').replace('```', '').strip()
                 estimates = json.loads(clean_text)
                 
@@ -4176,7 +4198,7 @@ def nutrition_chat():
         
         ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         settings = load_settings()
-        model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
+        model_name = settings.get('ai_model', 'gemini-3.5-flash')
         
         # Provide context on recent meals for 'treat frequency' tips
         logs = load_json(FOOD_LOGS_FILE, [])
@@ -4216,7 +4238,7 @@ def nutrition_chat():
             img_data = base64.b64decode(encoded)
             contents.append(genai.Part.from_bytes(data=img_data, mime_type="image/jpeg"))
 
-        response = ai_client.models.generate_content(model=model_name, contents=contents)
+        response = generate_gemini_content(ai_client, model_name, contents=contents)
         clean_text = response.text.replace('```json', '').replace('```', '').strip()
         result = json.loads(clean_text)
         
@@ -4251,7 +4273,7 @@ def estimate_ingredients():
     try:
         ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         settings = load_settings()
-        model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
+        model_name = settings.get('ai_model', 'gemini-3.5-flash')
         
         ing_list_str = "\n".join([f"- {i['qty']} {i['unit']} of {i['name']}" for i in ingredients])
         
@@ -4263,7 +4285,7 @@ def estimate_ingredients():
         calories (int), cholesterol_mg (int), protein_g (int), carbs_g (int), sugar_g (int), fat_g (int), caffeine_mg (int).
         """
         
-        response = ai_client.models.generate_content(model=model_name, contents=prompt)
+        response = generate_gemini_content(ai_client, model_name, contents=prompt)
         clean_text = response.text.replace('```json', '').replace('```', '').strip()
         result = json.loads(clean_text)
         return jsonify(result)
@@ -4466,7 +4488,7 @@ def get_nutrition_analysis():
     try:
         ai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         settings = load_settings()
-        model_name = settings.get('ai_model', 'gemini-2.0-flash-exp')
+        model_name = settings.get('ai_model', 'gemini-3.5-flash')
         
         food_list = ", ".join([l['name'] for l in day_logs]) or "No food logged yet."
 
@@ -4509,7 +4531,7 @@ def get_nutrition_analysis():
         2-3 sentences analyzing energy balance and cholesterol. Explicitly point out if yesterday affected today. <br><br><strong>Action Plan:</strong> 1-2 sharp, strict sentences of advice for my next meal or rest of day.
         """
         
-        response = ai_client.models.generate_content(model=model_name, contents=prompt)
+        response = generate_gemini_content(ai_client, model_name, contents=prompt)
         return jsonify({
             'analysis': response.text,
             'metabolic': {
