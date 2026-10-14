@@ -1138,7 +1138,19 @@ def background_polyline_fetcher(client, activity_ids, generation_id):
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Allow API key / token auth via query parameter or header for automated agents (Gemini Spark)
+        api_key = request.args.get('key') or request.args.get('token') or request.args.get('api_key') or request.headers.get('X-API-Key')
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            api_key = auth_header.split(' ', 1)[1].strip()
+            
+        if api_key and (api_key == APP_PASSWORD or api_key == os.getenv('FLASK_SECRET_KEY')):
+            session['logged_in'] = True
+            return f(*args, **kwargs)
+
         if not session.get('logged_in'):
+            if request.is_json or request.path.startswith('/api/'):
+                return jsonify({'error': 'Unauthorized', 'message': 'Authentication required. Pass session cookie or ?key=APP_PASSWORD'}), 401
             return redirect(url_for('login', next=request.url))
         return f(*args, **kwargs)
     return decorated_function
