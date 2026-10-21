@@ -163,6 +163,10 @@ APP_PASSWORD = os.getenv("APP_PASSWORD", "admin") # Default for dev, set in Rend
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+@app.context_processor
+def inject_app_version():
+    return dict(app_version=APP_VERSION)
+
 # Global client cache (simple version)
 garmin_client = None
 
@@ -2786,8 +2790,10 @@ def format_sleep_day(sleep_data, mgr=None, date_str=None):
     levels = []
     for lvl in (raw_levels or []):
         try:
-            s_gmt = datetime.fromisoformat(lvl['startGMT'].rstrip('Z'))
-            e_gmt = datetime.fromisoformat(lvl['endGMT'].rstrip('Z'))
+            s_str = lvl['startGMT'].rstrip('Z').split('.')[0]
+            e_str = lvl['endGMT'].rstrip('Z').split('.')[0]
+            s_gmt = datetime.fromisoformat(s_str)
+            e_gmt = datetime.fromisoformat(e_str)
             s_loc = s_gmt - timedelta(seconds=offset_sec)
             e_loc = e_gmt - timedelta(seconds=offset_sec)
             levels.append({
@@ -2800,8 +2806,8 @@ def format_sleep_day(sleep_data, mgr=None, date_str=None):
                 'duration': (e_gmt - s_gmt).total_seconds(),
                 'activityLevel': int(lvl.get('activityLevel', 1))
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed parsing sleepLevel epoch: {e}")
             
     total_sec = sleep_data.get('sleepTimeSeconds') or 0
     deep_sec = sleep_data.get('deepSleepSeconds') or 0
@@ -4651,53 +4657,9 @@ def get_proactive_suggestions():
     yesterday_str = (get_today() - timedelta(days=1)).isoformat()
     yesterday_meals = [l for l in logs if l.get('date') == yesterday_str]
     
-    # 3. Smart Nudges
-    now_est = datetime.now(EST)
-    current_hour = now_est.hour
-    today_str = get_today().isoformat()
-    today_logs = [l for l in logs if l.get('date') == today_str]
-    today_names = [l.get('name', '').lower() for l in today_logs]
-    
+    # 3. Nudges disabled per user preference
     nudges = []
-    
-    # Logic: If after 8am and no "coffee" logged (assuming coffee/breakfast)
-    if current_hour >= 8 and current_hour < 11:
-        if not any('coffee' in n or 'breakfast' in n for n in today_names):
-            nudges.append({
-                'type': 'morning',
-                'message': "Morning, Aaron! Had your usual coffee or breakfast?",
-                'action': "Log Morning Coffee",
-                'item': "Coffee" # Fallback if not found in frequent
-            })
-            
-    # Logic: If after 1pm and low calories/no lunch
-    if current_hour >= 13 and current_hour < 16:
-        if not progress['lunch']:
-            nudges.append({
-                'type': 'lunch',
-                'message': "It's past 1 PM. What was for lunch?",
-                'action': "Quick Log Lunch",
-                'item': "Lunch"
-            })
 
-    # Logic: If after 6pm and no dinner logged
-    if current_hour >= 18:
-        if not progress['dinner']:
-            msg = "Dinner time! Choose a size or log your performance fuel."
-            if streak > 0:
-                msg = f"{streak} day streak in danger! 🚨 Log dinner to keep it alive."
-            
-            nudges.append({
-                'type': 'dinner',
-                'message': msg,
-                'options': [
-                    {'label': 'Small (400)', 'item': 'Small Dinner'},
-                    {'label': 'Med (700)', 'item': 'Med Dinner'},
-                    {'label': 'Large (1000)', 'item': 'Large Dinner'},
-                    {'label': 'High Protein', 'item': 'High Protein Dinner'}
-                ]
-            })
-            
     return jsonify({
         'frequent': frequent,
         'yesterday': yesterday_meals,

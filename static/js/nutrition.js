@@ -1419,18 +1419,7 @@ window.importLogs = async function (input) {
 
 // --- Frictionless Logging Logic ---
 
-window.toggleFloatingQuickLog = function() {
-    const el = document.getElementById('floating-quick-log');
-    const icon = document.getElementById('floating-icon');
-    if (!el) return;
-    const isVisible = el.style.display === 'block';
-    el.style.display = isVisible ? 'none' : 'block';
-    icon.textContent = isVisible ? '🍎' : '✕';
-    if (!isVisible) {
-        document.getElementById('floating-chat-input').focus();
-        window.fetchProactiveSuggestions(); // Refresh suggestions when opening
-    }
-}
+window.toggleFloatingQuickLog = function() {};
 
 window.fetchProactiveSuggestions = async function() {
     try {
@@ -1528,108 +1517,10 @@ window.fetchProactiveSuggestions = async function() {
             }
         }
 
-        // 4. Handle Nudges (Toasts & Banners)
-        const nudgeContainer = document.getElementById('coach-nudge-container');
-        if (data.nudges && data.nudges.length > 0) {
-            const nudge = data.nudges[0];
-            if (nudgeContainer) {
-                let optionsHtml = '';
-                if (nudge.options) {
-                    optionsHtml = `
-                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;">
-                            ${nudge.options.map(opt => `
-                                <button class="quick-log-btn" style="background: var(--accent-color); color: white;" onclick="window.quickLogOneShot('${opt.item}')">
-                                     ${opt.label}
-                                </button>
-                            `).join('')}
-                            <button class="quick-log-btn" style="background: rgba(255,255,255,0.1);" onclick="window.openFoodModal('manual')">
-                                📝 Manual
-                            </button>
-                        </div>
-                    `;
-                } else {
-                    optionsHtml = `
-                        <button class="quick-log-btn" style="background: var(--accent-color); color: white; margin-top: 1rem;" onclick="window.quickLogOneShot('${nudge.item}')">
-                            ${nudge.action}
-                        </button>
-                    `;
-                }
-
-                nudgeContainer.innerHTML = `
-                    <div class="nudge-banner" style="flex-direction: column; align-items: flex-start; ${data.streak_in_danger ? 'border-color: rgba(248,113,113,0.5);' : ''}">
-                        <div style="display: flex; align-items: center; gap: 1rem;">
-                            <div style="font-size: 1.5rem;">${data.streak_in_danger ? '🚨' : '💡'}</div>
-                            <div style="font-size: 0.95rem; font-weight: 500;">${nudge.message}</div>
-                        </div>
-                        ${optionsHtml}
-                    </div>
-                `;
-                nudgeContainer.style.display = 'block';
-            }
-            // Also show a Toast if it's "Today"
-            if (window.getLocalDateStr() === window.getLocalDateStr(window.activeNutritionDate)) {
-                window.showCoachToast(nudge);
-            }
-        } else if (nudgeContainer) {
-            nudgeContainer.style.display = 'none';
-        }
-
-    } catch (err) { console.error("Proactive fetch error:", err); }
+        } catch (err) { console.error("Proactive fetch error:", err); }
 }
 
-window.showCoachToast = function(nudge) {
-    const container = document.getElementById('coach-toast-container');
-    if (!container || document.getElementById(`toast-${nudge.type}`)) return;
-
-    const toast = document.createElement('div');
-    toast.id = `toast-${nudge.type}`;
-    toast.className = 'coach-toast';
-    toast.style.flexDirection = 'column';
-    toast.style.alignItems = 'flex-start';
-    
-    let actionArea = '';
-    if (nudge.options) {
-        actionArea = `
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; width: 100%; margin-top: 1rem;">
-                ${nudge.options.map(opt => `
-                    <button onclick="window.quickLogOneShot('${opt.item}'); this.closest('.coach-toast').remove();" 
-                        style="background: var(--accent-color); border: none; color: white; padding: 0.5rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700; cursor: pointer;">
-                        ${opt.label}
-                    </button>
-                `).join('')}
-                <button onclick="window.openFoodModal('manual'); this.closest('.coach-toast').remove();" 
-                    style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 0.5rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700; cursor: pointer; grid-column: span 2;">
-                    📝 Detailed Manual Log
-                </button>
-            </div>
-        `;
-    } else {
-        actionArea = `
-            <div style="display: flex; gap: 0.5rem; width: 100%; margin-top: 1rem;">
-                <button onclick="window.quickLogOneShot('${nudge.item}'); this.closest('.coach-toast').remove();" 
-                    style="background: var(--accent-color); border: none; color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.75rem; font-weight: 700; cursor: pointer; flex-grow: 1;">
-                    ${nudge.action || 'Log Now'}
-                </button>
-                <button onclick="this.closest('.coach-toast').remove()" 
-                    style="background: rgba(255,255,255,0.1); border: none; color: white; width: 36px; height: 36px; border-radius: 18px; cursor: pointer;">✕</button>
-            </div>
-        `;
-    }
-
-    toast.innerHTML = `
-        <div style="display: flex; gap: 1rem; width: 100%;">
-            <div style="font-size: 1.5rem;">🏋️‍♂️</div>
-            <div style="flex-grow: 1;">
-                <div style="font-size: 0.7rem; font-weight: 800; color: var(--accent-color); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem;">Coach's Nudge</div>
-                <div style="font-size: 0.85rem; font-weight: 500; line-height: 1.4;">${nudge.message}</div>
-            </div>
-            ${!nudge.options ? '' : `<button onclick="this.closest('.coach-toast').remove()" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 0;">✕</button>`}
-        </div>
-        ${actionArea}
-    `;
-    container.appendChild(toast);
-    setTimeout(() => { if(toast.parentNode) toast.remove(); }, 20000); // 20s for choices
-}
+window.showCoachToast = function() {};
 
 window.quickLogOneShot = async function(name) {
     if (!name) return;

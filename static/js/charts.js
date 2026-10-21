@@ -34,6 +34,8 @@ window.destroyChartIfExists = function (canvasIdOrEl) {
     }
     if (canvas) {
         canvas.style.display = 'block';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
     }
 };
 
@@ -47,6 +49,8 @@ window.getCleanCanvas = function (canvasIdOrEl) {
 
     // 2. Keep the existing canvas element in the DOM to preserve layout geometry, dimensions, and observers
     canvas.style.display = 'block';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
 
     // 3. Reset 2D buffer
     const ctx = canvas.getContext('2d');
@@ -558,28 +562,8 @@ window.renderCalorieChart = function (data) {
     const filterBar = document.getElementById('calorie-filters-bar');
     if (filterBar) filterBar.style.display = 'flex';
 
-    const canvas = window.getCleanCanvas(canvasId);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-
     const filters = getCalorieFilters();
     const labels = history.map(h => h.date);
-
-    if (history.length === 0 || filters.length === 0) {
-        chartInstances[canvasId] = new Chart(ctx, {
-            type: 'line',
-            data: { labels, datasets: [] },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
-                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
-                }
-            }
-        });
-        return;
-    }
 
     const datasets = [];
     const y1Metrics = filters.filter(f => (CALORIE_METRIC_CONFIG[f] || {}).axis === 'y1');
@@ -597,7 +581,7 @@ window.renderCalorieChart = function (data) {
             return num;
         });
         datasets.push({
-            label: cfg.label + (cfg.unit ? ` (${cfg.unit})` : ''),
+            label: cfg.label + (cfg.unit ? ' (' + cfg.unit + ')' : ''),
             data: vals,
             borderColor: cfg.color,
             backgroundColor: key === 'net_energy' ? cfg.color + '18' : cfg.color + '20',
@@ -612,6 +596,33 @@ window.renderCalorieChart = function (data) {
 
     const y1Max = (y1RawVals.length && isFinite(Math.max(...y1RawVals))) ? Math.max(...y1RawVals) * 1.1 : 100;
     const y1Min = (y1RawVals.length && isFinite(Math.min(...y1RawVals))) ? Math.min(...y1RawVals) : 0;
+    const y1MinVal = isFinite(y1Min) ? Math.max(0, y1Min - (y1Max - y1Min) * 0.1) : 0;
+    const y1MaxVal = (isFinite(y1Max) && y1Max > y1Min) ? y1Max : ((isFinite(y1Min) ? y1Min : 0) + 10);
+    const y1Title = y1Metrics.length === 1 ? (CALORIE_METRIC_CONFIG[y1Metrics[0]]?.label || 'Secondary') : 'Secondary Unit';
+
+    // If chart instance already exists on this canvas, update in-place without DOM/context recreation
+    const existingChart = chartInstances[canvasId];
+    const canvasEl = document.getElementById(canvasId);
+    if (existingChart && canvasEl && existingChart.canvas === canvasEl) {
+        canvasEl.style.display = 'block';
+        existingChart.data.labels = labels;
+        existingChart.data.datasets = datasets;
+        if (existingChart.options && existingChart.options.scales && existingChart.options.scales.y1) {
+            existingChart.options.scales.y1.display = y1Metrics.length > 0;
+            existingChart.options.scales.y1.min = y1MinVal;
+            existingChart.options.scales.y1.max = y1MaxVal;
+            if (existingChart.options.scales.y1.title) {
+                existingChart.options.scales.y1.title.display = y1Metrics.length > 0;
+                existingChart.options.scales.y1.title.text = y1Title;
+            }
+        }
+        existingChart.update();
+        return;
+    }
+
+    const canvas = window.getCleanCanvas(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
 
     chartInstances[canvasId] = new Chart(ctx, {
         type: 'line',
