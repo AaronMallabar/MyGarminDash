@@ -1079,15 +1079,51 @@ function formatFeedbackTitle(feedback) {
 }
 
 function formatSleepInsight(s) {
-    if (s.personalizedInsight) return s.personalizedInsight;
-    if (s.insight) {
-        let clean = s.insight.replace(/^POSITIVE_|^NEGATIVE_|^NEUTRAL_/, '').replace(/_/g, ' ').toLowerCase();
-        return `Your sleep pattern shows ${clean}. Restorative sleep stages support your daily mental and physical recovery.`;
+    const rawKey = s.personalizedInsight || s.insight;
+    const insightMap = {
+        'HARD_EXERCISE_POS_EXCELLENT_OR_GOOD_SLEEP_HARD_TO_STRENUOUS_DURING_DAY_OUTDOOR':
+            'Your outdoor activity earlier in the day promoted good sleep. Daylight activity especially helps to sync your body clock and deepen restorative sleep.',
+        'HARD_EXERCISE_POS_EXCELLENT_OR_GOOD_SLEEP_HARD_TO_STRENUOUS_DURING_DAY':
+            'Your strenuous workout earlier in the day helped deepen your sleep and promoted restorative physical recovery.',
+        'HARD_EXERCISE_POS_EXCELLENT_OR_GOOD_SLEEP_MODERATE_DURING_DAY_OUTDOOR':
+            'Outdoor activity yesterday helped synchronize your circadian rhythm and supported restful sleep.',
+        'HARD_EXERCISE_POS_EXCELLENT_OR_GOOD_SLEEP_MODERATE_DURING_DAY':
+            'Your daytime physical activity helped promote healthy sleep architecture and deep rest.',
+        'REGULAR_RHYTHM_POS':
+            'Your consistent sleep timing is reinforcing your natural circadian rhythms for optimal recovery.',
+        'RESTFUL_EVENING_POS':
+            'A restful and low-stress evening promoted smooth sleep onset and continuous rest.',
+        'POSITIVE_LONG_AND_CONTINUOUS':
+            'You had long and continuous sleep with minimal interruptions, allowing optimal physical and mental recharge.'
+    };
+
+    if (rawKey && insightMap[rawKey]) {
+        return insightMap[rawKey];
     }
+
+    if (rawKey && typeof rawKey === 'string' && rawKey !== 'NONE') {
+        const k = rawKey.toUpperCase();
+        if (k.includes('HARD_EXERCISE') || k.includes('STRENUOUS') || k.includes('OUTDOOR')) {
+            return 'Your daytime physical activity helped promote deep, restorative recovery sleep.';
+        }
+        if (k.includes('RHYTHM') || k.includes('SCHEDULE')) {
+            return 'Keeping a consistent sleep and wake routine supports quality restorative sleep.';
+        }
+        if (k.includes('RESTFUL') || k.includes('EVENING')) {
+            return 'A calm evening with lower stress helped maintain restful and continuous sleep.';
+        }
+        if (k.includes('SHORT')) {
+            return 'Your sleep duration was shorter than optimal. An earlier bedtime tonight will help restore balance.';
+        }
+        if (k.includes('RESTLESS') || k.includes('STRESS')) {
+            return 'Restlessness or higher stress was detected during sleep. Winding down before bed can help.';
+        }
+    }
+
     const totalSec = s.total || 0;
     const hrs = (totalSec / 3600).toFixed(1);
     if (totalSec >= 27000) {
-        return `You had long and continuous sleep with ${hrs} hours. Good deep and REM cycles promoted physical recovery and mental focus.`;
+        return `You had long and continuous sleep with ${hrs} hours. Balanced deep and REM cycles promoted physical recovery and mental focus.`;
     } else if (totalSec >= 21600) {
         return `You got ${hrs} hours of sleep. Consistent sleep timing can help optimize your REM and deep restorative stages.`;
     } else {
@@ -1187,7 +1223,11 @@ window.updateSleepRange = async function (range, btn) {
 
     try {
         const cached = getCachedData('sleep', window.currentSleepRange, window.currentSleepEndDate);
-        if (cached && (cached.range === window.currentSleepRange || (window.currentSleepRange === '1d' ? !!cached.summary : !!cached.history))) {
+        const is1d = window.currentSleepRange === '1d';
+        const hasValid1d = is1d && cached && cached.summary && Array.isArray(cached.summary.sleepLevels) && cached.summary.sleepLevels.length > 0;
+        const hasValidMulti = !is1d && cached && Array.isArray(cached.history) && cached.history.length > 0;
+
+        if (hasValid1d || hasValidMulti) {
             cached.range = window.currentSleepRange;
             window.renderSleepVisual(cached);
             return;
@@ -1337,26 +1377,26 @@ function renderSleep1dTimeline(s) {
 
     const leftMargin = 65;
     const rightMargin = 25;
-    const topMargin = 25;
-    const bottomMargin = 45;
+    const topMargin = 20;
+    const bottomMargin = 65;
     const plotWidth = width - leftMargin - rightMargin;
     const plotHeight = height - topMargin - bottomMargin;
 
     // Y levels (Awake: 3, REM: 2, Light: 1, Deep: 0)
     const stageY = {
         3: topMargin + 10,
-        2: topMargin + plotHeight * 0.30,
-        1: topMargin + plotHeight * 0.60,
-        0: topMargin + plotHeight * 0.85
+        2: topMargin + plotHeight * 0.32,
+        1: topMargin + plotHeight * 0.64,
+        0: topMargin + plotHeight * 0.90
     };
     const baselineY = topMargin + plotHeight;
 
-    // Draw horizontal grid lines & Y labels
+    // Draw horizontal dashed grid lines & Y labels
     const stageLabels = [
-        { label: 'Awake', y: stageY[3], color: '#94a3b8' },
-        { label: 'REM', y: stageY[2], color: '#94a3b8' },
-        { label: 'Light', y: stageY[1], color: '#94a3b8' },
-        { label: 'Deep', y: stageY[0], color: '#94a3b8' }
+        { label: 'Awake', y: stageY[3] },
+        { label: 'REM', y: stageY[2] },
+        { label: 'Light', y: stageY[1] },
+        { label: 'Deep', y: stageY[0] }
     ];
 
     ctx.textAlign = 'right';
@@ -1364,10 +1404,10 @@ function renderSleep1dTimeline(s) {
     ctx.font = '12px Inter, sans-serif';
 
     stageLabels.forEach(sl => {
-        ctx.fillStyle = sl.color;
-        ctx.fillText(sl.label, leftMargin - 12, sl.y);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(sl.label, leftMargin - 14, sl.y);
 
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         ctx.beginPath();
@@ -1375,35 +1415,40 @@ function renderSleep1dTimeline(s) {
         ctx.lineTo(width - rightMargin, sl.y);
         ctx.stroke();
     });
+
+    // Draw outer boundary dashed lines matching Garmin Connect
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(leftMargin, stageY[3] - 5);
+    ctx.lineTo(leftMargin, baselineY);
+    ctx.moveTo(width - rightMargin, stageY[3] - 5);
+    ctx.lineTo(width - rightMargin, baselineY);
+    ctx.stroke();
     ctx.setLineDash([]);
 
     let levels = s.sleepLevels || [];
     const totalSec = s.total || 0;
 
-    // If no epoch levels, synthesize stages proportionally
+    // If no epoch levels, synthesize stages proportionally anchoring to bed time
     if (!levels || levels.length === 0) {
         if (totalSec > 0) {
-            const now = Date.now() / 1000;
-            const startE = now - totalSec;
-            let curE = startE;
             const synth = [
-                { act: 1, dur: (s.light || 0) * 0.3 },
-                { act: 0, dur: s.deep || 0 },
-                { act: 1, dur: (s.light || 0) * 0.4 },
-                { act: 2, dur: s.rem || 0 },
-                { act: 3, dur: s.awake || 0 },
-                { act: 1, dur: (s.light || 0) * 0.3 }
+                { act: 1, dur: (s.light || 0) * 0.3 || (totalSec * 0.2) },
+                { act: 0, dur: (s.deep || 0) || (totalSec * 0.15) },
+                { act: 1, dur: (s.light || 0) * 0.4 || (totalSec * 0.25) },
+                { act: 2, dur: (s.rem || 0) || (totalSec * 0.2) },
+                { act: 3, dur: (s.awake || 0) || 300 },
+                { act: 1, dur: (s.light || 0) * 0.3 || (totalSec * 0.15) }
             ];
             levels = [];
             synth.forEach(item => {
                 if (item.dur > 0) {
                     levels.push({
-                        startEpoch: curE,
-                        endEpoch: curE + item.dur,
                         activityLevel: item.act,
                         duration: item.dur
                     });
-                    curE += item.dur;
                 }
             });
         }
@@ -1416,25 +1461,24 @@ function renderSleep1dTimeline(s) {
         return;
     }
 
-    const minEpoch = levels[0].startEpoch;
-    const maxEpoch = levels[levels.length - 1].endEpoch;
-    const totalDuration = maxEpoch - minEpoch;
-
+    const totalDuration = levels.reduce((sum, lvl) => sum + (lvl.duration || 0), 0) || totalSec || 31380;
     if (totalDuration <= 0) return;
 
-    // Colors matching Garmin
+    // Colors matching Garmin Connect exactly
     const stageColors = {
         0: '#1d4ed8', // Deep (dark blue)
-        1: '#38bdf8', // Light (medium blue)
-        2: '#c084fc', // REM (purple/magenta)
-        3: '#fb7185'  // Awake (pink)
+        1: '#38bdf8', // Light (sky blue)
+        2: '#c026d3', // REM (magenta/purple)
+        3: '#f43f5e'  // Awake (bright pink)
     };
 
-    // Draw stepped bar chart
+    // Draw stepped bar chart using relative second accumulation
+    let curSec = 0;
     levels.forEach(lvl => {
-        const xStart = leftMargin + ((lvl.startEpoch - minEpoch) / totalDuration) * plotWidth;
-        const xEnd = leftMargin + ((lvl.endEpoch - minEpoch) / totalDuration) * plotWidth;
-        const barW = Math.max(2, xEnd - xStart);
+        const dur = lvl.duration || 0;
+        const xStart = leftMargin + (curSec / totalDuration) * plotWidth;
+        const xEnd = leftMargin + ((curSec + dur) / totalDuration) * plotWidth;
+        const barW = Math.max(1.5, xEnd - xStart);
         const act = lvl.activityLevel != null ? lvl.activityLevel : 1;
         const color = stageColors[act] || stageColors[1];
         const barY = stageY[act] || stageY[1];
@@ -1442,54 +1486,107 @@ function renderSleep1dTimeline(s) {
 
         ctx.fillStyle = color;
         if (act === 3) {
-            // Awake: thin vertical line to top
-            ctx.fillRect(xStart, stageY[3], Math.max(2, barW * 0.6), baselineY - stageY[3]);
+            // Awake: thin vertical pink spike extending to top Awake level
+            ctx.fillRect(xStart, stageY[3], Math.max(2, Math.min(barW, 3)), baselineY - stageY[3]);
         } else {
             ctx.fillRect(xStart, barY, barW + 0.5, barH);
         }
+        curSec += dur;
     });
 
-    // Draw X-axis line & Hour ticks matching Garmin
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    // Draw solid baseline line
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(leftMargin, baselineY);
     ctx.lineTo(width - rightMargin, baselineY);
     ctx.stroke();
 
-    // Calculate hourly ticks
-    const startDate = new Date(minEpoch * 1000);
-    const endDate = new Date(maxEpoch * 1000);
-    const firstHour = new Date(startDate);
-    firstHour.setMinutes(0, 0, 0);
-    if (firstHour < startDate) firstHour.setHours(firstHour.getHours() + 1);
+    // Corner badges matching Garmin (sleep moon at start, alarm at end)
+    ctx.fillStyle = '#1e293b';
+    ctx.beginPath();
+    ctx.arc(leftMargin, baselineY, 7.5, 0, Math.PI * 2);
+    ctx.arc(width - rightMargin, baselineY, 7.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.stroke();
 
+    ctx.font = '9px sans-serif';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
+    ctx.textBaseline = 'middle';
     ctx.fillStyle = '#94a3b8';
-    ctx.font = '11px Inter, sans-serif';
+    ctx.fillText('💤', leftMargin, baselineY);
+    ctx.fillText('⏰', width - rightMargin, baselineY);
 
-    let curTick = new Date(firstHour);
-    while (curTick <= endDate) {
-        const tEpoch = curTick.getTime() / 1000;
-        const xTick = leftMargin + ((tEpoch - minEpoch) / totalDuration) * plotWidth;
-        if (xTick >= leftMargin + 15 && xTick <= width - rightMargin - 15) {
-            // Draw tick dot
-            ctx.fillStyle = '#64748b';
-            ctx.beginPath();
-            ctx.arc(xTick, baselineY + 6, 2.5, 0, Math.PI * 2);
-            ctx.fill();
+    // Calculate hourly and 30-minute ticks matching Garmin
+    let bHour = 22, bMin = 12;
+    if (s.bedTime && s.bedTime !== '--') {
+        const parts = s.bedTime.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+        if (parts) {
+            bHour = parseInt(parts[1], 10);
+            bMin = parseInt(parts[2], 10);
+            if (parts[3] && parts[3].toUpperCase() === 'PM' && bHour < 12) bHour += 12;
+            if (parts[3] && parts[3].toUpperCase() === 'AM' && bHour === 12) bHour = 0;
+        }
+    }
 
-            // Label e.g. 12a, 2a, 4a, 6a
-            const h = curTick.getHours();
-            if (h % 2 === 0 || totalDuration < 18000) {
-                const dispH = h === 0 ? '12a' : (h === 12 ? '12p' : (h > 12 ? `${h - 12}p` : `${h}a`));
+    const minToNext30 = (30 - (bMin % 30)) % 30 || 30;
+    let tickSec = minToNext30 * 60;
+
+    while (tickSec <= totalDuration - 60) {
+        const xTick = leftMargin + (tickSec / totalDuration) * plotWidth;
+        if (xTick >= leftMargin + 10 && xTick <= width - rightMargin - 10) {
+            const totalMinFromStart = bMin + Math.round(tickSec / 60);
+            const tickHour = (bHour + Math.floor(totalMinFromStart / 60)) % 24;
+            const tickMin = totalMinFromStart % 60;
+
+            if (tickMin === 0 && tickHour % 2 === 0) {
+                // Even hour: large dot + label
+                ctx.fillStyle = '#cbd5e1';
+                ctx.beginPath();
+                ctx.arc(xTick, baselineY + 8, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                const dispH = tickHour === 0 ? '12a' : (tickHour === 12 ? '12p' : (tickHour > 12 ? (tickHour - 12) + 'p' : tickHour + 'a'));
                 ctx.fillStyle = '#94a3b8';
-                ctx.fillText(dispH, xTick, baselineY + 14);
+                ctx.font = '11px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillText(dispH, xTick, baselineY + 18);
+            } else {
+                // 30-min mark or odd hour: small dot
+                ctx.fillStyle = '#475569';
+                ctx.beginPath();
+                ctx.arc(xTick, baselineY + 8, 2, 0, Math.PI * 2);
+                ctx.fill();
             }
         }
-        curTick.setHours(curTick.getHours() + 1);
+        tickSec += 1800; // 30 minutes
     }
+
+    // 4-Color Legend matching Garmin Connect
+    const legendY = baselineY + 44;
+    const legendItems = [
+        { label: 'Deep', color: '#1d4ed8' },
+        { label: 'Light', color: '#38bdf8' },
+        { label: 'REM', color: '#c026d3' },
+        { label: 'Awake', color: '#f43f5e' }
+    ];
+    const itemWidth = 72;
+    let legX = (width - legendItems.length * itemWidth) / 2 + 10;
+    legendItems.forEach(item => {
+        ctx.fillStyle = item.color;
+        ctx.beginPath();
+        ctx.arc(legX, legendY, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#cbd5e1';
+        ctx.font = '12px Inter, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(item.label, legX + 10, legendY);
+        legX += itemWidth;
+    });
 }
 
 function renderSleep1dStages(s) {
@@ -1878,40 +1975,34 @@ window.renderGlanceSleepTimeline = function (sleepSummary) {
     const stageColors = {
         0: '#1d4ed8', // Deep
         1: '#38bdf8', // Light
-        2: '#c084fc', // REM
-        3: '#fb7185'  // Awake
+        2: '#c026d3', // REM
+        3: '#f43f5e'  // Awake
     };
 
     const stageHeights = {
         0: height * 0.32,
         1: height * 0.58,
-        2: height * 0.76,
-        3: height * 0.96
+        2: height * 0.78,
+        3: height * 0.98
     };
 
     if (!levels || levels.length === 0) {
         if (totalSec > 0) {
-            const now = Date.now() / 1000;
-            const startE = now - totalSec;
-            let curE = startE;
             const synth = [
-                { act: 1, dur: lightSec * 0.3 },
-                { act: 0, dur: deepSec },
-                { act: 1, dur: lightSec * 0.4 },
-                { act: 2, dur: remSec },
-                { act: 3, dur: awakeSec },
-                { act: 1, dur: lightSec * 0.3 }
+                { act: 1, dur: lightSec * 0.3 || (totalSec * 0.2) },
+                { act: 0, dur: deepSec || (totalSec * 0.15) },
+                { act: 1, dur: lightSec * 0.4 || (totalSec * 0.25) },
+                { act: 2, dur: remSec || (totalSec * 0.2) },
+                { act: 3, dur: awakeSec || 300 },
+                { act: 1, dur: lightSec * 0.3 || (totalSec * 0.15) }
             ];
             levels = [];
             synth.forEach(item => {
                 if (item.dur > 0) {
                     levels.push({
-                        startEpoch: curE,
-                        endEpoch: curE + item.dur,
                         activityLevel: item.act,
                         duration: item.dur
                     });
-                    curE += item.dur;
                 }
             });
         }
@@ -1923,15 +2014,14 @@ window.renderGlanceSleepTimeline = function (sleepSummary) {
         return;
     }
 
-    const minEpoch = levels[0].startEpoch;
-    const maxEpoch = levels[levels.length - 1].endEpoch;
-    const totalDuration = maxEpoch - minEpoch;
-
+    const totalDuration = levels.reduce((sum, lvl) => sum + (lvl.duration || 0), 0) || totalSec || 31380;
     if (totalDuration <= 0) return;
 
+    let curSec = 0;
     levels.forEach(lvl => {
-        const xStart = ((lvl.startEpoch - minEpoch) / totalDuration) * width;
-        const xEnd = ((lvl.endEpoch - minEpoch) / totalDuration) * width;
+        const dur = lvl.duration || 0;
+        const xStart = (curSec / totalDuration) * width;
+        const xEnd = ((curSec + dur) / totalDuration) * width;
         const barW = Math.max(1.5, xEnd - xStart);
         const act = lvl.activityLevel != null ? lvl.activityLevel : 1;
         const color = stageColors[act] || stageColors[1];
@@ -1940,10 +2030,11 @@ window.renderGlanceSleepTimeline = function (sleepSummary) {
 
         ctx.fillStyle = color;
         if (act === 3) {
-            ctx.fillRect(xStart, height - stageHeights[3], Math.max(1.5, barW * 0.6), stageHeights[3]);
+            ctx.fillRect(xStart, height - stageHeights[3], Math.max(1.5, Math.min(barW, 2.5)), stageHeights[3]);
         } else {
             ctx.fillRect(xStart, y, barW + 0.5, barH);
         }
+        curSec += dur;
     });
 };
 
