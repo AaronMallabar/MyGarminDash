@@ -182,6 +182,15 @@ window.destroyChartIfExists = function (canvasIdOrEl) {
             const chart = window.Chart.getChart(canvas);
             if (chart) chart.destroy();
         } catch (e) {}
+        try {
+            if (window.Chart.instances) {
+                Object.values(window.Chart.instances).forEach(c => {
+                    if (c && (c.canvas === canvas || (id && c.canvas && c.canvas.id === id))) {
+                        c.destroy();
+                    }
+                });
+            }
+        } catch (e) {}
     }
     if (id && window.chartInstances && window.chartInstances[id]) {
         try {
@@ -189,7 +198,35 @@ window.destroyChartIfExists = function (canvasIdOrEl) {
         } catch (e) {}
         delete window.chartInstances[id];
     }
+    if (canvas) {
+        canvas.style.display = 'block';
+    }
 };
+
+window.getCleanCanvas = function (canvasIdOrEl) {
+    if (!canvasIdOrEl) return null;
+    const oldCanvas = typeof canvasIdOrEl === 'string' ? document.getElementById(canvasIdOrEl) : canvasIdOrEl;
+    if (!oldCanvas) return null;
+    const canvasId = oldCanvas.id;
+
+    // 1. Destroy all chart instances attached to this canvas
+    window.destroyChartIfExists(oldCanvas);
+
+    // 2. Replace with a brand-new pristine canvas element to eliminate all residual dimensions, scales, and state
+    const newCanvas = document.createElement('canvas');
+    if (canvasId) newCanvas.id = canvasId;
+    if (oldCanvas.className) newCanvas.className = oldCanvas.className;
+    newCanvas.style.display = 'block';
+    newCanvas.style.width = '100%';
+    newCanvas.style.height = '100%';
+
+    const parent = oldCanvas.parentNode;
+    if (parent) {
+        parent.replaceChild(newCanvas, oldCanvas);
+    }
+    return newCanvas;
+};
+
 
 window.formatDuration = function (s) {
     const h = Math.floor(s / 3600);

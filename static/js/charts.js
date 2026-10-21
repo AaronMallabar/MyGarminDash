@@ -16,6 +16,15 @@ window.destroyChartIfExists = function (canvasIdOrEl) {
             const chart = window.Chart.getChart(canvas);
             if (chart) chart.destroy();
         } catch (e) {}
+        try {
+            if (window.Chart.instances) {
+                Object.values(window.Chart.instances).forEach(c => {
+                    if (c && (c.canvas === canvas || (id && c.canvas && c.canvas.id === id))) {
+                        c.destroy();
+                    }
+                });
+            }
+        } catch (e) {}
     }
     if (id && window.chartInstances && window.chartInstances[id]) {
         try {
@@ -23,6 +32,28 @@ window.destroyChartIfExists = function (canvasIdOrEl) {
         } catch (e) {}
         delete window.chartInstances[id];
     }
+    if (canvas) {
+        canvas.style.display = 'block';
+    }
+};
+
+window.getCleanCanvas = window.getCleanCanvas || function (canvasIdOrEl) {
+    if (!canvasIdOrEl) return null;
+    const oldCanvas = typeof canvasIdOrEl === 'string' ? document.getElementById(canvasIdOrEl) : canvasIdOrEl;
+    if (!oldCanvas) return null;
+    const canvasId = oldCanvas.id;
+    window.destroyChartIfExists(oldCanvas);
+    const newCanvas = document.createElement('canvas');
+    if (canvasId) newCanvas.id = canvasId;
+    if (oldCanvas.className) newCanvas.className = oldCanvas.className;
+    newCanvas.style.display = 'block';
+    newCanvas.style.width = '100%';
+    newCanvas.style.height = '100%';
+    const parent = oldCanvas.parentNode;
+    if (parent) {
+        parent.replaceChild(newCanvas, oldCanvas);
+    }
+    return newCanvas;
 };
 
 // Client-side cache for chart data
@@ -153,10 +184,9 @@ window.updateWeightRange = async function (range, btn) {
 
 window.renderWeightChart = function (data, range) {
     const canvasId = 'weightHistoryChart';
-    const canvas = document.getElementById(canvasId);
+    const canvas = window.getCleanCanvas(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    window.destroyChartIfExists(canvasId);
 
     const weightData = (data.history || data) || [];
     const summary = data.summary || {};
@@ -318,6 +348,10 @@ window.renderWeightChart = function (data, range) {
 }
 
 // --- Calorie History Chart ---
+window.currentCalorieRange = window.currentCalorieRange || '1w';
+window.currentCalorieEndDate = window.currentCalorieEndDate || new Date();
+window.lastCalorieData = window.lastCalorieData || null;
+
 const CALORIE_METRIC_CONFIG = {
     active_calories: { label: 'Active', color: '#f59e0b', axis: 'y', unit: 'kcal' },
     resting_calories: { label: 'Passive', color: '#6366f1', axis: 'y', unit: 'kcal' },
@@ -335,6 +369,9 @@ const CALORIE_METRIC_CONFIG = {
 
 window.updateCalorieRange = async function (range, btn) {
     if (range) window.currentCalorieRange = range;
+    if (!window.currentCalorieRange) window.currentCalorieRange = '1w';
+    if (!window.currentCalorieEndDate) window.currentCalorieEndDate = new Date();
+
     if (btn) {
         btn.parentElement.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
@@ -342,6 +379,7 @@ window.updateCalorieRange = async function (range, btn) {
     try {
         const cached = getCachedData('calorie', window.currentCalorieRange, window.currentCalorieEndDate);
         if (cached) {
+            window.lastCalorieData = cached;
             renderCalorieChart(cached);
             updateCalorieRangeLabel();
             return;
@@ -350,6 +388,8 @@ window.updateCalorieRange = async function (range, btn) {
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
+                data.range = window.currentCalorieRange;
+                window.lastCalorieData = data;
                 setCachedData('calorie', window.currentCalorieRange, window.currentCalorieEndDate, data);
                 renderCalorieChart(data);
                 updateCalorieRangeLabel();
@@ -359,15 +399,50 @@ window.updateCalorieRange = async function (range, btn) {
 };
 
 window.onCalorieFilterChange = function () {
-    const cached = getCachedData('calorie', window.currentCalorieRange, window.currentCalorieEndDate);
-    if (cached) renderCalorieChart(cached);
+    const cached = getCachedData('calorie', window.currentCalorieRange || '1w', window.currentCalorieEndDate || new Date()) || window.lastCalorieData;
+    if (cached) {
+        renderCalorieChart(cached);
+    } else if (window.updateCalorieRange) {
+        window.updateCalorieRange(window.currentCalorieRange || '1w');
+    }
+};
+
+window.shiftCalorieDate = async function (dir) {
+    if (!window.currentCalorieEndDate) window.currentCalorieEndDate = new Date();
+    const range = window.currentCalorieRange || '1w';
+    let daysToShift = 7;
+    if (range === '1d') daysToShift = 1;
+    else if (range === '1w') daysToShift = 7;
+    else if (range === '1m') daysToShift = 30;
+    else if (range === '1y') daysToShift = 365;
+
+    const newEnd = new Date(window.currentCalorieEndDate);
+    newEnd.setDate(newEnd.getDate() + dir * daysToShift);
+
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    if (newEnd > today) {
+        window.currentCalorieEndDate = new Date();
+    } else {
+        window.currentCalorieEndDate = newEnd;
+    }
+
+    const nextBtn = document.getElementById('calorie-next');
+    if (nextBtn) {
+        const isToday = window.isDateToday ? window.isDateToday(window.currentCalorieEndDate) : (window.currentCalorieEndDate >= new Date(new Date().setHours(0,0,0,0)));
+        nextBtn.disabled = isToday;
+    }
+
+    if (window.updateCalorieRange) {
+        await window.updateCalorieRange(window.currentCalorieRange);
+    }
 };
 
 window.updateCalorieRangeLabel = function () {
     const el = document.getElementById('calorie-range-label');
     if (!el) return;
-    const end = window.currentCalorieEndDate;
-    const range = window.currentCalorieRange;
+    const end = window.currentCalorieEndDate ? new Date(window.currentCalorieEndDate) : new Date();
+    const range = window.currentCalorieRange || '1w';
     const start = new Date(end);
     if (range === '1d') start.setDate(start.getDate());
     else if (range === '1w') start.setDate(start.getDate() - 6);
@@ -455,34 +530,40 @@ function renderCalorie1DayView(day) {
 }
 
 window.renderCalorieChart = function (data) {
+    if (!data) return;
+    window.lastCalorieData = data;
     const canvasId = 'calorieHistoryChart';
-    const canvas = document.getElementById(canvasId);
     const oneDayContainer = document.getElementById('calorie-1d-container');
-    const range = data.range || window.currentCalorieRange;
+    const range = data.range || window.currentCalorieRange || '1w';
     const history = data.history || [];
 
     if (range === '1d' && history.length > 0) {
         window.destroyChartIfExists(canvasId);
         window.destroyChartIfExists('calorie-macros-donut');
         renderCalorie1DayView(history[0]);
-        if (canvas) canvas.style.display = 'none';
+        const oldCanvas = document.getElementById(canvasId);
+        if (oldCanvas) oldCanvas.style.display = 'none';
         if (oneDayContainer) oneDayContainer.style.display = 'block';
         const filterBar = document.getElementById('calorie-filters-bar');
         if (filterBar) filterBar.style.display = 'none';
         return;
     }
 
-    if (canvas) canvas.style.display = 'block';
     if (oneDayContainer) oneDayContainer.style.display = 'none';
     const filterBar = document.getElementById('calorie-filters-bar');
     if (filterBar) filterBar.style.display = 'flex';
+
+    const canvas = window.getCleanCanvas(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    window.destroyChartIfExists(canvasId);
 
     const filters = getCalorieFilters();
     if (history.length === 0 || filters.length === 0) {
-        chartInstances[canvasId] = new Chart(ctx, { type: 'line', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false } });
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: { labels: [], datasets: [] },
+            options: { responsive: true, maintainAspectRatio: false }
+        });
         return;
     }
 
@@ -505,9 +586,10 @@ window.renderCalorieChart = function (data) {
             label: cfg.label + (cfg.unit ? ` (${cfg.unit})` : ''),
             data: vals,
             borderColor: cfg.color,
-            backgroundColor: key === 'net_energy' ? cfg.color + '10' : cfg.color + '20',
-            borderWidth: key === 'net_energy' ? 4 : 2,
+            backgroundColor: key === 'net_energy' ? cfg.color + '18' : cfg.color + '20',
+            borderWidth: key === 'net_energy' ? 3.5 : 2,
             tension: 0.3,
+            spanGaps: true,
             pointRadius: history.length <= 31 ? 3 : 0,
             yAxisID: cfg.axis,
             fill: key === 'net_energy' ? 'origin' : false
@@ -521,16 +603,61 @@ window.renderCalorieChart = function (data) {
         type: 'line',
         data: { labels, datasets },
         options: {
-            responsive: true, maintainAspectRatio: false,
+            responsive: true,
+            maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
                 legend: { position: 'top', labels: { color: '#94a3b8', boxWidth: 12, font: { size: 10 } } },
-                tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', callbacks: { title: (items) => parseLocalDate(items[0].label).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) } }
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                    callbacks: {
+                        title: (items) => {
+                            if (!items || !items.length) return '';
+                            const rawLabel = items[0].label;
+                            if (!rawLabel) return '';
+                            try {
+                                const parsed = window.parseLocalDate ? window.parseLocalDate(rawLabel) : new Date(rawLabel);
+                                if (parsed && !isNaN(parsed.getTime())) {
+                                    return parsed.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+                                }
+                            } catch (e) {}
+                            return String(rawLabel);
+                        }
+                    }
+                }
             },
             scales: {
-                x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', maxTicksLimit: 10, callback: (_, i) => { const p = labels[i].split('-'); return p[1] + '/' + p[2]; } } },
-                y: { position: 'left', title: { display: true, text: 'kcal', color: '#94a3b8' }, grid: { color: (ctx) => (ctx.tick && ctx.tick.value === 0) ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.05)', lineWidth: (ctx) => (ctx.tick && ctx.tick.value === 0) ? 2 : 1 }, ticks: { color: '#94a3b8' } },
-                y1: { position: 'right', display: y1Metrics.length > 0, min: Math.max(0, y1Min - (y1Max - y1Min) * 0.1), max: y1Max, title: { display: y1Metrics.length > 0, text: 'Secondary Unit', color: '#818cf8' }, grid: { drawOnChartArea: false }, ticks: { color: '#818cf8' } }
+                x: {
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: {
+                        color: '#94a3b8',
+                        maxTicksLimit: 10,
+                        callback: function (val, index) {
+                            const raw = this.getLabelForValue ? this.getLabelForValue(val) : (labels[val] || labels[index] || '');
+                            if (!raw || typeof raw !== 'string') return '';
+                            const p = raw.split('-');
+                            return p.length >= 3 ? `${p[1]}/${p[2]}` : raw;
+                        }
+                    }
+                },
+                y: {
+                    position: 'left',
+                    title: { display: true, text: 'kcal', color: '#94a3b8' },
+                    grid: {
+                        color: (c) => (c.tick && c.tick.value === 0) ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.05)',
+                        lineWidth: (c) => (c.tick && c.tick.value === 0) ? 2 : 1
+                    },
+                    ticks: { color: '#94a3b8' }
+                },
+                y1: {
+                    position: 'right',
+                    display: y1Metrics.length > 0,
+                    min: Math.max(0, y1Min - (y1Max - y1Min) * 0.1),
+                    max: y1Max > y1Min ? y1Max : (y1Min + 10),
+                    title: { display: y1Metrics.length > 0, text: y1Metrics.length === 1 ? (CALORIE_METRIC_CONFIG[y1Metrics[0]]?.label || 'Secondary') : 'Secondary Unit', color: '#818cf8' },
+                    grid: { drawOnChartArea: false },
+                    ticks: { color: '#818cf8' }
+                }
             }
         }
     });
@@ -561,9 +688,6 @@ window.updateStepsRange = async function (range, btn) {
 
 window.renderStepsVisual = function (data) {
     const canvasId = 'stepsHistoryChart';
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
     const donutContainer = document.getElementById('steps-donut-container');
     const streakEl = document.getElementById('steps-streak');
     if (streakEl) streakEl.textContent = data.streak || 0;
@@ -573,8 +697,11 @@ window.renderStepsVisual = function (data) {
     const history = data.history || [];
 
     if (window.currentStepsRange === '1d') {
-        if (canvas) canvas.style.display = 'none';
+        window.destroyChartIfExists(canvasId);
+        const oldCanvas = document.getElementById(canvasId);
+        if (oldCanvas) oldCanvas.style.display = 'none';
         if (donutContainer) donutContainer.style.display = 'flex';
+
         const day = history[history.length - 1] || { totalSteps: 0, stepGoal: 10000 };
         const percent = Math.min(100, Math.round((day.totalSteps / (day.stepGoal || 10000)) * 100));
         safeSetText('steps', day.totalSteps.toLocaleString());
@@ -587,15 +714,17 @@ window.renderStepsVisual = function (data) {
         const chart = document.getElementById('steps-day-chart');
         if (chart) chart.style.background = `conic-gradient(${percent >= 100 ? 'var(--success-color)' : 'var(--accent-color)'} 0% ${percent}%, rgba(255,255,255,0.1) ${percent}% 100%)`;
     } else {
-        if (canvas) canvas.style.display = 'block';
         if (donutContainer) donutContainer.style.display = 'none';
+        const canvas = window.getCleanCanvas(canvasId);
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
         const validDays = history.filter(d => d.totalSteps > 0);
         const avg = validDays.length > 0 ? Math.round(validDays.reduce((sum, d) => sum + d.totalSteps, 0) / validDays.length) : 0;
         safeSetText('steps-drilldown-avg', avg.toLocaleString());
         safeSetText('steps-drilldown-dist', `${(avg * 0.000473).toFixed(2)} mi/day`);
         safeSetText('steps-drilldown-cal', `${Math.round(avg * 0.04)} kcal/day`);
 
-        window.destroyChartIfExists(canvasId);
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -627,10 +756,9 @@ window.updateHRRange = async function (range, btn) {
 
 window.renderHRVisual = function (data) {
     const canvasId = 'hrHistoryChart';
-    const canvas = document.getElementById(canvasId);
+    const canvas = window.getCleanCanvas(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    window.destroyChartIfExists(canvasId);
 
     const range = data.range || window.currentHRRange || '1d';
     window.updateMetricDatePill('hr', range, window.currentHREndDate);
@@ -797,10 +925,9 @@ window.updateStressRange = async function (range, btn) {
 
 window.renderStressVisual = function (data) {
     const canvasId = 'stressHistoryChart';
-    const canvas = document.getElementById(canvasId);
+    const canvas = window.getCleanCanvas(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    window.destroyChartIfExists(canvasId);
 
     const range = data.range || window.currentStressRange || '1d';
     window.updateMetricDatePill('stress', range, window.currentStressEndDate);
@@ -916,6 +1043,129 @@ window.renderStressVisual = function (data) {
     }
 }
 
+window.currentSleepRange = window.currentSleepRange || '1w';
+window.currentSleepEndDate = window.currentSleepEndDate || new Date();
+window.currentSleep1dSubView = window.currentSleep1dSubView || 'timeline';
+window.currentSleepTrendView = window.currentSleepTrendView || 'score';
+window.lastSleepData = null;
+
+function formatSleepSec(sec) {
+    if (!sec || sec <= 0) return '0m';
+    const h = Math.floor(sec / 3600);
+    const m = Math.round((sec % 3600) / 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+}
+
+function getSleepQualifierBadge(qualifierKey) {
+    if (!qualifierKey) return '<span class="sleep-rating-badge sleep-rating-good">Good</span>';
+    const key = String(qualifierKey).toUpperCase();
+    if (key.includes('EXCELLENT')) {
+        return '<span class="sleep-rating-badge sleep-rating-excellent">Excellent</span>';
+    } else if (key.includes('GOOD')) {
+        return '<span class="sleep-rating-badge sleep-rating-good">Good</span>';
+    } else if (key.includes('FAIR')) {
+        return '<span class="sleep-rating-badge sleep-rating-fair">Fair</span>';
+    } else if (key.includes('POOR')) {
+        return '<span class="sleep-rating-badge sleep-rating-poor">Poor</span>';
+    }
+    return `<span class="sleep-rating-badge sleep-rating-good">${qualifierKey}</span>`;
+}
+
+function formatFeedbackTitle(feedback) {
+    if (!feedback) return 'Continuous';
+    let clean = feedback.replace(/^POSITIVE_|^NEGATIVE_|^NEUTRAL_/, '').replace(/_/g, ' ').toLowerCase();
+    return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+
+function formatSleepInsight(s) {
+    if (s.personalizedInsight) return s.personalizedInsight;
+    if (s.insight) {
+        let clean = s.insight.replace(/^POSITIVE_|^NEGATIVE_|^NEUTRAL_/, '').replace(/_/g, ' ').toLowerCase();
+        return `Your sleep pattern shows ${clean}. Restorative sleep stages support your daily mental and physical recovery.`;
+    }
+    const totalSec = s.total || 0;
+    const hrs = (totalSec / 3600).toFixed(1);
+    if (totalSec >= 27000) {
+        return `You had long and continuous sleep with ${hrs} hours. Good deep and REM cycles promoted physical recovery and mental focus.`;
+    } else if (totalSec >= 21600) {
+        return `You got ${hrs} hours of sleep. Consistent sleep timing can help optimize your REM and deep restorative stages.`;
+    } else {
+        return `Short sleep duration of ${hrs} hours recorded. Consider prioritizing an earlier bedtime tonight to support immune and physical recovery.`;
+    }
+}
+
+window.shiftSleepDate = async function (dir) {
+    if (!window.currentSleepEndDate) window.currentSleepEndDate = new Date();
+    const range = window.currentSleepRange || '1w';
+    let daysToShift = 7;
+    if (range === '1d') daysToShift = 1;
+    else if (range === '1w') daysToShift = 7;
+    else if (range === '1m') daysToShift = 30;
+    else if (range === '1y') daysToShift = 365;
+
+    const newEnd = new Date(window.currentSleepEndDate);
+    newEnd.setDate(newEnd.getDate() + dir * daysToShift);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const checkEnd = new Date(newEnd);
+    checkEnd.setHours(0, 0, 0, 0);
+
+    if (checkEnd > today) {
+        window.currentSleepEndDate = new Date();
+    } else {
+        window.currentSleepEndDate = newEnd;
+    }
+
+    const nextBtn = document.getElementById('sleep-next');
+    if (nextBtn) {
+        const atToday = checkEnd >= today;
+        nextBtn.disabled = atToday;
+        nextBtn.style.opacity = atToday ? '0.4' : '1';
+    }
+
+    await window.updateSleepRange(window.currentSleepRange);
+};
+
+window.setSleep1dView = function (view, btn) {
+    window.currentSleep1dSubView = view;
+    if (btn) {
+        const parent = btn.parentElement;
+        if (parent) parent.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    const timelineEl = document.getElementById('sleep-subview-timeline');
+    const stagesEl = document.getElementById('sleep-subview-stages');
+    if (timelineEl) timelineEl.style.display = view === 'timeline' ? 'block' : 'none';
+    if (stagesEl) stagesEl.style.display = view === 'stages' ? 'block' : 'none';
+
+    if (window.lastSleepData && (window.lastSleepData.range === '1d' || window.lastSleepData.summary)) {
+        const s = window.lastSleepData.summary || {};
+        if (view === 'timeline') {
+            renderSleep1dTimeline(s);
+        } else {
+            renderSleep1dStages(s);
+        }
+    }
+};
+
+window.setSleepTrendView = function (view, btn) {
+    window.currentSleepTrendView = view;
+    if (btn) {
+        const parent = btn.parentElement;
+        if (parent) parent.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+    const titleEl = document.getElementById('sleep-trends-title');
+    if (titleEl) {
+        titleEl.textContent = view === 'score' ? 'Sleep Score Trend' : 'Sleep Duration Trend';
+    }
+    if (window.lastSleepData && window.lastSleepData.history) {
+        renderSleepTrendChart(window.lastSleepData.history, window.lastSleepData.summary || {}, view, window.lastSleepData.range);
+    }
+};
+
 window.updateSleepRange = async function (range, btn) {
     if (range) window.currentSleepRange = range;
     if (btn) {
@@ -923,67 +1173,779 @@ window.updateSleepRange = async function (range, btn) {
         btn.classList.add('active');
     }
     window.updateMetricDatePill('sleep', window.currentSleepRange, window.currentSleepEndDate);
+
+    const nextBtn = document.getElementById('sleep-next');
+    if (nextBtn) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const checkEnd = new Date(window.currentSleepEndDate || new Date());
+        checkEnd.setHours(0, 0, 0, 0);
+        const atToday = checkEnd >= today;
+        nextBtn.disabled = atToday;
+        nextBtn.style.opacity = atToday ? '0.4' : '1';
+    }
+
     try {
         const cached = getCachedData('sleep', window.currentSleepRange, window.currentSleepEndDate);
-        if (cached) { renderSleepVisual(cached); return; }
+        if (cached && (cached.range === window.currentSleepRange || (window.currentSleepRange === '1d' ? !!cached.summary : !!cached.history))) {
+            cached.range = window.currentSleepRange;
+            window.renderSleepVisual(cached);
+            return;
+        }
         const res = await fetch(`/api/sleep_history?range=${window.currentSleepRange}&end_date=${getLocalDateStr(window.currentSleepEndDate)}`);
         if (res.ok) {
             const data = await res.json();
-            if (!data.error) { setCachedData('sleep', window.currentSleepRange, window.currentSleepEndDate, data); renderSleepVisual(data); }
+            if (!data.error) {
+                data.range = window.currentSleepRange;
+                setCachedData('sleep', window.currentSleepRange, window.currentSleepEndDate, data);
+                window.renderSleepVisual(data);
+            }
         }
-    } catch (err) { console.error('Sleep history error:', err); }
-}
+    } catch (err) {
+        console.error('Sleep history error:', err);
+    }
+};
 
 window.renderSleepVisual = function (data) {
-    const canvasId = 'sleepHistoryChart';
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    window.destroyChartIfExists(canvasId);
-
+    if (!data) return;
+    window.lastSleepData = data;
     const range = data.range || window.currentSleepRange || '1d';
     window.updateMetricDatePill('sleep', range, window.currentSleepEndDate);
 
+    const container1d = document.getElementById('sleep-1d-container');
+    const containerMulti = document.getElementById('sleep-multi-container');
+
     if (range === '1d') {
+        if (container1d) container1d.style.display = 'block';
+        if (containerMulti) containerMulti.style.display = 'none';
         const s = data.summary || {};
-        const totalHrs = s.total ? (s.total / 3600).toFixed(1) : '--';
-        safeSetText('sleep', totalHrs);
-        safeSetText('sleep-score-val', s.score || '--');
-        safeSetText('sleep-drilldown-score', s.score || '--');
-        safeSetText('sleep-drilldown-duration', `${totalHrs} hrs`);
-        safeSetText('sleep-drilldown-deep', s.deep ? `${(s.deep / 3600).toFixed(1)} hrs` : '--');
-        safeSetText('sleep-drilldown-rem', s.rem ? `${(s.rem / 3600).toFixed(1)} hrs` : '--');
-
-        const stageData = [{ label: 'Deep', value: s.deep || 0, color: '#6366f1' }, { label: 'Light', value: s.light || 0, color: '#3b82f6' }, { label: 'REM', value: s.rem || 0, color: '#2dd4bf' }, { label: 'Awake', value: s.awake || 0, color: '#f97316' }].filter(d => d.value > 0);
-        chartInstances[canvasId] = new Chart(ctx, {
-            type: 'doughnut',
-            data: { labels: stageData.map(d => d.label), datasets: [{ data: stageData.map(d => d.value), backgroundColor: stageData.map(d => d.color), borderWidth: 0 }] },
-            options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'right', labels: { color: '#94a3b8' } } } }
-        });
+        renderSleep1dView(s);
     } else {
+        if (container1d) container1d.style.display = 'none';
+        if (containerMulti) containerMulti.style.display = 'block';
         const history = data.history || [];
-        const validScores = history.map(d => d.score).filter(s => typeof s === 'number' && s > 0);
-        const avgScore = validScores.length > 0 ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length) : '--';
-        const validDur = history.map(d => d.total).filter(t => typeof t === 'number' && t > 0);
-        const avgDur = validDur.length > 0 ? (validDur.reduce((a, b) => a + b, 0) / (validDur.length * 3600)).toFixed(1) : '--';
-        const validDeep = history.map(d => d.deep).filter(t => typeof t === 'number' && t > 0);
-        const avgDeep = validDeep.length > 0 ? (validDeep.reduce((a, b) => a + b, 0) / (validDeep.length * 3600)).toFixed(1) : '--';
-        const validRem = history.map(d => d.rem).filter(t => typeof t === 'number' && t > 0);
-        const avgRem = validRem.length > 0 ? (validRem.reduce((a, b) => a + b, 0) / (validRem.length * 3600)).toFixed(1) : '--';
+        const summary = data.summary || {};
+        renderSleepMultiView(history, summary, range);
+    }
+};
 
-        safeSetText('sleep-drilldown-score', avgScore);
-        safeSetText('sleep-drilldown-duration', `${avgDur} hrs`);
-        safeSetText('sleep-drilldown-deep', `${avgDeep} hrs`);
-        safeSetText('sleep-drilldown-rem', `${avgRem} hrs`);
+function renderSleep1dView(s) {
+    const scoreVal = s.score != null ? s.score : '--';
+    safeSetText('sleep-1d-score-val', scoreVal);
+    safeSetText('sleep-score-val', scoreVal);
 
-        const labels = history.map(d => { const p = (d.date || '').split('-'); return p.length >= 3 ? p[1] + '/' + p[2] : d.date; });
+    // Score Quality Qualifier
+    let quality = 'Good';
+    if (s.sleepScores && s.sleepScores.overall && s.sleepScores.overall.qualifierKey) {
+        const qk = s.sleepScores.overall.qualifierKey.toUpperCase();
+        quality = qk.charAt(0) + qk.slice(1).toLowerCase();
+    } else if (typeof s.score === 'number') {
+        if (s.score >= 90) quality = 'Excellent';
+        else if (s.score >= 80) quality = 'Good';
+        else if (s.score >= 70) quality = 'Fair';
+        else quality = 'Poor';
+    }
+    safeSetText('sleep-1d-quality', quality);
+
+    const durStr = formatSleepSec(s.total);
+    safeSetText('sleep-1d-duration', durStr);
+    safeSetText('sleep', durStr);
+
+    safeSetText('sleep-1d-feedback-title', formatFeedbackTitle(s.feedback));
+    safeSetText('sleep-1d-feedback-body', formatSleepInsight(s));
+
+    // Bed & Wake Times
+    const bTime = s.bedTime || '--';
+    const wTime = s.wakeTime || '--';
+    safeSetText('sleep-1d-bedtime', bTime);
+    safeSetText('sleep-1d-waketime', wTime);
+    safeSetText('sleep-start-time', bTime);
+    safeSetText('sleep-end-time', wTime);
+
+    // Populate Factors List
+    const factorsListEl = document.getElementById('sleep-factors-list');
+    if (factorsListEl) {
+        const scores = s.sleepScores || {};
+        const factors = [
+            {
+                name: 'Duration',
+                value: formatSleepSec(s.total),
+                badge: getSleepQualifierBadge(scores.totalDuration?.qualifierKey || (s.total >= 25200 ? 'EXCELLENT' : (s.total >= 21600 ? 'GOOD' : 'FAIR')))
+            },
+            {
+                name: 'Stress',
+                value: s.avgStress ? `${Math.round(s.avgStress)} avg` : '-- avg',
+                badge: getSleepQualifierBadge(scores.stress?.qualifierKey || (s.avgStress && s.avgStress <= 15 ? 'GOOD' : 'FAIR'))
+            },
+            {
+                name: 'Deep',
+                value: formatSleepSec(s.deep),
+                badge: getSleepQualifierBadge(scores.deepPercentage?.qualifierKey || (s.deep >= 3600 ? 'GOOD' : 'FAIR'))
+            },
+            {
+                name: 'Light',
+                value: formatSleepSec(s.light),
+                badge: getSleepQualifierBadge(scores.lightPercentage?.qualifierKey || 'GOOD')
+            },
+            {
+                name: 'REM',
+                value: formatSleepSec(s.rem),
+                badge: getSleepQualifierBadge(scores.remPercentage?.qualifierKey || (s.rem >= 3600 ? 'GOOD' : 'FAIR'))
+            },
+            {
+                name: 'Awake/Restlessness',
+                value: `${formatSleepSec(s.awake)}${s.restlessMoments ? ' • ' + s.restlessMoments + ' Restless Moments' : ''}`,
+                badge: getSleepQualifierBadge(scores.awakeCount?.qualifierKey || scores.restlessness?.qualifierKey || 'EXCELLENT')
+            }
+        ];
+
+        factorsListEl.innerHTML = factors.map(f => `
+            <div class="sleep-factor-row">
+                <div>
+                    <div class="sleep-factor-title">${f.name}</div>
+                    <div class="sleep-factor-sub">${f.value}</div>
+                </div>
+                <div>${f.badge}</div>
+            </div>
+        `).join('');
+    }
+
+    // Render Subview
+    if (window.currentSleep1dSubView === 'timeline') {
+        renderSleep1dTimeline(s);
+    } else {
+        renderSleep1dStages(s);
+    }
+}
+
+function renderSleep1dTimeline(s) {
+    const canvas = document.getElementById('sleep1dTimelineCanvas');
+    if (!canvas) return;
+    const parent = canvas.parentElement;
+    const width = parent.clientWidth || 700;
+    const height = 280;
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+
+    const leftMargin = 65;
+    const rightMargin = 25;
+    const topMargin = 25;
+    const bottomMargin = 45;
+    const plotWidth = width - leftMargin - rightMargin;
+    const plotHeight = height - topMargin - bottomMargin;
+
+    // Y levels (Awake: 3, REM: 2, Light: 1, Deep: 0)
+    const stageY = {
+        3: topMargin + 10,
+        2: topMargin + plotHeight * 0.30,
+        1: topMargin + plotHeight * 0.60,
+        0: topMargin + plotHeight * 0.85
+    };
+    const baselineY = topMargin + plotHeight;
+
+    // Draw horizontal grid lines & Y labels
+    const stageLabels = [
+        { label: 'Awake', y: stageY[3], color: '#94a3b8' },
+        { label: 'REM', y: stageY[2], color: '#94a3b8' },
+        { label: 'Light', y: stageY[1], color: '#94a3b8' },
+        { label: 'Deep', y: stageY[0], color: '#94a3b8' }
+    ];
+
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.font = '12px Inter, sans-serif';
+
+    stageLabels.forEach(sl => {
+        ctx.fillStyle = sl.color;
+        ctx.fillText(sl.label, leftMargin - 12, sl.y);
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(leftMargin, sl.y);
+        ctx.lineTo(width - rightMargin, sl.y);
+        ctx.stroke();
+    });
+    ctx.setLineDash([]);
+
+    let levels = s.sleepLevels || [];
+    const totalSec = s.total || 0;
+
+    // If no epoch levels, synthesize stages proportionally
+    if (!levels || levels.length === 0) {
+        if (totalSec > 0) {
+            const now = Date.now() / 1000;
+            const startE = now - totalSec;
+            let curE = startE;
+            const synth = [
+                { act: 1, dur: (s.light || 0) * 0.3 },
+                { act: 0, dur: s.deep || 0 },
+                { act: 1, dur: (s.light || 0) * 0.4 },
+                { act: 2, dur: s.rem || 0 },
+                { act: 3, dur: s.awake || 0 },
+                { act: 1, dur: (s.light || 0) * 0.3 }
+            ];
+            levels = [];
+            synth.forEach(item => {
+                if (item.dur > 0) {
+                    levels.push({
+                        startEpoch: curE,
+                        endEpoch: curE + item.dur,
+                        activityLevel: item.act,
+                        duration: item.dur
+                    });
+                    curE += item.dur;
+                }
+            });
+        }
+    }
+
+    if (!levels || levels.length === 0) {
+        ctx.fillStyle = '#64748b';
+        ctx.textAlign = 'center';
+        ctx.fillText('No sleep stage epochs recorded for this date', width / 2, height / 2);
+        return;
+    }
+
+    const minEpoch = levels[0].startEpoch;
+    const maxEpoch = levels[levels.length - 1].endEpoch;
+    const totalDuration = maxEpoch - minEpoch;
+
+    if (totalDuration <= 0) return;
+
+    // Colors matching Garmin
+    const stageColors = {
+        0: '#1d4ed8', // Deep (dark blue)
+        1: '#38bdf8', // Light (medium blue)
+        2: '#c084fc', // REM (purple/magenta)
+        3: '#fb7185'  // Awake (pink)
+    };
+
+    // Draw stepped bar chart
+    levels.forEach(lvl => {
+        const xStart = leftMargin + ((lvl.startEpoch - minEpoch) / totalDuration) * plotWidth;
+        const xEnd = leftMargin + ((lvl.endEpoch - minEpoch) / totalDuration) * plotWidth;
+        const barW = Math.max(2, xEnd - xStart);
+        const act = lvl.activityLevel != null ? lvl.activityLevel : 1;
+        const color = stageColors[act] || stageColors[1];
+        const barY = stageY[act] || stageY[1];
+        const barH = baselineY - barY;
+
+        ctx.fillStyle = color;
+        if (act === 3) {
+            // Awake: thin vertical line to top
+            ctx.fillRect(xStart, stageY[3], Math.max(2, barW * 0.6), baselineY - stageY[3]);
+        } else {
+            ctx.fillRect(xStart, barY, barW + 0.5, barH);
+        }
+    });
+
+    // Draw X-axis line & Hour ticks matching Garmin
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(leftMargin, baselineY);
+    ctx.lineTo(width - rightMargin, baselineY);
+    ctx.stroke();
+
+    // Calculate hourly ticks
+    const startDate = new Date(minEpoch * 1000);
+    const endDate = new Date(maxEpoch * 1000);
+    const firstHour = new Date(startDate);
+    firstHour.setMinutes(0, 0, 0);
+    if (firstHour < startDate) firstHour.setHours(firstHour.getHours() + 1);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '11px Inter, sans-serif';
+
+    let curTick = new Date(firstHour);
+    while (curTick <= endDate) {
+        const tEpoch = curTick.getTime() / 1000;
+        const xTick = leftMargin + ((tEpoch - minEpoch) / totalDuration) * plotWidth;
+        if (xTick >= leftMargin + 15 && xTick <= width - rightMargin - 15) {
+            // Draw tick dot
+            ctx.fillStyle = '#64748b';
+            ctx.beginPath();
+            ctx.arc(xTick, baselineY + 6, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Label e.g. 12a, 2a, 4a, 6a
+            const h = curTick.getHours();
+            if (h % 2 === 0 || totalDuration < 18000) {
+                const dispH = h === 0 ? '12a' : (h === 12 ? '12p' : (h > 12 ? `${h - 12}p` : `${h}a`));
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillText(dispH, xTick, baselineY + 14);
+            }
+        }
+        curTick.setHours(curTick.getHours() + 1);
+    }
+}
+
+function renderSleep1dStages(s) {
+    const canvasId = 'sleep1dStagesChart';
+    const canvas = window.getCleanCanvas(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const deep = s.deep || 0;
+    const light = s.light || 0;
+    const rem = s.rem || 0;
+    const awake = s.awake || 0;
+    const total = deep + light + rem + awake;
+
+    safeSetText('sleep-doughnut-total', formatSleepSec(s.total || total));
+
+    const stageData = [
+        { label: 'Deep', value: deep, color: '#1d4ed8' },
+        { label: 'Light', value: light, color: '#38bdf8' },
+        { label: 'REM', value: rem, color: '#c084fc' },
+        { label: 'Awake', value: awake, color: '#fb7185' }
+    ].filter(d => d.value > 0);
+
+    const displayData = stageData.length > 0 ? stageData : [{ label: 'No Data', value: 1, color: 'rgba(255,255,255,0.06)' }];
+
+    chartInstances[canvasId] = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: displayData.map(d => d.label),
+            datasets: [{
+                data: displayData.map(d => d.value),
+                backgroundColor: displayData.map(d => d.color),
+                borderWidth: 0,
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '72%',
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function (c) {
+                            if (displayData[0]?.label === 'No Data') return 'No sleep stage data';
+                            const sec = c.parsed;
+                            return ` ${c.label}: ${formatSleepSec(sec)} (${total > 0 ? Math.round((sec / total) * 100) : 0}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Populate stage cards below doughnut
+    const cardsEl = document.getElementById('sleep-stages-breakdown-cards');
+    if (cardsEl) {
+        const safeTotal = total > 0 ? total : 1;
+        const stagesList = [
+            { label: 'Deep', sec: deep, color: '#1d4ed8' },
+            { label: 'Light', sec: light, color: '#38bdf8' },
+            { label: 'REM', sec: rem, color: '#c084fc' },
+            { label: 'Awake', sec: awake, color: '#fb7185' }
+        ];
+
+        cardsEl.innerHTML = stagesList.map(st => `
+            <div class="sleep-stage-card">
+                <div class="sleep-stage-card-label">
+                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${st.color};"></span>
+                    <span>${st.label}</span>
+                </div>
+                <div class="sleep-stage-card-val">${formatSleepSec(st.sec)}</div>
+                <div class="sleep-stage-card-pct">${Math.round((st.sec / safeTotal) * 100)}%</div>
+            </div>
+        `).join('');
+    }
+}
+
+function renderSleepMultiView(history, summary, range) {
+    // 1. Summary Cards
+    const avgScore = summary.avgScore != null ? summary.avgScore : '--';
+    const avgDurStr = summary.avgTotal ? formatSleepSec(summary.avgTotal) : '--';
+    safeSetText('sleep-drilldown-score', avgScore);
+    safeSetText('sleep-drilldown-duration', avgDurStr);
+    safeSetText('sleep-drilldown-avg-bed', summary.avgBedTime || '--');
+    safeSetText('sleep-drilldown-avg-wake', summary.avgWakeTime || '--');
+
+    // 2. Render Sleep Consistency Chart
+    renderSleepConsistencyChart(history, summary, range);
+
+    // 3. Render Sleep Trends Chart
+    renderSleepTrendChart(history, summary, window.currentSleepTrendView || 'score', range);
+}
+
+function renderSleepConsistencyChart(history, summary, range) {
+    const canvasId = 'sleepConsistencyChart';
+    const canvas = window.getCleanCanvas(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const labels = history.map(d => {
+        if (!d.date) return '';
+        const parts = d.date.split('-');
+        if (range === '1w') {
+            const dt = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            return dt.toLocaleDateString('en-US', { weekday: 'short' });
+        }
+        return parts.length >= 3 ? `${parts[1]}/${parts[2]}` : d.date;
+    });
+
+    const floatingData = history.map(d => {
+        if (d.bedHour != null && d.wakeHour != null) {
+            return [d.bedHour, d.wakeHour];
+        }
+        return null;
+    });
+
+    let minH = 20.0; // 8 PM default top
+    let maxH = 34.0; // 10 AM default bottom
+
+    history.forEach(d => {
+        if (d.bedHour && d.bedHour < minH) minH = Math.floor(d.bedHour);
+        if (d.wakeHour && d.wakeHour > maxH) maxH = Math.ceil(d.wakeHour);
+    });
+
+    const sleepConsistencyLinesPlugin = {
+        id: 'sleepConsistencyLines',
+        afterDraw(chart) {
+            const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+            if (!y) return;
+            ctx.save();
+
+            // Avg Bedtime Solid Line
+            if (summary.avgBedHour != null) {
+                const yBed = y.getPixelForValue(summary.avgBedHour);
+                if (yBed >= chart.chartArea.top && yBed <= chart.chartArea.bottom) {
+                    ctx.strokeStyle = '#cbd5e1';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([]);
+                    ctx.beginPath();
+                    ctx.moveTo(left, yBed);
+                    ctx.lineTo(right, yBed);
+                    ctx.stroke();
+                }
+            }
+
+            // Avg Wake Time Dashed Line
+            if (summary.avgWakeHour != null) {
+                const yWake = y.getPixelForValue(summary.avgWakeHour);
+                if (yWake >= chart.chartArea.top && yWake <= chart.chartArea.bottom) {
+                    ctx.strokeStyle = '#94a3b8';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([4, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(left, yWake);
+                    ctx.lineTo(right, yWake);
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+    };
+
+    chartInstances[canvasId] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Sleep Times',
+                data: floatingData,
+                backgroundColor: '#2563eb',
+                borderRadius: 4,
+                borderSkipped: false,
+                barPercentage: range === '1y' ? 0.9 : 0.5
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: function (items) {
+                            if (!items.length) return '';
+                            const idx = items[0].dataIndex;
+                            return history[idx]?.date || items[0].label;
+                        },
+                        label: function (c) {
+                            const d = history[c.dataIndex];
+                            if (!d) return '';
+                            return [
+                                ` Bedtime: ${d.bedTime || '--'}`,
+                                ` Wake Time: ${d.wakeTime || '--'}`,
+                                ` Duration: ${formatSleepSec(d.total)}`
+                            ];
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#94a3b8', maxTicksLimit: range === '1y' ? 12 : 14 }
+                },
+                y: {
+                    reverse: true,
+                    min: minH,
+                    max: maxH,
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: {
+                        color: '#94a3b8',
+                        stepSize: 4,
+                        callback: function (val) {
+                            const h = val >= 24 ? val - 24 : val;
+                            const p = (val >= 12 && val < 24) ? 'p' : 'a';
+                            let disp = Math.round(h) % 12;
+                            if (disp === 0) disp = 12;
+                            return `${disp}${p}`;
+                        }
+                    }
+                }
+            }
+        },
+        plugins: [sleepConsistencyLinesPlugin]
+    });
+}
+
+function renderSleepTrendChart(history, summary, mode, range) {
+    const canvasId = 'sleepTrendChart';
+    const canvas = window.getCleanCanvas(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+
+    const labels = history.map(d => {
+        if (!d.date) return '';
+        const parts = d.date.split('-');
+        if (range === '1w') {
+            const dt = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            return dt.toLocaleDateString('en-US', { weekday: 'short' });
+        }
+        return parts.length >= 3 ? `${parts[1]}/${parts[2]}` : d.date;
+    });
+
+    if (mode === 'score') {
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
-            data: { labels, datasets: [{ label: 'Score', data: history.map(d => d.score), borderColor: '#818cf8', borderWidth: 3, tension: 0.4, fill: true, backgroundColor: 'rgba(129, 140, 248, 0.1)' }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { min: 0, max: 100 } } }
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Score',
+                    data: history.map(d => d.score),
+                    borderColor: '#818cf8',
+                    borderWidth: 2.5,
+                    tension: 0.25,
+                    spanGaps: true,
+                    pointRadius: history.length > 35 ? 0 : 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: '#818cf8',
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function (c) {
+                                return ` Sleep Score: ${c.parsed.y != null ? c.parsed.y : 'N/A'}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#94a3b8', maxTicksLimit: range === '1y' ? 12 : 14 }
+                    },
+                    y: {
+                        min: 0,
+                        max: 100,
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { color: '#94a3b8', stepSize: 25 }
+                    }
+                }
+            }
+        });
+    } else {
+        // Duration Trend: Stacked Bar Chart
+        chartInstances[canvasId] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Deep',
+                        data: history.map(d => +(d.deep / 3600).toFixed(2)),
+                        backgroundColor: '#1d4ed8'
+                    },
+                    {
+                        label: 'Light',
+                        data: history.map(d => +(d.light / 3600).toFixed(2)),
+                        backgroundColor: '#38bdf8'
+                    },
+                    {
+                        label: 'REM',
+                        data: history.map(d => +(d.rem / 3600).toFixed(2)),
+                        backgroundColor: '#c084fc'
+                    },
+                    {
+                        label: 'Awake',
+                        data: history.map(d => +(d.awake / 3600).toFixed(2)),
+                        backgroundColor: '#fb7185'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { color: '#94a3b8', boxWidth: 12 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (c) {
+                                return ` ${c.dataset.label}: ${c.parsed.y} hrs`;
+                            },
+                            footer: function (items) {
+                                const total = items.reduce((sum, item) => sum + item.parsed.y, 0);
+                                return `Total Sleep: ${total.toFixed(1)} hrs`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        grid: { display: false },
+                        ticks: { color: '#94a3b8', maxTicksLimit: range === '1y' ? 12 : 14 }
+                    },
+                    y: {
+                        stacked: true,
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: {
+                            color: '#94a3b8',
+                            callback: v => `${v}h`
+                        }
+                    }
+                }
+            }
         });
     }
 }
+
+window.renderGlanceSleepTimeline = function (sleepSummary) {
+    const canvas = document.getElementById('glance-sleep-timeline-canvas');
+    if (!canvas) return;
+    const parent = canvas.parentElement;
+    const width = parent.clientWidth || 240;
+    const height = parent.clientHeight || 80;
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+
+    if (!sleepSummary) return;
+
+    let levels = sleepSummary.sleepLevels || [];
+    const deepSec = sleepSummary.deep || 0;
+    const lightSec = sleepSummary.light || 0;
+    const remSec = sleepSummary.rem || 0;
+    const awakeSec = sleepSummary.awake || 0;
+    const totalSec = sleepSummary.total || (deepSec + lightSec + remSec + awakeSec);
+
+    const stageColors = {
+        0: '#1d4ed8', // Deep
+        1: '#38bdf8', // Light
+        2: '#c084fc', // REM
+        3: '#fb7185'  // Awake
+    };
+
+    const stageHeights = {
+        0: height * 0.32,
+        1: height * 0.58,
+        2: height * 0.76,
+        3: height * 0.96
+    };
+
+    if (!levels || levels.length === 0) {
+        if (totalSec > 0) {
+            const now = Date.now() / 1000;
+            const startE = now - totalSec;
+            let curE = startE;
+            const synth = [
+                { act: 1, dur: lightSec * 0.3 },
+                { act: 0, dur: deepSec },
+                { act: 1, dur: lightSec * 0.4 },
+                { act: 2, dur: remSec },
+                { act: 3, dur: awakeSec },
+                { act: 1, dur: lightSec * 0.3 }
+            ];
+            levels = [];
+            synth.forEach(item => {
+                if (item.dur > 0) {
+                    levels.push({
+                        startEpoch: curE,
+                        endEpoch: curE + item.dur,
+                        activityLevel: item.act,
+                        duration: item.dur
+                    });
+                    curE += item.dur;
+                }
+            });
+        }
+    }
+
+    if (!levels || levels.length === 0) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+        ctx.fillRect(0, height - 12, width, 12);
+        return;
+    }
+
+    const minEpoch = levels[0].startEpoch;
+    const maxEpoch = levels[levels.length - 1].endEpoch;
+    const totalDuration = maxEpoch - minEpoch;
+
+    if (totalDuration <= 0) return;
+
+    levels.forEach(lvl => {
+        const xStart = ((lvl.startEpoch - minEpoch) / totalDuration) * width;
+        const xEnd = ((lvl.endEpoch - minEpoch) / totalDuration) * width;
+        const barW = Math.max(1.5, xEnd - xStart);
+        const act = lvl.activityLevel != null ? lvl.activityLevel : 1;
+        const color = stageColors[act] || stageColors[1];
+        const barH = stageHeights[act] || stageHeights[1];
+        const y = height - barH;
+
+        ctx.fillStyle = color;
+        if (act === 3) {
+            ctx.fillRect(xStart, height - stageHeights[3], Math.max(1.5, barW * 0.6), stageHeights[3]);
+        } else {
+            ctx.fillRect(xStart, y, barW + 0.5, barH);
+        }
+    });
+};
 
 window.updateHydrationRange = async function (range, btn) {
     if (range) window.currentHydrationRange = range;
@@ -1013,11 +1975,10 @@ function renderHydrationContent(data, oz) {
     window.updateMetricDatePill('hydration', window.currentHydrationRange, window.currentHydrationEndDate);
 
     if (window.currentHydrationRange === '1d') {
+        window.destroyChartIfExists(canvasId);
+        const oldC = document.getElementById(canvasId);
+        if (oldC) oldC.style.display = 'none';
         if (hDonutContainer) hDonutContainer.style.display = 'flex';
-        if (hHistoryChart) {
-            hHistoryChart.style.display = 'none';
-            window.destroyChartIfExists('hydrationHistoryChart');
-        }
 
         const summary = data.summary || data;
         const intake = summary.intake || 0;
@@ -1039,7 +2000,8 @@ function renderHydrationContent(data, oz) {
         }
     } else {
         if (hDonutContainer) hDonutContainer.style.display = 'none';
-        if (hHistoryChart) hHistoryChart.style.display = 'block';
+        const canvas = window.getCleanCanvas(canvasId);
+        if (!canvas) return;
 
         const history = data.history || [];
         const validIntake = history.map(d => parseFloat(oz(d.intake || 0))).filter(v => v > 0);
@@ -1054,8 +2016,7 @@ function renderHydrationContent(data, oz) {
         safeSetText('hydration-drilldown-avg', `${avgOz} oz`);
         safeSetText('hydration-drilldown-adherence', `${adherencePct}%`);
 
-        const ctx = hHistoryChart.getContext('2d');
-        window.destroyChartIfExists('hydrationHistoryChart');
+        const ctx = canvas.getContext('2d');
         chartInstances['hydrationHistoryChart'] = new Chart(ctx, {
             type: 'bar',
             data: { labels: history.map(d => (d.date || '').split('-').slice(1).join('/')), datasets: [{ data: history.map(d => parseFloat(oz(d.intake || 0))), backgroundColor: '#38bdf8', borderRadius: 4 }] },
@@ -1103,10 +2064,9 @@ window.renderHRVVisual = function (data) {
     safeSetText('hrv-drilldown-status', status.replace(/_/g, ' '));
 
     if (window.currentHRVRange === '1d') {
-        if (canvas) {
-            canvas.style.display = 'none';
-            window.destroyChartIfExists(canvasId);
-        }
+        window.destroyChartIfExists(canvasId);
+        const oldC = document.getElementById(canvasId);
+        if (oldC) oldC.style.display = 'none';
         if (statusContainer) statusContainer.style.display = 'block';
 
         let displayFeedback = feedback;
@@ -1161,19 +2121,10 @@ window.renderHRVVisual = function (data) {
             }
         }
     } else {
-        if (canvas) canvas.style.display = 'block';
         if (statusContainer) statusContainer.style.display = 'none';
-
-        window.destroyChartIfExists(canvasId);
-        
-        const history = data.history || [];
-        const statusColors = history.map(d => {
-            const st = (d.status || d.lastNightStatus || '').toLowerCase();
-            if (st.includes('balanced')) return '#22c55e';
-            if (st.includes('low') || st.includes('unbalanced')) return '#eab308';
-            if (st.includes('poor')) return '#ef4444';
-            return '#38bdf8';
-        });
+        const canvas = window.getCleanCanvas(canvasId);
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
 
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',

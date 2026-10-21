@@ -77,201 +77,379 @@ const goalMetBadgePlugin = {
 
 window.renderIntensityMinutesVisualV2 = function (data) {
     const canvasId = 'imHistoryChart';
-    const canvas = document.getElementById(canvasId);
+    const canvas = window.getCleanCanvas(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    window.destroyChartIfExists(canvasId);
 
     const range = data.range || window.currentIMRange || '1w';
-    const history = data.history || [];
     const goal = data.goal || 420;
     if (window.updateMetricDatePill) window.updateMetricDatePill('im', range, window.currentIMEndDate);
 
-    // Calculate moderate, vigorous, and total for drilldown stats
-    let totalModerate = 0;
-    let totalVigorous = 0;
-    let totalMinutes = 0;
+    const weeklySummaryEl = document.getElementById('im-weekly-summary');
+    const chartTitleEl = document.getElementById('im-chart-title');
 
     if (range === '1d') {
+        // ── 1 DAY: Daily Timeline (Cumulative line across 24h) ────────────────
+        if (weeklySummaryEl) weeklySummaryEl.style.display = 'none';
+        if (chartTitleEl) chartTitleEl.textContent = 'Daily Timeline';
+
         const sum = data.summary || {};
-        totalModerate = sum.moderate || 0;
-        totalVigorous = sum.vigorous || 0;
-        totalMinutes = sum.total != null ? sum.total : (totalModerate + 2 * totalVigorous);
-        const weekVal = sum.weeklyTotal != null ? sum.weeklyTotal : ((sum.startDayMinutes || 0) + totalMinutes);
-        window.safeSetText('im-val', weekVal);
-        window.safeSetText('im-goal', sum.goal || goal);
+        const totalMinutes = sum.total != null ? sum.total : ((sum.moderate || 0) + 2 * (sum.vigorous || 0));
+        const modMinutes = sum.moderate || 0;
+        const vigMinutes = sum.vigorous || 0;
+        const weekGoal = sum.goal || goal;
+
+        window.safeSetText('im-drilldown-total-label', 'Total Minutes');
+        window.safeSetText('im-drilldown-mod-label', 'Moderate Minutes');
+        window.safeSetText('im-drilldown-vig-label', 'Vigorous Minutes (2x)');
+        window.safeSetText('im-drilldown-goal-label', 'Weekly Goal');
 
         window.safeSetText('im-drilldown-total', `${totalMinutes} min`);
-        window.safeSetText('im-drilldown-moderate', `${totalModerate} min`);
-        window.safeSetText('im-drilldown-vigorous', `${totalVigorous} min`);
-        window.safeSetText('im-drilldown-goal', `${sum.goal || goal} min`);
+        window.safeSetText('im-drilldown-moderate', `${modMinutes} min`);
+        window.safeSetText('im-drilldown-vigorous', `${vigMinutes} min`);
+        window.safeSetText('im-drilldown-goal', `${weekGoal} min`);
 
-        const rawSamples = data.samples || [];
-        let points = rawSamples
-            .filter(s => Array.isArray(s) && s[0] != null && s[1] != null)
-            .map(s => ({ x: s[0], y: s[1] }));
+        if (sum.weeklyTotal != null) window.safeSetText('im-val', sum.weeklyTotal);
+
+        // Construct 24h timeline points
+        let points = (data.timeline && data.timeline.length > 0) ? data.timeline : [];
+        const dateStr = sum.date || (window.currentIMEndDate ? window.getLocalDateStr(window.currentIMEndDate) : new Date().toISOString().split('T')[0]);
+        const dayStart = new Date(`${dateStr}T00:00:00`);
+        const dayEnd = new Date(`${dateStr}T23:59:59`);
+        const startMs = dayStart.getTime();
+        const endMs = dayEnd.getTime();
 
         if (points.length === 0) {
-            const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-            const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
-            points = [{ x: todayStart.getTime(), y: 0 }, { x: todayEnd.getTime(), y: 0 }];
+            const raw = data.samples || [];
+            points.push({ x: startMs, y: 0 });
+            let running = 0;
+            raw.forEach(s => {
+                if (Array.isArray(s) && s[0] != null && s[1] != null) {
+                    running += s[1];
+                    points.push({ x: s[0], y: running });
+                }
+            });
+            points.push({ x: endMs, y: Math.max(running, totalMinutes) });
         }
 
-        const maxVal = Math.max(10, ...points.map(p => p.y || 0));
+        const maxVal = Math.max(weekGoal + 60, totalMinutes + 50, 480);
 
         window.chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
             data: {
-                datasets: [{
-                    label: 'Intensity Minutes',
-                    data: points,
-                    borderColor: '#38bdf8',
-                    backgroundColor: 'rgba(56, 189, 248, 0.1)',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    spanGaps: true,
-                    fill: true,
-                    tension: 0.2
-                }]
+                datasets: [
+                    {
+                        label: 'Weekly Goal',
+                        data: [{ x: startMs, y: weekGoal }, { x: endMs, y: weekGoal }],
+                        borderColor: 'rgba(148, 163, 184, 0.7)',
+                        borderDash: [6, 4],
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        fill: false
+                    },
+                    {
+                        label: 'Intensity Minutes',
+                        data: points,
+                        borderColor: '#38bdf8',
+                        backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                        borderWidth: 2.5,
+                        pointRadius: 0,
+                        pointHoverRadius: 5,
+                        stepped: 'before',
+                        spanGaps: true,
+                        fill: true
+                    }
+                ]
             },
             options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            color: '#94a3b8',
+                            boxWidth: 14,
+                            generateLabels: () => [
+                                { text: 'Weekly Goal', strokeStyle: 'rgba(148, 163, 184, 0.8)', lineWidth: 2, lineDash: [4, 4], fillStyle: 'transparent' },
+                                { text: 'Intensity Minutes', fillStyle: '#38bdf8', strokeStyle: '#38bdf8', lineWidth: 2 }
+                            ]
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => {
+                                if (!items.length) return '';
+                                const d = new Date(items[0].parsed.x);
+                                return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                            },
+                            label: (c) => {
+                                if (c.dataset.label === 'Weekly Goal') return `Weekly Goal: ${weekGoal} min`;
+                                return `Cumulative Minutes: ${c.parsed.y} min`;
+                            }
+                        }
+                    }
+                },
                 scales: {
                     x: {
                         type: 'time',
-                        time: { displayFormats: { hour: 'HH:mm', minute: 'HH:mm' } },
-                        grid: { display: false },
-                        ticks: { color: '#94a3b8', maxTicksLimit: 8 }
+                        min: startMs,
+                        max: endMs,
+                        time: { unit: 'hour', stepSize: 6, displayFormats: { hour: 'ha' } },
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { color: '#94a3b8', font: { size: 11 } }
                     },
                     y: {
                         beginAtZero: true,
-                        max: maxVal + 2,
-                        grid: { color: 'rgba(255,255,255,0.05)' },
-                        ticks: { color: '#94a3b8' }
+                        max: maxVal,
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { color: '#94a3b8', stepSize: 100 }
                     }
                 }
             }
         });
-    } else if (range === '1m') {
-        // ── 4 WEEKS VIEW (Weekly Build-Up Stepped Chart) ──────────────────────
-        // Build 28 days (4 complete Monday-to-Sunday weeks)
-        let endDt = window.currentIMEndDate ? new Date(window.currentIMEndDate) : new Date();
-        if (isNaN(endDt.getTime())) endDt = new Date();
-        const daysToMon = (endDt.getDay() + 6) % 7; // Monday = 0
-        const currMon = new Date(endDt);
-        currMon.setDate(endDt.getDate() - daysToMon);
-        currMon.setHours(0, 0, 0, 0);
 
-        const startMon = new Date(currMon);
-        startMon.setDate(currMon.getDate() - 21); // 3 weeks ago Monday
+    } else if (range === '1w') {
+        // ── 7 DAYS: Weekly Timeline (Cumulative Mon-Sun line plot) ─────────────
+        if (weeklySummaryEl) weeklySummaryEl.style.display = 'flex';
+        if (chartTitleEl) chartTitleEl.textContent = 'Weekly Timeline';
 
-        const all28Dates = [];
-        const dateKeys = [];
-        const xLabels = [];
+        const sum = data.summary || {};
+        const weeklyTotal = sum.weeklyTotal != null ? sum.weeklyTotal : 0;
+        const weeklyMod = sum.weeklyModerate != null ? sum.weeklyModerate : 0;
+        const weeklyVig = sum.weeklyVigorous != null ? sum.weeklyVigorous : 0;
+        const weekGoal = sum.goal || goal;
+        const isGoalMet = sum.isGoalMet != null ? sum.isGoalMet : (weeklyTotal >= weekGoal && weeklyTotal > 0);
+        const neededMod = sum.neededModerate != null ? sum.neededModerate : Math.max(0, weekGoal - weeklyTotal);
+        const neededVig = sum.neededVigorous != null ? sum.neededVigorous : Math.ceil(neededMod / 2);
 
-        for (let i = 0; i < 28; i++) {
-            const d = new Date(startMon);
-            d.setDate(startMon.getDate() + i);
-            all28Dates.push(d);
-            const dStr = window.getLocalDateStr ? window.getLocalDateStr(d) : d.toISOString().split('T')[0];
-            dateKeys.push(dStr);
-            xLabels.push(d.toLocaleDateString([], { month: 'short', day: 'numeric' }));
+        // Update Modal Donut & Callout
+        window.safeSetText('im-modal-donut-val', weeklyTotal);
+        window.safeSetText('im-modal-donut-sub', `/ ${weekGoal}`);
+        const imModalDonut = document.getElementById('im-modal-donut');
+        if (imModalDonut) {
+            const pct = Math.min(100, Math.round((weeklyTotal / weekGoal) * 100));
+            imModalDonut.style.setProperty('--ring-pct', pct);
+            imModalDonut.style.setProperty('--ring-color', isGoalMet ? '#22c55e' : '#38bdf8');
         }
 
-        const historyMap = {};
-        history.forEach(item => {
-            const k = item.date || item.calendarDate;
-            if (k) historyMap[k] = item;
+        const calloutTitle = document.getElementById('im-callout-title');
+        const calloutDesc = document.getElementById('im-callout-desc');
+        if (calloutTitle && calloutDesc) {
+            if (isGoalMet) {
+                calloutTitle.textContent = 'Intensity Minutes Goal Met!';
+                calloutDesc.innerHTML = `<span style="color: #22c55e;">🎉 Weekly goal of ${weekGoal} minutes completed!</span>`;
+            } else {
+                calloutTitle.textContent = 'To reach your weekly goal, you need:';
+                calloutDesc.innerHTML = `<strong style="color: #4ade80;">${neededMod} min</strong> Moderate <span style="color: #64748b;">OR</span> <strong style="color: #38bdf8;">${neededVig} min</strong> Vigorous`;
+            }
+        }
+
+        // Bottom Stats
+        window.safeSetText('im-drilldown-total-label', 'Total Minutes');
+        window.safeSetText('im-drilldown-mod-label', 'Moderate Minutes');
+        window.safeSetText('im-drilldown-vig-label', 'Vigorous Minutes (2x)');
+        window.safeSetText('im-drilldown-goal-label', 'Weekly Goal');
+
+        window.safeSetText('im-drilldown-total', `${weeklyTotal} min`);
+        window.safeSetText('im-drilldown-moderate', `${weeklyMod} min`);
+        window.safeSetText('im-drilldown-vigorous', `${weeklyVig} min`);
+        window.safeSetText('im-drilldown-goal', `${weekGoal} min`);
+
+        const days = data.days || [];
+        const xLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const linePoints = [];
+        let goalMetIdx = null;
+
+        for (let i = 0; i < 7; i++) {
+            const d = days[i];
+            if (!d || d.isFuture || d.cumulativeTotal == null) {
+                linePoints.push(null);
+            } else {
+                const val = d.cumulativeTotal;
+                linePoints.push(val);
+                if (val >= weekGoal && goalMetIdx === null && val > 0) {
+                    goalMetIdx = i;
+                }
+            }
+        }
+
+        const lineColor = isGoalMet ? '#22c55e' : '#38bdf8';
+        const yAxisMax = Math.max(500, Math.ceil((weeklyTotal + 60) / 100) * 100);
+
+        window.chartInstances[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: xLabels,
+                datasets: [
+                    {
+                        label: 'Weekly Goal',
+                        data: Array(7).fill(weekGoal),
+                        borderColor: 'rgba(148, 163, 184, 0.7)',
+                        borderDash: [6, 4],
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        fill: false
+                    },
+                    {
+                        label: isGoalMet ? 'Intensity Minutes Goal Met' : 'Intensity Minutes',
+                        data: linePoints,
+                        borderColor: lineColor,
+                        backgroundColor: isGoalMet ? 'rgba(34, 197, 94, 0.1)' : 'rgba(56, 189, 248, 0.1)',
+                        borderWidth: 3,
+                        stepped: 'before',
+                        pointRadius: (c) => (c.raw != null ? 4 : 0),
+                        pointBackgroundColor: lineColor,
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 1.5,
+                        pointHoverRadius: 6,
+                        goalMetIndices: goalMetIdx !== null ? [goalMetIdx] : [],
+                        spanGaps: false,
+                        fill: false
+                    }
+                ]
+            },
+            plugins: [goalMetBadgePlugin],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            color: '#94a3b8',
+                            boxWidth: 14,
+                            generateLabels: () => [
+                                { text: 'Weekly Goal', strokeStyle: 'rgba(148, 163, 184, 0.8)', lineWidth: 2, lineDash: [4, 4], fillStyle: 'transparent' },
+                                { text: 'Intensity Minutes', fillStyle: '#38bdf8', strokeStyle: '#38bdf8', lineWidth: 2 },
+                                { text: 'Goal Met ✓', fillStyle: '#22c55e', strokeStyle: '#22c55e', lineWidth: 2 }
+                            ]
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => {
+                                if (!items.length) return '';
+                                const idx = items[0].dataIndex;
+                                const dayObj = days[idx];
+                                return dayObj ? `${dayObj.dayName} (${dayObj.date})` : xLabels[idx];
+                            },
+                            label: (c) => {
+                                if (c.dataset.label === 'Weekly Goal') return `Weekly Goal: ${weekGoal} min`;
+                                if (c.parsed.y == null) return null;
+                                const dayObj = days[c.dataIndex] || {};
+                                const lines = [`Cumulative Total: ${c.parsed.y} min`];
+                                if (dayObj.total > 0) {
+                                    lines.push(`  Today: +${dayObj.total} min (${dayObj.moderate} mod, ${dayObj.vigorous * 2} vig)`);
+                                }
+                                return lines;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { color: '#94a3b8', font: { size: 12, weight: '600' } }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: yAxisMax,
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { color: '#94a3b8', stepSize: 100 }
+                    }
+                }
+            }
         });
 
-        // Compute aggregate stats across 4 weeks
-        history.forEach(d => {
-            totalModerate += d.moderate || 0;
-            totalVigorous += d.vigorous || 0;
-            totalMinutes += d.total != null ? d.total : ((d.moderate || 0) + 2 * (d.vigorous || 0));
-        });
+    } else if (range === '1m') {
+        // ── 4 WEEKS: Daily Totals (28 Days with Weekly Resets) ─────────────────
+        if (weeklySummaryEl) weeklySummaryEl.style.display = 'none';
+        if (chartTitleEl) chartTitleEl.textContent = 'Daily Totals';
 
-        const weeklyAvg = Math.round(totalMinutes / 4);
-        window.safeSetText('im-drilldown-total', `${totalMinutes} min (${weeklyAvg}/wk)`);
-        window.safeSetText('im-drilldown-moderate', `${totalModerate} min`);
-        window.safeSetText('im-drilldown-vigorous', `${totalVigorous} min`);
-        window.safeSetText('im-drilldown-goal', `${goal} min`);
+        const sum = data.summary || {};
+        const weekGoal = sum.goal || goal;
 
-        const todayStr = window.getLocalDateStr ? window.getLocalDateStr(new Date()) : new Date().toISOString().split('T')[0];
+        window.safeSetText('im-drilldown-total-label', 'Avg Daily Total');
+        window.safeSetText('im-drilldown-mod-label', 'Avg Daily Moderate');
+        window.safeSetText('im-drilldown-vig-label', 'Avg Daily Vigorous');
+        window.safeSetText('im-drilldown-goal-label', 'Weekly Goal');
+
+        window.safeSetText('im-drilldown-total', `${sum.avgDailyTotal || 0} min`);
+        window.safeSetText('im-drilldown-moderate', `${sum.avgDailyModerate || 0} min`);
+        window.safeSetText('im-drilldown-vigorous', `${sum.avgDailyVigorous || 0} min`);
+        window.safeSetText('im-drilldown-goal', `${weekGoal} min`);
+
+        const allDays = data.allDays || [];
+        const weeks = data.weeks || [];
+
+        // Build 28 labels: display date on Mondays, empty for others
+        const xLabels = [];
+        for (let i = 0; i < 28; i++) {
+            const d = allDays[i];
+            if (i % 7 === 0 && d) {
+                xLabels.push(d.label || d.date);
+            } else {
+                xLabels.push('');
+            }
+        }
+
         const datasets = [];
-        let maxObserved = goal;
+        let maxObserved = weekGoal;
 
-        // Weekly Goal horizontal dashed baseline
+        // Baseline: Weekly Goal dashed line
         datasets.push({
             label: 'Weekly Goal',
-            data: Array(28).fill(goal),
+            data: Array(28).fill(weekGoal),
             borderColor: 'rgba(148, 163, 184, 0.7)',
             borderDash: [6, 4],
             borderWidth: 1.5,
             pointRadius: 0,
             pointHoverRadius: 0,
-            fill: false,
-            stepped: false
+            fill: false
         });
 
-        // 4 Weekly Stepped Line Datasets
-        for (let w = 0; w < 4; w++) {
-            const weekDataPoints = Array(28).fill(null);
-            let cumMinutes = 0;
-            let weekGoal = goal;
-            let goalMetIndex = null;
-            let hasPoints = false;
+        // 4 Weekly cumulative step lines
+        weeks.forEach((wObj, wIdx) => {
+            const wPoints = Array(28).fill(null);
+            let goalMetIdx = null;
+            let hasData = false;
 
-            for (let d = 0; d < 7; d++) {
-                const gIdx = w * 7 + d;
-                const dKey = dateKeys[gIdx];
-
-                // Stop plotting future days beyond today
-                if (dKey > todayStr && !historyMap[dKey]) {
-                    continue;
+            (wObj.days || []).forEach((d, dIdx) => {
+                const globalIdx = wIdx * 7 + dIdx;
+                if (!d.isFuture && d.cumulativeTotal != null) {
+                    wPoints[globalIdx] = d.cumulativeTotal;
+                    hasData = true;
+                    if (d.cumulativeTotal > maxObserved) maxObserved = d.cumulativeTotal;
+                    if (d.cumulativeTotal >= weekGoal && goalMetIdx === null && d.cumulativeTotal > 0) {
+                        goalMetIdx = globalIdx;
+                    }
                 }
+            });
 
-                const dayItem = historyMap[dKey] || {};
-                if (dayItem.goal) weekGoal = dayItem.goal;
-
-                const mod = dayItem.moderate || 0;
-                const vig = dayItem.vigorous || 0;
-                const dayTotal = dayItem.total != null ? dayItem.total : (mod + 2 * vig);
-
-                if (dayItem.startDayMinutes != null) {
-                    cumMinutes = dayItem.startDayMinutes + dayTotal;
-                } else {
-                    cumMinutes += dayTotal;
-                }
-
-                weekDataPoints[gIdx] = cumMinutes;
-                hasPoints = true;
-                if (cumMinutes > maxObserved) maxObserved = cumMinutes;
-
-                if (cumMinutes >= weekGoal && goalMetIndex === null && cumMinutes > 0) {
-                    goalMetIndex = gIdx;
-                }
-            }
-
-            if (hasPoints) {
-                const isGoalMet = cumMinutes >= weekGoal && cumMinutes > 0;
-                const lineColor = isGoalMet ? '#22c55e' : '#38bdf8';
-
+            if (hasData) {
+                const isMet = wObj.isGoalMet;
+                const lineColor = isMet ? '#22c55e' : '#38bdf8';
                 datasets.push({
-                    label: isGoalMet ? 'Intensity Minutes Goal Met' : 'Intensity Minutes',
-                    data: weekDataPoints,
+                    label: isMet ? `Week ${wIdx + 1} (Goal Met)` : `Week ${wIdx + 1}`,
+                    data: wPoints,
                     borderColor: lineColor,
                     backgroundColor: 'transparent',
                     borderWidth: 2.5,
                     stepped: 'before',
                     pointRadius: 0,
                     pointHoverRadius: 5,
-                    goalMetIndices: goalMetIndex !== null ? [goalMetIndex] : [],
+                    goalMetIndices: goalMetIdx !== null ? [goalMetIdx] : [],
                     spanGaps: false
                 });
             }
-        }
+        });
 
         const yAxisMax = Math.max(1000, Math.ceil((maxObserved + 100) / 200) * 200);
 
@@ -293,30 +471,10 @@ window.renderIntensityMinutesVisualV2 = function (data) {
                         labels: {
                             color: '#94a3b8',
                             boxWidth: 14,
-                            padding: 16,
                             generateLabels: () => [
-                                {
-                                    text: 'Weekly Goal',
-                                    strokeStyle: 'rgba(148, 163, 184, 0.8)',
-                                    lineWidth: 2,
-                                    lineDash: [4, 4],
-                                    fillStyle: 'transparent',
-                                    hidden: false
-                                },
-                                {
-                                    text: 'Intensity Minutes',
-                                    fillStyle: '#38bdf8',
-                                    strokeStyle: '#38bdf8',
-                                    lineWidth: 2,
-                                    hidden: false
-                                },
-                                {
-                                    text: 'Intensity Minutes Goal Met',
-                                    fillStyle: '#22c55e',
-                                    strokeStyle: '#22c55e',
-                                    lineWidth: 2,
-                                    hidden: false
-                                }
+                                { text: 'Weekly Goal', strokeStyle: 'rgba(148, 163, 184, 0.8)', lineWidth: 2, lineDash: [4, 4], fillStyle: 'transparent' },
+                                { text: 'Intensity Minutes', fillStyle: '#38bdf8', strokeStyle: '#38bdf8', lineWidth: 2 },
+                                { text: 'Goal Met ✓', fillStyle: '#22c55e', strokeStyle: '#22c55e', lineWidth: 2 }
                             ]
                         }
                     },
@@ -325,26 +483,18 @@ window.renderIntensityMinutesVisualV2 = function (data) {
                             title: (items) => {
                                 if (!items.length) return '';
                                 const idx = items[0].dataIndex;
-                                const d = all28Dates[idx];
-                                return d ? d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '';
+                                const d = allDays[idx];
+                                return d ? `${d.dayName}, ${d.date}` : `Day ${idx + 1}`;
                             },
-                            label: (ctx) => {
-                                if (ctx.dataset.label === 'Weekly Goal') {
-                                    return `Weekly Goal: ${ctx.parsed.y} min`;
+                            label: (c) => {
+                                if (c.dataset.label === 'Weekly Goal') return `Weekly Goal: ${weekGoal} min`;
+                                if (c.parsed.y == null) return null;
+                                const d = allDays[c.dataIndex] || {};
+                                const lines = [`Cumulative Week Total: ${c.parsed.y} min`];
+                                if (d.total > 0) {
+                                    lines.push(`  Today: +${d.total} min (${d.moderate} mod, ${d.vigorous * 2} vig)`);
                                 }
-                                const val = ctx.parsed.y;
-                                if (val == null) return null;
-                                const isMet = val >= goal;
-                                const dayItem = historyMap[dateKeys[ctx.dataIndex]] || {};
-                                const mod = dayItem.moderate || 0;
-                                const vig = dayItem.vigorous || 0;
-                                const dayTotal = dayItem.total != null ? dayItem.total : (mod + 2 * vig);
-
-                                const res = [`Cumulative Week Total: ${val} min ${isMet ? ' (Goal Met ✓)' : ''}`];
-                                if (dayTotal > 0) {
-                                    res.push(`  + Today: ${dayTotal} min (${mod} mod, ${vig * 2} vig)`);
-                                }
-                                return res;
+                                return lines;
                             }
                         }
                     }
@@ -355,13 +505,7 @@ window.renderIntensityMinutesVisualV2 = function (data) {
                             color: (ctx) => (ctx.index % 7 === 0 ? 'rgba(255, 255, 255, 0.18)' : 'transparent'),
                             lineWidth: (ctx) => (ctx.index % 7 === 0 ? 1.5 : 0)
                         },
-                        ticks: {
-                            color: '#94a3b8',
-                            font: { size: 10 },
-                            maxRotation: 45,
-                            minRotation: 45,
-                            autoSkip: false
-                        }
+                        ticks: { color: '#94a3b8', font: { size: 11 } }
                     },
                     y: {
                         beginAtZero: true,
@@ -373,85 +517,68 @@ window.renderIntensityMinutesVisualV2 = function (data) {
             }
         });
 
-    } else if (range === '6m' || range === '1y') {
-        history.forEach(w => {
-            totalModerate += w.moderate || 0;
-            totalVigorous += w.vigorous || 0;
-            totalMinutes += w.total || 0;
-        });
-        const weeklyAvg = history.length > 0 ? Math.round(totalMinutes / history.length) : 0;
-        window.safeSetText('im-drilldown-total', `${weeklyAvg} min/wk`);
-        window.safeSetText('im-drilldown-moderate', `${history.length > 0 ? Math.round(totalModerate / history.length) : 0} min/wk`);
-        window.safeSetText('im-drilldown-vigorous', `${history.length > 0 ? Math.round(totalVigorous / history.length) : 0} min/wk`);
-        window.safeSetText('im-drilldown-goal', `${goal} min`);
-
-        window.chartInstances[canvasId] = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: history.map(w => {
-                    const dt = window.parseLocalDate(w.date);
-                    return dt.toLocaleDateString([], { month: 'short', day: 'numeric' });
-                }),
-                datasets: [{
-                    label: 'Weekly Minutes',
-                    data: history.map(w => w.total),
-                    backgroundColor: history.map(w => w.total >= (w.goal || goal) ? '#4ade80' : '#38bdf8'),
-                    borderRadius: 4
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: (ctx) => {
-                                const w = history[ctx.dataIndex];
-                                const g = w.goal || goal;
-                                return `Total: ${ctx.parsed.y} / Goal: ${g} mins`;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 12 } },
-                    y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
-                }
-            }
-        });
     } else {
-        // 1w (7 Days)
-        history.forEach(d => {
-            totalModerate += d.moderate || 0;
-            totalVigorous += d.vigorous || 0;
-            totalMinutes += d.total != null ? d.total : ((d.moderate || 0) + 2 * (d.vigorous || 0));
-        });
-        window.safeSetText('im-drilldown-total', `${totalMinutes} min`);
-        window.safeSetText('im-drilldown-moderate', `${totalModerate} min`);
-        window.safeSetText('im-drilldown-vigorous', `${totalVigorous} min`);
-        window.safeSetText('im-drilldown-goal', `${goal} min`);
+        // ── 1 YEAR (or 6m): Weekly Totals (52-week Layered Bar Chart) ──────────
+        if (weeklySummaryEl) weeklySummaryEl.style.display = 'none';
+        if (chartTitleEl) chartTitleEl.textContent = 'Weekly Totals';
 
-        const labels = history.map(d => {
-            const dt = window.parseLocalDate(d.date || d.calendarDate);
-            return dt.toLocaleDateString([], { weekday: 'short' });
+        const sum = data.summary || {};
+        const weekGoal = sum.goal || goal;
+
+        window.safeSetText('im-drilldown-total-label', 'Avg Weekly Total');
+        window.safeSetText('im-drilldown-mod-label', 'Avg Weekly Moderate');
+        window.safeSetText('im-drilldown-vig-label', 'Avg Weekly Vigorous');
+        window.safeSetText('im-drilldown-goal-label', 'Weekly Goal');
+
+        window.safeSetText('im-drilldown-total', `${sum.avgWeeklyTotal || 0} min`);
+        window.safeSetText('im-drilldown-moderate', `${sum.avgWeeklyModerate || 0} min`);
+        window.safeSetText('im-drilldown-vigorous', `${sum.avgWeeklyVigorous || 0} min`);
+        window.safeSetText('im-drilldown-goal', `${weekGoal} min`);
+
+        const history = data.history || [];
+        let maxObserved = weekGoal;
+        history.forEach(w => {
+            if (w.total > maxObserved) maxObserved = w.total;
         });
+
+        // X-axis labels: Format dates to month abbreviations
+        let lastMonth = '';
+        const xLabels = history.map(w => {
+            const dt = window.parseLocalDate(w.date);
+            const m = dt.toLocaleDateString([], { month: 'short' });
+            if (m !== lastMonth) {
+                lastMonth = m;
+                return m;
+            }
+            return '';
+        });
+
+        const yAxisMax = Math.max(1000, Math.ceil((maxObserved + 100) / 200) * 200);
 
         window.chartInstances[canvasId] = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: labels,
+                labels: xLabels,
                 datasets: [
                     {
-                        label: 'Moderate',
-                        data: history.map(d => d.moderate || 0),
-                        backgroundColor: '#4ade80',
-                        borderRadius: 3
+                        label: 'Goal Baseline',
+                        data: history.map(() => weekGoal),
+                        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                        borderRadius: 3,
+                        barPercentage: 0.85,
+                        categoryPercentage: 0.85,
+                        grouped: false,
+                        order: 2
                     },
                     {
-                        label: 'Vigorous (2x)',
-                        data: history.map(d => (d.vigorous || 0) * 2),
-                        backgroundColor: '#38bdf8',
-                        borderRadius: 3
+                        label: 'Weekly Minutes',
+                        data: history.map(w => w.total),
+                        backgroundColor: history.map(w => (w.total >= (w.goal || weekGoal) ? '#22c55e' : '#38bdf8')),
+                        borderRadius: 3,
+                        barPercentage: 0.85,
+                        categoryPercentage: 0.85,
+                        grouped: false,
+                        order: 1
                     }
                 ]
             },
@@ -459,11 +586,46 @@ window.renderIntensityMinutesVisualV2 = function (data) {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { display: true, labels: { color: '#94a3b8', boxWidth: 12 } }
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            color: '#94a3b8',
+                            boxWidth: 14,
+                            generateLabels: () => [
+                                { text: 'Weekly Goal (420 min)', fillStyle: 'rgba(255, 255, 255, 0.15)', strokeStyle: 'transparent' },
+                                { text: 'Under Goal', fillStyle: '#38bdf8', strokeStyle: '#38bdf8' },
+                                { text: 'Goal Met ✓', fillStyle: '#22c55e', strokeStyle: '#22c55e' }
+                            ]
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => {
+                                if (!items.length) return '';
+                                const w = history[items[0].dataIndex];
+                                return w ? `Week of ${w.date}` : '';
+                            },
+                            label: (c) => {
+                                if (c.dataset.label === 'Goal Baseline') return null;
+                                const w = history[c.dataIndex] || {};
+                                const isMet = w.total >= (w.goal || weekGoal);
+                                return `Total: ${w.total} min ${isMet ? '(Goal Met ✓)' : ''} / Goal: ${w.goal || weekGoal} min`;
+                            }
+                        }
+                    }
                 },
                 scales: {
-                    x: { stacked: true, grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 14 } },
-                    y: { stacked: true, beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#94a3b8', font: { size: 10 }, autoSkip: false }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: yAxisMax,
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { color: '#94a3b8', stepSize: 200 }
+                    }
                 }
             }
         });

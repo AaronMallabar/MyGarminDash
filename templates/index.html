@@ -596,7 +596,7 @@
             <h1>Aaron's Fitness Dashboard</h1>
 
             <div style="display: flex; align-items: center; gap: 1rem;">
-                <div id="last-sync" class="last-sync">Syncing...</div>
+                <div id="last-sync" class="last-sync" onclick="window.manualTriggerSync ? window.manualTriggerSync() : null" title="Click to sync now with Garmin Connect">Syncing...</div>
                 <button onclick="openSettings()"
                     style="background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); padding: 0.5rem; border-radius: 0.5rem; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; transition: all 0.2s;"
                     onmouseover="this.style.background='rgba(56, 189, 248, 0.1)'"
@@ -744,6 +744,10 @@
                     </div>
                     <span class="streak-caption">Last 7d</span>
                 </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.35rem; font-size: 0.8rem; color: #94a3b8;">
+                    <span>Mod: <strong id="im-glance-mod" style="color: #4ade80;">--</strong></span>
+                    <span>Vig: <strong id="im-glance-vig" style="color: #38bdf8;">--</strong></span>
+                </div>
                 <div class="glance-ai-pill" id="ai-pill-im" style="display: none;">
                     <span>✨</span> <span id="ai-blurb-im">Analyzing intensity minutes...</span>
                 </div>
@@ -815,27 +819,19 @@
                 <div class="glance-card-header">
                     <div class="glance-card-title"><span>😴</span> <span>Sleep Score</span></div>
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.35rem;">
                     <div class="glance-stat-primary">
-                        <span class="glance-val-lg" id="sleep-score-val" style="color: #38bdf8;">--</span>
-                        <span class="glance-val-sub">Score</span>
+                        <span class="glance-val-lg" id="sleep-score-val" style="color: #fff; font-weight: 800;">--</span>
                     </div>
                     <div style="text-align: right;">
-                        <span class="glance-val-sm" id="sleep">--</span>
-                        <span class="glance-val-sub">hrs Duration</span>
+                        <span class="glance-val-sm" id="sleep" style="color: #fff; font-weight: 700;">--</span>
+                        <div class="glance-val-sub" style="font-size: 0.72rem; color: var(--text-secondary); line-height: 1.2;">Duration</div>
                     </div>
                 </div>
-                <div class="glance-sleep-timeline" id="glance-sleep-bars">
-                    <div class="sleep-stage-bar stage-awake" style="flex: 1;"></div>
-                    <div class="sleep-stage-bar stage-light" style="flex: 3;"></div>
-                    <div class="sleep-stage-bar stage-deep" style="flex: 2;"></div>
-                    <div class="sleep-stage-bar stage-rem" style="flex: 2;"></div>
-                    <div class="sleep-stage-bar stage-light" style="flex: 3;"></div>
-                    <div class="sleep-stage-bar stage-deep" style="flex: 2;"></div>
-                    <div class="sleep-stage-bar stage-rem" style="flex: 2;"></div>
-                    <div class="sleep-stage-bar stage-light" style="flex: 2;"></div>
+                <div class="glance-sleep-timeline-container" style="position: relative; width: 100%; height: 80px; margin: 0.6rem 0 0.4rem 0;">
+                    <canvas id="glance-sleep-timeline-canvas" style="width: 100%; height: 100%; display: block; border-radius: 4px;"></canvas>
                 </div>
-                <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-secondary);">
+                <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary); font-weight: 500;">
                     <span id="sleep-start-time">--</span>
                     <span id="sleep-end-time">--</span>
                 </div>
@@ -921,25 +917,42 @@
                             <button class="drilldown-range-btn" onclick="updateIMRange('1y', this)">1 Year</button>
                         </div>
                     </div>
-                    <div style="font-size: 1.1rem; font-weight: 700; color: #cbd5e1; margin-bottom: 0.75rem;">Daily Totals</div>
+                    <!-- Weekly Goal Callout & Donut (visible in 1w) -->
+                    <div id="im-weekly-summary" class="im-weekly-summary" style="display: none;">
+                        <div class="im-donut-wrapper">
+                            <div class="im-modal-donut-meter" id="im-modal-donut" style="--ring-color: #38bdf8; --ring-pct: 0;">
+                                <div class="im-modal-donut-content">
+                                    <span class="glance-donut-val" id="im-modal-donut-val" style="font-size: 1.05rem; font-weight: 700; color: #fff;">--</span>
+                                    <span class="glance-donut-sub" id="im-modal-donut-sub" style="font-size: 0.65rem; color: #94a3b8;">/ 420</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="im-weekly-callout">
+                            <div class="im-callout-title" id="im-callout-title">To reach your weekly goal, you need:</div>
+                            <div class="im-callout-desc" id="im-callout-desc">
+                                <strong id="im-need-mod" style="color: #4ade80;">-- min</strong> Moderate <span style="color: #64748b;">OR</span> <strong id="im-need-vig" style="color: #38bdf8;">-- min</strong> Vigorous
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-size: 1.1rem; font-weight: 700; color: #cbd5e1; margin-bottom: 0.75rem;" id="im-chart-title">Weekly Timeline</div>
                     <div class="drilldown-chart-wrapper">
                         <canvas id="imHistoryChart"></canvas>
                     </div>
                     <div class="drilldown-stats-grid">
                         <div class="drilldown-stat-card">
-                            <div class="drilldown-stat-label">Total Minutes</div>
+                            <div class="drilldown-stat-label" id="im-drilldown-total-label">Total Minutes</div>
                             <div class="drilldown-stat-val" id="im-drilldown-total" style="color: #4ade80;">-- min</div>
                         </div>
                         <div class="drilldown-stat-card">
-                            <div class="drilldown-stat-label">Moderate Minutes</div>
+                            <div class="drilldown-stat-label" id="im-drilldown-mod-label">Moderate Minutes</div>
                             <div class="drilldown-stat-val" id="im-drilldown-moderate">-- min</div>
                         </div>
                         <div class="drilldown-stat-card">
-                            <div class="drilldown-stat-label">Vigorous Minutes (2x)</div>
+                            <div class="drilldown-stat-label" id="im-drilldown-vig-label">Vigorous Minutes (2x)</div>
                             <div class="drilldown-stat-val" id="im-drilldown-vigorous" style="color: #38bdf8;">-- min</div>
                         </div>
                         <div class="drilldown-stat-card">
-                            <div class="drilldown-stat-label">Weekly Goal</div>
+                            <div class="drilldown-stat-label" id="im-drilldown-goal-label">Weekly Goal</div>
                             <div class="drilldown-stat-val" id="im-drilldown-goal">420 min</div>
                         </div>
                     </div>
@@ -1013,7 +1026,7 @@
                         </div>
                         <div style="display: flex; align-items: center; gap: 0.75rem;">
                             <span style="font-size: 1.5rem;">😴</span>
-                            <h2 style="font-family: 'Lexend', sans-serif; margin: 0; font-size: 1.4rem;">Sleep Architecture & Stages</h2>
+                            <h2 style="font-family: 'Lexend', sans-serif; margin: 0; font-size: 1.4rem;">Sleep Architecture & Quality</h2>
                         </div>
                         <div class="drilldown-range-segmented">
                             <button class="drilldown-range-btn" onclick="updateSleepRange('1d', this)">1 Day</button>
@@ -1022,28 +1035,153 @@
                             <button class="drilldown-range-btn" onclick="updateSleepRange('1y', this)">1 Year</button>
                         </div>
                     </div>
-                    <div style="font-size: 1.1rem; font-weight: 700; color: #cbd5e1; margin-bottom: 0.75rem;">Sleep Stages & Score</div>
-                    <div class="drilldown-chart-wrapper">
-                        <canvas id="sleepHistoryChart"></canvas>
+
+                    <!-- 1-Day View Container -->
+                    <div id="sleep-1d-container" style="display: none;">
+                        <!-- Top Row: Left (Score & Insights) | Right (Score Factors) -->
+                        <div class="sleep-1d-grid" style="display: grid; grid-template-columns: 1fr 1.25fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                            <!-- Left Column: Big Score & Insights -->
+                            <div class="sleep-score-col" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 1rem; padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between;">
+                                <div>
+                                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;">Sleep Score</div>
+                                    <div style="display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.75rem;">
+                                        <span id="sleep-1d-score-val" style="font-size: 3.5rem; font-weight: 800; font-family: 'Lexend', sans-serif; color: #fff; line-height: 1;">--</span>
+                                        <span style="font-size: 1rem; color: var(--text-secondary);">/ 100 Score</span>
+                                    </div>
+                                    <div style="display: flex; gap: 2.5rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.75rem; margin-bottom: 1rem;">
+                                        <div>
+                                            <div id="sleep-1d-quality" style="font-size: 1.25rem; font-weight: 700; color: #38bdf8;">--</div>
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary);">Quality</div>
+                                        </div>
+                                        <div>
+                                            <div id="sleep-1d-duration" style="font-size: 1.25rem; font-weight: 700; color: #fff;">--</div>
+                                            <div style="font-size: 0.75rem; color: var(--text-secondary);">Duration</div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-bottom: 0.5rem;">
+                                        <div id="sleep-1d-feedback-title" style="font-size: 1.05rem; font-weight: 700; color: #f8fafc; margin-bottom: 0.35rem;">--</div>
+                                        <div id="sleep-1d-feedback-body" style="font-size: 0.85rem; color: #94a3b8; line-height: 1.55;">--</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Right Column: Sleep Score Factors List -->
+                            <div class="sleep-factors-col" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 1rem; padding: 1.25rem;">
+                                <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem;">Sleep Score Factors</div>
+                                <div id="sleep-factors-list" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    <!-- Populated dynamically via JS: Duration, Stress, Deep, Light, REM, Awake/Restlessness -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 1-Day Bottom Section: Timeline vs Stages Toggle & Views -->
+                        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 1rem; padding: 1.25rem; margin-bottom: 1.5rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                <div style="display: flex; gap: 2rem; align-items: center;">
+                                    <div>
+                                        <div id="sleep-1d-bedtime" style="font-size: 1.2rem; font-weight: 700; color: #fff;">--</div>
+                                        <div style="font-size: 0.72rem; color: var(--text-secondary);">Bed Time</div>
+                                    </div>
+                                    <div style="color: rgba(255,255,255,0.2); font-size: 1.2rem;">→</div>
+                                    <div>
+                                        <div id="sleep-1d-waketime" style="font-size: 1.2rem; font-weight: 700; color: #fff;">--</div>
+                                        <div style="font-size: 0.72rem; color: var(--text-secondary);">Wake Time</div>
+                                    </div>
+                                </div>
+                                <div class="drilldown-range-segmented" style="margin: 0;">
+                                    <button class="drilldown-range-btn active" id="btn-sleep-sub-timeline" onclick="setSleep1dView('timeline', this)">Timeline</button>
+                                    <button class="drilldown-range-btn" id="btn-sleep-sub-stages" onclick="setSleep1dView('stages', this)">Stages</button>
+                                </div>
+                            </div>
+
+                            <!-- 1-Day Sub-view 1: Timeline -->
+                            <div id="sleep-subview-timeline" style="display: block;">
+                                <div style="height: 280px; position: relative;">
+                                    <canvas id="sleep1dTimelineCanvas" style="width: 100%; height: 100%; display: block;"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- 1-Day Sub-view 2: Stages Breakdown -->
+                            <div id="sleep-subview-stages" style="display: none;">
+                                <div style="display: flex; flex-direction: column; align-items: center; padding: 1rem 0;">
+                                    <div style="position: relative; width: 220px; height: 220px;">
+                                        <canvas id="sleep1dStagesChart" style="width: 100%; height: 100%; display: block;"></canvas>
+                                        <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none;">
+                                            <div id="sleep-doughnut-total" style="font-size: 1.35rem; font-weight: 800; font-family: 'Lexend', sans-serif; color: #fff;">--</div>
+                                            <div style="font-size: 0.72rem; color: var(--text-secondary);">Total Sleep</div>
+                                        </div>
+                                    </div>
+                                    <div id="sleep-stages-breakdown-cards" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; width: 100%; margin-top: 1.5rem; text-align: center;">
+                                        <!-- Deep, Light, REM, Awake cards -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="drilldown-stats-grid">
-                        <div class="drilldown-stat-card">
-                            <div class="drilldown-stat-label">Sleep Score</div>
-                            <div class="drilldown-stat-val" id="sleep-drilldown-score" style="color: #38bdf8;">--</div>
+
+                    <!-- Multi-Day View Container (7 Days, 4 Weeks, 1 Year) -->
+                    <div id="sleep-multi-container" style="display: block;">
+                        <!-- Summary Stats Grid -->
+                        <div class="drilldown-stats-grid" style="margin-bottom: 1.5rem;">
+                            <div class="drilldown-stat-card">
+                                <div class="drilldown-stat-label">Avg Sleep Score</div>
+                                <div class="drilldown-stat-val" id="sleep-drilldown-score" style="color: #818cf8;">--</div>
+                            </div>
+                            <div class="drilldown-stat-card">
+                                <div class="drilldown-stat-label">Avg Duration</div>
+                                <div class="drilldown-stat-val" id="sleep-drilldown-duration">--</div>
+                            </div>
+                            <div class="drilldown-stat-card">
+                                <div class="drilldown-stat-label">Avg Bedtime</div>
+                                <div class="drilldown-stat-val" id="sleep-drilldown-avg-bed" style="color: #38bdf8;">--</div>
+                            </div>
+                            <div class="drilldown-stat-card">
+                                <div class="drilldown-stat-label">Avg Wake Time</div>
+                                <div class="drilldown-stat-val" id="sleep-drilldown-avg-wake" style="color: #4ade80;">--</div>
+                            </div>
                         </div>
-                        <div class="drilldown-stat-card">
-                            <div class="drilldown-stat-label">Total Duration</div>
-                            <div class="drilldown-stat-val" id="sleep-drilldown-duration">-- hrs</div>
+
+                        <!-- 1. Sleep Consistency (Bed Times & Wake Times) -->
+                        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 1rem; padding: 1.25rem; margin-bottom: 1.5rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                                <div style="font-size: 1.1rem; font-weight: 700; color: #cbd5e1;">Sleep Consistency</div>
+                                <div style="font-size: 0.8rem; color: var(--text-secondary);">Bed Time & Wake Time Tracking</div>
+                            </div>
+                            <div style="height: 280px; position: relative;">
+                                <canvas id="sleepConsistencyChart"></canvas>
+                            </div>
+                            <div style="display: flex; justify-content: center; gap: 2rem; margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-secondary);">
+                                <div style="display: flex; align-items: center; gap: 0.45rem;">
+                                    <span style="display: inline-block; width: 14px; height: 14px; background: #2563eb; border-radius: 3px;"></span>
+                                    <span>Sleep Times</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.45rem;">
+                                    <span style="display: inline-block; width: 22px; height: 2px; background: #cbd5e1;"></span>
+                                    <span>Avg Bedtime</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.45rem;">
+                                    <span style="display: inline-block; width: 22px; height: 2px; border-top: 2px dashed #94a3b8;"></span>
+                                    <span>Avg Wake Time</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="drilldown-stat-card">
-                            <div class="drilldown-stat-label">Deep Sleep</div>
-                            <div class="drilldown-stat-val" id="sleep-drilldown-deep" style="color: #60a5fa;">--</div>
-                        </div>
-                        <div class="drilldown-stat-card">
-                            <div class="drilldown-stat-label">REM Sleep</div>
-                            <div class="drilldown-stat-val" id="sleep-drilldown-rem" style="color: #d946ef;">--</div>
+
+                        <!-- 2. Sleep Trends (Score & Duration) -->
+                        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 1rem; padding: 1.25rem; margin-bottom: 1.5rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                                <div style="font-size: 1.1rem; font-weight: 700; color: #cbd5e1;" id="sleep-trends-title">Sleep Score Trend</div>
+                                <div class="drilldown-range-segmented" style="margin: 0;">
+                                    <button class="drilldown-range-btn active" id="btn-sleep-trend-score" onclick="setSleepTrendView('score', this)">Score</button>
+                                    <button class="drilldown-range-btn" id="btn-sleep-trend-duration" onclick="setSleepTrendView('duration', this)">Duration</button>
+                                </div>
+                            </div>
+                            <div style="height: 280px; position: relative;">
+                                <canvas id="sleepTrendChart"></canvas>
+                            </div>
                         </div>
                     </div>
+
+                    <!-- AI Sleep Briefing -->
                     <div class="drilldown-ai-box">
                         <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8; margin-bottom: 0.35rem;">✨ AI Sleep Quality Briefing</div>
                         <div id="sleep-drilldown-ai-text" style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5;">Solid deep and REM restorative cycles support recovery.</div>
@@ -2099,7 +2237,7 @@
 
             <button class="modal-close" onclick="closeModal()">&times;</button>
 
-            <h2 id="modal-title">Activity Details</h2>
+            <h2 id="modal-title" style="padding-right: 3.5rem;">Activity Details</h2>
 
             <p id="modal-date" style="color: var(--text-secondary); margin-bottom: 2rem;"></p>
 
@@ -2144,7 +2282,7 @@
         <div class="modal-content" style="max-width: 600px;">
             <button class="modal-close" onclick="closeSettings()">&times;</button>
 
-            <h2 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+            <h2 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; padding-right: 3.5rem;">
                 <span>⚙️</span> Dashboard Settings
             </h2>
 
@@ -2352,7 +2490,7 @@
 
             <button class="modal-close" onclick="closeModal('weightModal')">&times;</button>
 
-            <h2 style="margin-bottom: 2rem;">Log Weight</h2>
+            <h2 style="margin-bottom: 2rem; padding: 0 2.5rem;">Log Weight</h2>
 
             <div style="margin-bottom: 2rem;">
 
@@ -2394,7 +2532,7 @@
             style="max-width: 1050px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; max-height: 92vh; width: 95%;">
             <button class="modal-close" onclick="closeFoodModal()">&times;</button>
 
-            <header style="margin-bottom: 1.5rem;">
+            <header style="margin-bottom: 1.5rem; padding-right: 3.5rem;">
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
                     <h2
                         style="display: flex; align-items: center; gap: 0.75rem; font-family: 'Lexend', sans-serif; margin: 0;">
@@ -2726,7 +2864,7 @@
     <div id="aiBriefingModal" class="modal">
         <div class="modal-content drilldown-modal-content" style="max-width: 800px; background: #0f172a; border: 1px solid rgba(56,189,248,0.25);">
             <button class="modal-close" onclick="closeModal('aiBriefingModal')">&times;</button>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-right: 3.5rem;">
                 <div style="display: flex; align-items: center; gap: 0.5rem;">
                     <span style="font-size: 1.25rem;">⚡</span>
                     <h2 style="font-family: 'Lexend', sans-serif; margin: 0;">Daily Intelligence Briefing</h2>
@@ -2765,8 +2903,8 @@
         <div class="modal-content"
             style="max-width: 800px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1);">
             <button class="modal-close" onclick="closeLibraryModal()">&times;</button>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-                <h2 style="font-family: 'Lexend', sans-serif;">Food Library</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; padding-right: 3.5rem;">
+                <h2 style="font-family: 'Lexend', sans-serif; margin: 0;">Food Library</h2>
                 <a href="/api/nutrition/export_library" target="_blank" class="range-btn active"
                     style="background: rgba(255,255,255,0.1); font-size: 0.85rem; color: white; text-decoration: none; padding: 0.5rem 1rem; border-radius: 0.5rem;">Export
                     CSV</a>

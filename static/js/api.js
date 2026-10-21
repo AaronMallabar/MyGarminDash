@@ -11,6 +11,204 @@
 window.preloadedData = {};
 window.cachedActivityInsights = {};
 
+/**
+ * Update the last-sync header pill with actual sync status
+ */
+window.updateLastSyncDisplay = function (lastSync, isSyncing, isOffline) {
+    const el = document.getElementById('last-sync');
+    if (!el) return;
+
+    el.style.cursor = 'pointer';
+
+    if (isOffline) {
+        el.textContent = 'Offline Mode';
+        el.title = 'Dashboard is running in offline mode with cached data';
+        return;
+    }
+
+    let timeText = '';
+    if (lastSync) {
+        if (lastSync.display) {
+            timeText = lastSync.display;
+        } else if (lastSync.timestamp) {
+            const d = new Date(lastSync.timestamp * 1000);
+            const isToday = d.toDateString() === new Date().toDateString();
+            timeText = isToday
+                ? d.toLocaleTimeString()
+                : `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        }
+    }
+
+    if (isSyncing) {
+        el.innerHTML = `<span class="sync-spinner" style="display:inline-block; animation: spin 1.5s linear infinite; margin-right: 5px;">🔄</span> ${timeText ? 'Last synced: ' + timeText + ' (updating...)' : 'Syncing with Garmin...'}`;
+        el.title = 'Updating latest Garmin data in background...';
+    } else if (timeText) {
+        el.textContent = `Last synced: ${timeText}`;
+        el.title = 'Click to sync now with Garmin Connect';
+    } else {
+        el.textContent = 'Last synced: Just now';
+        el.title = 'Click to sync now with Garmin Connect';
+    }
+};
+
+/**
+ * Poll background sync status and update UI seamlessly on completion
+ */
+window.pollSyncStatus = function () {
+    if (window._syncPollTimer) return; // Already polling
+
+    let pollCount = 0;
+    const maxPolls = 40; // 40 * 2.5s = 100s max
+
+    window._syncPollTimer = setInterval(async () => {
+        pollCount++;
+        try {
+            const res = await fetch('/api/sync_status');
+            if (res.ok) {
+                const status = await res.json();
+                if (!status.syncing) {
+                    // Sync complete!
+                    clearInterval(window._syncPollTimer);
+                    window._syncPollTimer = null;
+
+                    if (window.updateLastSyncDisplay) {
+                        window.updateLastSyncDisplay(status.last_sync, false, false);
+                    }
+
+                    // Refresh dashboard silently with updated Garmin data
+                    if (window.refreshDashboardDataSilently) {
+                        window.refreshDashboardDataSilently();
+                    }
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('Sync status poll error:', e);
+        }
+
+        if (pollCount >= maxPolls) {
+            clearInterval(window._syncPollTimer);
+            window._syncPollTimer = null;
+            if (window.updateLastSyncDisplay) {
+                window.updateLastSyncDisplay(null, false, false);
+            }
+        }
+    }, 2500);
+};
+
+/**
+ * Silently refresh dashboard metrics and visuals after background sync completes
+ */
+window.refreshDashboardDataSilently = async function () {
+    try {
+        const bootRes = await fetch('/api/dashboard_bootstrap');
+        if (!bootRes.ok) return;
+        const boot = await bootRes.json();
+        if (boot.error) return;
+
+        // 1. Update stats & cards
+        if (boot.stats && window.updateDashboard) {
+            window.updateDashboard(boot.stats, boot.today_1d, boot.history);
+        }
+
+        // 2. Cache updated historical & 1d items
+        const hist = boot.history || {};
+        const today1d = boot.today_1d || {};
+        const todayObj = new Date();
+
+        if (window.populateChartCache) {
+            if (hist.steps) window.populateChartCache('steps', '1w', todayObj, hist.steps);
+            if (hist.hr) window.populateChartCache('hr', '1w', todayObj, hist.hr);
+            if (hist.stress) window.populateChartCache('stress', '1w', todayObj, hist.stress);
+            if (hist.sleep) window.populateChartCache('sleep', '1w', todayObj, hist.sleep);
+            if (hist.weight) window.populateChartCache('weight', '1m', todayObj, hist.weight);
+            if (hist.hydration) window.populateChartCache('hydration', '1w', todayObj, hist.hydration);
+            if (hist.hrv) window.populateChartCache('hrv', '1w', todayObj, hist.hrv);
+            if (hist.intensity_minutes) window.populateChartCache('intensity_minutes', '1w', todayObj, hist.intensity_minutes);
+
+            if (today1d.sleep) window.populateChartCache('sleep', '1d', todayObj, today1d.sleep);
+            if (today1d.hydration) window.populateChartCache('hydration', '1d', todayObj, today1d.hydration);
+            if (today1d.hrv) window.populateChartCache('hrv', '1d', todayObj, today1d.hrv);
+            if (today1d.hr) window.populateChartCache('hr', '1d', todayObj, today1d.hr);
+            if (today1d.stress) window.populateChartCache('stress', '1d', todayObj, today1d.stress);
+            if (today1d.intensity_minutes) window.populateChartCache('intensity_minutes', '1d', todayObj, today1d.intensity_minutes);
+        }
+
+        // 3. Re-render active visuals ONLY if the modal pane is currently open/visible
+        const metricModal = document.getElementById('metricDetailModal');
+        const isModalActive = metricModal && metricModal.classList.contains('active');
+        const isPaneActive = (id) => isModalActive && document.getElementById(id) && document.getElementById(id).style.display !== 'none';
+
+        if (isPaneActive('modal-pane-hr') && window.renderHRVisual) {
+            const hrData = (window.currentHRRange === '1d' ? today1d.hr : hist.hr) || hist.hr || today1d.hr;
+            if (hrData) window.renderHRVisual(hrData);
+        }
+        if (isPaneActive('modal-pane-stress') && window.renderStressVisual) {
+            const stressData = (window.currentStressRange === '1d' ? today1d.stress : hist.stress) || hist.stress || today1d.stress;
+            if (stressData) window.renderStressVisual(stressData);
+        }
+        if (isPaneActive('modal-pane-sleep') && window.renderSleepVisual) {
+            const sleepData = (window.currentSleepRange === '1d' ? today1d.sleep : hist.sleep) || hist.sleep || today1d.sleep;
+            if (sleepData) window.renderSleepVisual(sleepData);
+        }
+        if (isPaneActive('modal-pane-hydration') && window.renderHydrationVisual) {
+            const hydData = (window.currentHydrationRange === '1d' ? today1d.hydration : hist.hydration) || hist.hydration || today1d.hydration;
+            if (hydData) window.renderHydrationVisual(hydData);
+        }
+        if (isPaneActive('modal-pane-hrv') && window.renderHRVVisual) {
+            const hrvData = (window.currentHRVRange === '1d' ? today1d.hrv : hist.hrv) || hist.hrv || today1d.hrv;
+            if (hrvData) window.renderHRVVisual(hrvData);
+        }
+        if (isPaneActive('modal-pane-im') && window.renderIntensityMinutesVisualV2) {
+            const imData = (window.currentIMRange === '1d' ? today1d.intensity_minutes : hist.intensity_minutes) || hist.intensity_minutes || today1d.intensity_minutes;
+            if (imData) window.renderIntensityMinutesVisualV2(imData);
+        }
+        if (isPaneActive('modal-pane-steps') && hist.steps && window.renderStepsVisual) {
+            window.renderStepsVisual(hist.steps);
+        }
+        if (isPaneActive('modal-pane-weight') && hist.weight && window.renderWeightChart) {
+            window.renderWeightChart(hist.weight, window.currentWeightRange || '1m');
+        }
+
+        // 4. Update AI Insights if present
+        if (boot.ai_insights && window.renderAIInsights) {
+            window.renderAIInsights(boot.ai_insights);
+        }
+
+        // 5. Brief gentle highlight on the sync pill
+        const pill = document.getElementById('last-sync');
+        if (pill) {
+            pill.style.transition = 'all 0.3s ease';
+            pill.style.borderColor = 'rgba(74, 222, 128, 0.7)';
+            pill.style.boxShadow = '0 0 12px rgba(74, 222, 128, 0.25)';
+            setTimeout(() => {
+                pill.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                pill.style.boxShadow = 'none';
+            }, 1800);
+        }
+    } catch (err) {
+        console.warn('Silent refresh error:', err);
+    }
+};
+
+/**
+ * Manually trigger background sync on click
+ */
+window.manualTriggerSync = async function () {
+    const el = document.getElementById('last-sync');
+    if (el) {
+        el.innerHTML = `<span class="sync-spinner" style="display:inline-block; animation: spin 1.5s linear infinite; margin-right: 5px;">🔄</span> Syncing with Garmin...`;
+    }
+    try {
+        const res = await fetch('/api/trigger_sync', { method: 'POST' });
+        if (res.ok) {
+            window.pollSyncStatus();
+        }
+    } catch (err) {
+        console.error('Trigger sync error:', err);
+    }
+};
+
 window.fetchDashboardData = async function () {
     try {
         let isOffline = false;
@@ -65,35 +263,39 @@ window.fetchDashboardData = async function () {
                         if (today1d.intensity_minutes) window.populateChartCache('intensity_minutes', '1d', todayObj, today1d.intensity_minutes);
                     }
 
-                    // Render default / active views matching the initial active buttons
-                    if (window.renderHRVisual) {
+                    // Render drilldown visuals ONLY if the modal pane is currently open
+                    const initMetricModal = document.getElementById('metricDetailModal');
+                    const isInitModalActive = initMetricModal && initMetricModal.classList.contains('active');
+                    const isInitPaneActive = (id) => isInitModalActive && document.getElementById(id) && document.getElementById(id).style.display !== 'none';
+
+                    if (isInitPaneActive('modal-pane-hr') && window.renderHRVisual) {
                         const hrData = (window.currentHRRange === '1d' ? today1d.hr : hist.hr) || hist.hr || today1d.hr;
                         if (hrData) window.renderHRVisual(hrData);
                     }
-                    if (window.renderStressVisual) {
+                    if (isInitPaneActive('modal-pane-stress') && window.renderStressVisual) {
                         const stressData = (window.currentStressRange === '1d' ? today1d.stress : hist.stress) || hist.stress || today1d.stress;
                         if (stressData) window.renderStressVisual(stressData);
                     }
-                    if (window.renderSleepVisual) {
+                    if (isInitPaneActive('modal-pane-sleep') && window.renderSleepVisual) {
                         const sleepData = (window.currentSleepRange === '1d' ? today1d.sleep : hist.sleep) || hist.sleep || today1d.sleep;
                         if (sleepData) window.renderSleepVisual(sleepData);
                     }
-                    if (window.renderHydrationVisual) {
+                    if (isInitPaneActive('modal-pane-hydration') && window.renderHydrationVisual) {
                         const hydData = (window.currentHydrationRange === '1d' ? today1d.hydration : hist.hydration) || hist.hydration || today1d.hydration;
                         if (hydData) window.renderHydrationVisual(hydData);
                     }
-                    if (window.renderHRVVisual) {
+                    if (isInitPaneActive('modal-pane-hrv') && window.renderHRVVisual) {
                         const hrvData = (window.currentHRVRange === '1d' ? today1d.hrv : hist.hrv) || hist.hrv || today1d.hrv;
                         if (hrvData) window.renderHRVVisual(hrvData);
                     }
-                    if (window.renderIntensityMinutesVisualV2) {
+                    if (isInitPaneActive('modal-pane-im') && window.renderIntensityMinutesVisualV2) {
                         const imData = (window.currentIMRange === '1d' ? today1d.intensity_minutes : hist.intensity_minutes) || hist.intensity_minutes || today1d.intensity_minutes;
                         if (imData) window.renderIntensityMinutesVisualV2(imData);
                     }
-                    if (hist.steps && window.renderStepsVisual) {
+                    if (isInitPaneActive('modal-pane-steps') && hist.steps && window.renderStepsVisual) {
                         window.renderStepsVisual(hist.steps);
                     }
-                    if (hist.weight && window.renderWeightChart) {
+                    if (isInitPaneActive('modal-pane-weight') && hist.weight && window.renderWeightChart) {
                         window.renderWeightChart(hist.weight, window.currentWeightRange || '1m');
                     }
 
@@ -101,12 +303,11 @@ window.fetchDashboardData = async function () {
                         window.renderAIInsights(boot.ai_insights);
                     }
 
-                    if (window.safeSetText) {
-                        if (isOffline) {
-                            window.safeSetText('last-sync', 'Offline Mode');
-                        } else {
-                            window.safeSetText('last-sync', `Last synced: ${new Date().toLocaleTimeString()}`);
-                        }
+                    if (window.updateLastSyncDisplay) {
+                        window.updateLastSyncDisplay(boot.last_sync, boot.sync_in_progress, isOffline);
+                    }
+                    if (boot.sync_in_progress && !isOffline && window.pollSyncStatus) {
+                        window.pollSyncStatus();
                     }
 
                     if (isOffline && window.showError) {
@@ -465,7 +666,7 @@ window.fetchCalorieHistory = async function () {
         const endDate = window.currentCalorieEndDate || new Date();
         const range = window.currentCalorieRange || '1w';
         if (window.updateCalorieRange) {
-            await window.updateCalorieRange(null, null);
+            await window.updateCalorieRange(range, null);
         } else {
             const res = await fetch(`/api/calorie_history?range=${range}&end_date=${window.getLocalDateStr(endDate)}`);
             if (res.ok) {

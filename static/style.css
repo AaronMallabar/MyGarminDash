@@ -63,6 +63,15 @@ h1 {
     border-radius: 9999px;
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.last-sync:hover {
+    border-color: rgba(56, 189, 248, 0.4);
+    background: rgba(56, 189, 248, 0.08);
+    color: var(--text-primary);
 }
 
 .grid {
@@ -513,18 +522,28 @@ h1 {
 
 .modal-close {
     position: absolute;
-    top: 1.5rem;
-    right: 1.5rem;
+    top: 1.25rem;
+    right: 1.25rem;
     background: rgba(255, 255, 255, 0.1);
     border: none;
     color: white;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 1.25rem;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    font-size: 1.35rem;
+    line-height: 1;
+    z-index: 100;
+    transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+    background: rgba(239, 68, 68, 0.8);
+    color: white;
+    transform: scale(1.05);
 }
 
 .activity-detail-grid {
@@ -2289,6 +2308,7 @@ h1 {
     gap: 1rem;
     margin-bottom: 1.5rem;
     padding-bottom: 1rem;
+    padding-right: 3.5rem; /* Reserve space for top-right modal close button */
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -2385,4 +2405,164 @@ h1 {
 
 .metric-detail-pane {
     animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Intensity Minutes Weekly Summary & Donut */
+.im-weekly-summary {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0.75rem;
+    padding: 0.85rem 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.im-donut-wrapper {
+    flex-shrink: 0;
+}
+
+.im-modal-donut-meter {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: conic-gradient(var(--ring-color, #38bdf8) calc(var(--ring-pct, 0) * 1%), rgba(255, 255, 255, 0.08) 0);
+}
+
+.im-modal-donut-meter::before {
+    content: '';
+    position: absolute;
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: #111827;
+}
+
+.im-modal-donut-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1.1;
+}
+
+.im-weekly-callout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.im-callout-title {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+.im-callout-desc {
+    font-size: 1.05rem;
+    color: #f8fafc;
+    font-weight: 600;
+}
+
+/* Sleep Detail & Factors Styling */
+@media (max-width: 768px) {
+    .sleep-1d-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+.sleep-factor-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 0.65rem;
+    padding: 0.65rem 0.95rem;
+    transition: background 0.15s ease;
+}
+
+.sleep-factor-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.sleep-factor-title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+
+.sleep-factor-sub {
+    font-size: 0.76rem;
+    color: #94a3b8;
+    margin-top: 0.1rem;
+}
+
+.sleep-rating-badge {
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 0.2rem 0.65rem;
+    border-radius: 9999px;
+    letter-spacing: 0.02em;
+}
+
+.sleep-rating-excellent {
+    background: rgba(56, 189, 248, 0.12);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.28);
+}
+
+.sleep-rating-good {
+    background: rgba(74, 222, 128, 0.12);
+    color: #4ade80;
+    border: 1px solid rgba(74, 222, 128, 0.28);
+}
+
+.sleep-rating-fair {
+    background: rgba(245, 158, 11, 0.12);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.28);
+}
+
+.sleep-rating-poor {
+    background: rgba(244, 63, 94, 0.12);
+    color: #fb7185;
+    border: 1px solid rgba(244, 63, 94, 0.28);
+}
+
+.sleep-stage-card {
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 0.75rem;
+    padding: 0.75rem 0.5rem;
+}
+
+.sleep-stage-card-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-bottom: 0.25rem;
+}
+
+.sleep-stage-card-val {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.sleep-stage-card-pct {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-top: 0.15rem;
 }

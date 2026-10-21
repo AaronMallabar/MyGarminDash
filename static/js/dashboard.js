@@ -71,9 +71,13 @@ window.updateDashboard = function (data, today1d = {}, history = {}) {
     // Intensity Minutes
     const imSum = (today1d.intensity_minutes && today1d.intensity_minutes.summary) || {};
     const imVal = imSum.weeklyTotal != null ? imSum.weeklyTotal : (data.intensity_minutes || 0);
-    const imGoal = imSum.goal || data.intensity_minutes_goal || 150;
+    const imGoal = imSum.goal || data.intensity_minutes_goal || 420;
+    const imMod = imSum.weeklyModerate != null ? imSum.weeklyModerate : (imSum.moderate != null ? imSum.moderate : 0);
+    const imVig = imSum.weeklyVigorous != null ? imSum.weeklyVigorous : (imSum.vigorous != null ? imSum.vigorous : 0);
     window.safeSetText('im-val', imVal);
     window.safeSetText('im-goal-caption', `Goal: ${imGoal}`);
+    window.safeSetText('im-glance-mod', `${imMod} min`);
+    window.safeSetText('im-glance-vig', `${imVig} min`);
     if (window.renderGlanceDonut) {
         window.renderGlanceDonut('glance-im-donut', imVal, imGoal, '#4ade80');
     }
@@ -93,36 +97,30 @@ window.updateDashboard = function (data, today1d = {}, history = {}) {
     // Sleep
     const sleepSum = (today1d.sleep && today1d.sleep.summary) || {};
     const sleepSecs = sleepSum.total != null ? sleepSum.total : (data.sleep_seconds || 0);
-    const sleepHours = sleepSecs > 0 ? (sleepSecs / 3600).toFixed(1) : '--';
+    let sleepDurationStr = '--';
+    if (sleepSecs > 0) {
+        const h = Math.floor(sleepSecs / 3600);
+        const m = Math.round((sleepSecs % 3600) / 60);
+        sleepDurationStr = `${h}h ${m}m`;
+    }
     const sleepScore = sleepSum.score != null ? sleepSum.score : (data.sleep_score || '--');
-    window.safeSetText('sleep', sleepHours);
+    window.safeSetText('sleep', sleepDurationStr);
     window.safeSetText('sleep-score-val', sleepScore);
-    if (data.sleep_start) window.safeSetText('sleep-start-time', data.sleep_start);
-    if (data.sleep_end) window.safeSetText('sleep-end-time', data.sleep_end);
 
-    // Dynamic Sleep Stage Bars
-    const sleepBarsEl = document.getElementById('glance-sleep-bars');
-    if (sleepBarsEl) {
-        const deep = sleepSum.deep || 0;
-        const light = sleepSum.light || 0;
-        const rem = sleepSum.rem || 0;
-        const awake = sleepSum.awake || 0;
-        const totalStages = deep + light + rem + awake;
+    const bedTime = sleepSum.bedTime || data.sleep_start || '--';
+    const wakeTime = sleepSum.wakeTime || data.sleep_end || '--';
+    window.safeSetText('sleep-start-time', bedTime);
+    window.safeSetText('sleep-end-time', wakeTime);
 
-        if (totalStages > 0) {
-            const deepPct = Math.max(2, Math.round((deep / totalStages) * 100));
-            const lightPct = Math.max(2, Math.round((light / totalStages) * 100));
-            const remPct = Math.max(2, Math.round((rem / totalStages) * 100));
-            const awakePct = Math.max(1, Math.round((awake / totalStages) * 100));
-            sleepBarsEl.innerHTML = `
-                <div class="sleep-stage-bar stage-deep" style="flex: ${deepPct};" title="Deep: ${(deep / 3600).toFixed(1)} hrs"></div>
-                <div class="sleep-stage-bar stage-light" style="flex: ${lightPct};" title="Light: ${(light / 3600).toFixed(1)} hrs"></div>
-                <div class="sleep-stage-bar stage-rem" style="flex: ${remPct};" title="REM: ${(rem / 3600).toFixed(1)} hrs"></div>
-                <div class="sleep-stage-bar stage-awake" style="flex: ${awakePct};" title="Awake: ${(awake / 60).toFixed(0)} min"></div>
-            `;
-        } else {
-            sleepBarsEl.innerHTML = `<div class="sleep-stage-bar" style="flex: 1; background: rgba(255,255,255,0.06); border-radius: 4px;"></div>`;
-        }
+    if (window.renderGlanceSleepTimeline) {
+        window.renderGlanceSleepTimeline(sleepSum.sleepLevels ? sleepSum : {
+            deep: sleepSum.deep,
+            light: sleepSum.light,
+            rem: sleepSum.rem,
+            awake: sleepSum.awake,
+            total: sleepSecs,
+            sleepLevels: data.sleep_levels || sleepSum.sleepLevels
+        });
     }
 
     // Stress
