@@ -37,23 +37,24 @@ window.destroyChartIfExists = function (canvasIdOrEl) {
     }
 };
 
-window.getCleanCanvas = window.getCleanCanvas || function (canvasIdOrEl) {
+window.getCleanCanvas = function (canvasIdOrEl) {
     if (!canvasIdOrEl) return null;
-    const oldCanvas = typeof canvasIdOrEl === 'string' ? document.getElementById(canvasIdOrEl) : canvasIdOrEl;
-    if (!oldCanvas) return null;
-    const canvasId = oldCanvas.id;
-    window.destroyChartIfExists(oldCanvas);
-    const newCanvas = document.createElement('canvas');
-    if (canvasId) newCanvas.id = canvasId;
-    if (oldCanvas.className) newCanvas.className = oldCanvas.className;
-    newCanvas.style.display = 'block';
-    newCanvas.style.width = '100%';
-    newCanvas.style.height = '100%';
-    const parent = oldCanvas.parentNode;
-    if (parent) {
-        parent.replaceChild(newCanvas, oldCanvas);
+    const canvas = typeof canvasIdOrEl === 'string' ? document.getElementById(canvasIdOrEl) : canvasIdOrEl;
+    if (!canvas) return null;
+
+    // 1. Destroy all chart instances attached to this canvas
+    window.destroyChartIfExists(canvas);
+
+    // 2. Keep the existing canvas element in the DOM to preserve layout geometry, dimensions, and observers
+    canvas.style.display = 'block';
+
+    // 3. Reset 2D buffer
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.beginPath();
     }
-    return newCanvas;
+    return canvas;
 };
 
 // Client-side cache for chart data
@@ -65,7 +66,9 @@ const chartDataCache = {
     weight: {},
     hydration: {},
     hrv: {},
-    calorie: {}
+    intensity_minutes: {},
+    calorie: {},
+    activities: {}
 };
 
 function getCacheKey(range, endDate) {
@@ -73,11 +76,13 @@ function getCacheKey(range, endDate) {
 }
 
 function getCachedData(metric, range, endDate) {
+    if (!chartDataCache[metric]) chartDataCache[metric] = {};
     const key = getCacheKey(range, endDate);
     return chartDataCache[metric][key];
 }
 
 function setCachedData(metric, range, endDate, data) {
+    if (!chartDataCache[metric]) chartDataCache[metric] = {};
     const key = getCacheKey(range, endDate);
     chartDataCache[metric][key] = data;
 }
@@ -558,16 +563,24 @@ window.renderCalorieChart = function (data) {
     const ctx = canvas.getContext('2d');
 
     const filters = getCalorieFilters();
+    const labels = history.map(h => h.date);
+
     if (history.length === 0 || filters.length === 0) {
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
-            data: { labels: [], datasets: [] },
-            options: { responsive: true, maintainAspectRatio: false }
+            data: { labels, datasets: [] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
+                }
+            }
         });
         return;
     }
 
-    const labels = history.map(h => h.date);
     const datasets = [];
     const y1Metrics = filters.filter(f => (CALORIE_METRIC_CONFIG[f] || {}).axis === 'y1');
     const y1RawVals = [];
@@ -579,6 +592,7 @@ window.renderCalorieChart = function (data) {
             let v = h[key];
             if (v == null || v === '') return null;
             const num = Number(v);
+            if (isNaN(num)) return null;
             if (cfg.axis === 'y1') y1RawVals.push(num);
             return num;
         });
@@ -591,13 +605,13 @@ window.renderCalorieChart = function (data) {
             tension: 0.3,
             spanGaps: true,
             pointRadius: history.length <= 31 ? 3 : 0,
-            yAxisID: cfg.axis,
+            yAxisID: cfg.axis || 'y',
             fill: key === 'net_energy' ? 'origin' : false
         });
     });
 
-    const y1Max = y1RawVals.length ? Math.max(...y1RawVals) * 1.1 : 100;
-    const y1Min = y1RawVals.length ? Math.min(...y1RawVals) : 0;
+    const y1Max = (y1RawVals.length && isFinite(Math.max(...y1RawVals))) ? Math.max(...y1RawVals) * 1.1 : 100;
+    const y1Min = (y1RawVals.length && isFinite(Math.min(...y1RawVals))) ? Math.min(...y1RawVals) : 0;
 
     chartInstances[canvasId] = new Chart(ctx, {
         type: 'line',
@@ -644,22 +658,26 @@ window.renderCalorieChart = function (data) {
                     position: 'left',
                     title: { display: true, text: 'kcal', color: '#94a3b8' },
                     grid: {
-                        color: (c) => (c.tick && c.tick.value === 0) ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.05)',
-                        lineWidth: (c) => (c.tick && c.tick.value === 0) ? 2 : 1
+                        color: (c) => (c && c.tick && c.tick.value === 0) ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.05)',
+                        lineWidth: (c) => (c && c.tick && c.tick.value === 0) ? 2 : 1
                     },
                     ticks: { color: '#94a3b8' }
                 },
                 y1: {
                     position: 'right',
                     display: y1Metrics.length > 0,
-                    min: Math.max(0, y1Min - (y1Max - y1Min) * 0.1),
-                    max: y1Max > y1Min ? y1Max : (y1Min + 10),
+                    min: isFinite(y1Min) ? Math.max(0, y1Min - (y1Max - y1Min) * 0.1) : 0,
+                    max: (isFinite(y1Max) && y1Max > y1Min) ? y1Max : ((isFinite(y1Min) ? y1Min : 0) + 10),
                     title: { display: y1Metrics.length > 0, text: y1Metrics.length === 1 ? (CALORIE_METRIC_CONFIG[y1Metrics[0]]?.label || 'Secondary') : 'Secondary Unit', color: '#818cf8' },
                     grid: { drawOnChartArea: false },
                     ticks: { color: '#818cf8' }
                 }
             }
         }
+    });
+
+    requestAnimationFrame(() => {
+        if (chartInstances[canvasId]) chartInstances[canvasId].resize();
     });
 };
 
@@ -1680,6 +1698,12 @@ function renderSleepMultiView(history, summary, range) {
 
     // 3. Render Sleep Trends Chart
     renderSleepTrendChart(history, summary, window.currentSleepTrendView || 'score', range);
+
+    // 4. Ensure charts fit layout dimensions if container was just switched
+    requestAnimationFrame(() => {
+        if (chartInstances['sleepConsistencyChart']) chartInstances['sleepConsistencyChart'].resize();
+        if (chartInstances['sleepTrendChart']) chartInstances['sleepTrendChart'].resize();
+    });
 }
 
 function renderSleepConsistencyChart(history, summary, range) {
@@ -1699,7 +1723,7 @@ function renderSleepConsistencyChart(history, summary, range) {
     });
 
     const floatingData = history.map(d => {
-        if (d.bedHour != null && d.wakeHour != null) {
+        if (d && d.bedHour != null && d.wakeHour != null) {
             return [d.bedHour, d.wakeHour];
         }
         return null;
@@ -1709,21 +1733,21 @@ function renderSleepConsistencyChart(history, summary, range) {
     let maxH = 34.0; // 10 AM default bottom
 
     history.forEach(d => {
-        if (d.bedHour && d.bedHour < minH) minH = Math.floor(d.bedHour);
-        if (d.wakeHour && d.wakeHour > maxH) maxH = Math.ceil(d.wakeHour);
+        if (d && d.bedHour && d.bedHour < minH) minH = Math.floor(d.bedHour);
+        if (d && d.wakeHour && d.wakeHour > maxH) maxH = Math.ceil(d.wakeHour);
     });
 
     const sleepConsistencyLinesPlugin = {
         id: 'sleepConsistencyLines',
         afterDraw(chart) {
-            const { ctx, chartArea: { left, right }, scales: { y } } = chart;
-            if (!y) return;
+            if (!chart || !chart.chartArea || !chart.scales || !chart.scales.y) return;
+            const { ctx, chartArea: { left, right, top, bottom }, scales: { y } } = chart;
             ctx.save();
 
             // Avg Bedtime Solid Line
-            if (summary.avgBedHour != null) {
+            if (summary && summary.avgBedHour != null) {
                 const yBed = y.getPixelForValue(summary.avgBedHour);
-                if (yBed >= chart.chartArea.top && yBed <= chart.chartArea.bottom) {
+                if (yBed >= top && yBed <= bottom) {
                     ctx.strokeStyle = '#cbd5e1';
                     ctx.lineWidth = 2;
                     ctx.setLineDash([]);
@@ -1735,9 +1759,9 @@ function renderSleepConsistencyChart(history, summary, range) {
             }
 
             // Avg Wake Time Dashed Line
-            if (summary.avgWakeHour != null) {
+            if (summary && summary.avgWakeHour != null) {
                 const yWake = y.getPixelForValue(summary.avgWakeHour);
-                if (yWake >= chart.chartArea.top && yWake <= chart.chartArea.bottom) {
+                if (yWake >= top && yWake <= bottom) {
                     ctx.strokeStyle = '#94a3b8';
                     ctx.lineWidth = 2;
                     ctx.setLineDash([4, 4]);

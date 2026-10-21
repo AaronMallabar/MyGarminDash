@@ -524,9 +524,11 @@ h1 {
     position: absolute;
     top: 1.25rem;
     right: 1.25rem;
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
-    color: white;
+    background: rgba(30, 41, 59, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #cbd5e1;
     width: 2.25rem;
     height: 2.25rem;
     border-radius: 50%;
@@ -536,14 +538,16 @@ h1 {
     justify-content: center;
     font-size: 1.35rem;
     line-height: 1;
-    z-index: 100;
+    z-index: 1200;
     transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
 }
 
 .modal-close:hover {
-    background: rgba(239, 68, 68, 0.8);
+    background: rgba(239, 68, 68, 0.9);
+    border-color: rgba(239, 68, 68, 1);
     color: white;
-    transform: scale(1.05);
+    transform: scale(1.08);
 }
 
 .activity-detail-grid {
@@ -2308,8 +2312,9 @@ h1 {
     gap: 1rem;
     margin-bottom: 1.5rem;
     padding-bottom: 1rem;
-    padding-right: 3.5rem; /* Reserve space for top-right modal close button */
+    padding-right: 4.5rem; /* Reserve generous space so modal close button never overlaps */
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    position: relative;
 }
 
 .drilldown-date-nav {

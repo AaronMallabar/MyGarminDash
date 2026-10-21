@@ -205,26 +205,22 @@ window.destroyChartIfExists = function (canvasIdOrEl) {
 
 window.getCleanCanvas = function (canvasIdOrEl) {
     if (!canvasIdOrEl) return null;
-    const oldCanvas = typeof canvasIdOrEl === 'string' ? document.getElementById(canvasIdOrEl) : canvasIdOrEl;
-    if (!oldCanvas) return null;
-    const canvasId = oldCanvas.id;
+    const canvas = typeof canvasIdOrEl === 'string' ? document.getElementById(canvasIdOrEl) : canvasIdOrEl;
+    if (!canvas) return null;
 
     // 1. Destroy all chart instances attached to this canvas
-    window.destroyChartIfExists(oldCanvas);
+    window.destroyChartIfExists(canvas);
 
-    // 2. Replace with a brand-new pristine canvas element to eliminate all residual dimensions, scales, and state
-    const newCanvas = document.createElement('canvas');
-    if (canvasId) newCanvas.id = canvasId;
-    if (oldCanvas.className) newCanvas.className = oldCanvas.className;
-    newCanvas.style.display = 'block';
-    newCanvas.style.width = '100%';
-    newCanvas.style.height = '100%';
+    // 2. Keep the existing canvas element in the DOM to preserve layout geometry, dimensions, and observers
+    canvas.style.display = 'block';
 
-    const parent = oldCanvas.parentNode;
-    if (parent) {
-        parent.replaceChild(newCanvas, oldCanvas);
+    // 3. Reset 2D buffer
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.beginPath();
     }
-    return newCanvas;
+    return canvas;
 };
 
 
