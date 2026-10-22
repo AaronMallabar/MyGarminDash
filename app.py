@@ -1039,10 +1039,14 @@ class GarminSyncManager:
         missing_ranges = []
         current = start_date
         range_start = None
+        loaded_months = {}
         
         while current <= end_date:
             d_str = current.isoformat()
-            month_data = GarminPersistence.load_month(metric, d_str)
+            ym = d_str[:7]
+            if ym not in loaded_months:
+                loaded_months[ym] = GarminPersistence.load_month(metric, d_str)
+            month_data = loaded_months[ym]
             
             is_today = (d_str == today.isoformat())
             is_missing = False
@@ -1113,9 +1117,14 @@ class GarminSyncManager:
         # Collect results
         results = []
         current = start_date
+        if missing_ranges and self.client and allow_live_sync:
+            loaded_months = {}
         while current <= end_date:
             d_str = current.isoformat()
-            month_data = GarminPersistence.load_month(metric, d_str)
+            ym = d_str[:7]
+            if ym not in loaded_months:
+                loaded_months[ym] = GarminPersistence.load_month(metric, d_str)
+            month_data = loaded_months[ym]
             val = month_data.get(d_str)
             if val is not None:
                 if isinstance(val, dict):
@@ -1407,12 +1416,19 @@ def background_polyline_fetcher(client, activity_ids, generation_id, missing_act
             try:
                 mgr._sync_activities_range(cs, ce)
                 chunk_acts = mgr.get_range('activities', cs, ce, allow_live_sync=False)
+                fast_skipped = 0
                 for act in chunk_acts:
                     if isinstance(act, dict):
                         aid = act.get('activityId')
-                        if aid is not None and not poly_cache.has(aid) and aid not in existing_ids:
-                            activity_ids.append(aid)
-                            existing_ids.add(aid)
+                        if aid is not None and not poly_cache.has(aid):
+                            if act.get('hasPolyline') is False:
+                                poly_cache.set(aid, [])
+                                fast_skipped += 1
+                            elif aid not in existing_ids:
+                                activity_ids.append(aid)
+                                existing_ids.add(aid)
+                if fast_skipped:
+                    poly_cache.save()
                 heatmap_cache['timestamp'] = 0
             except Exception as e:
                 logger.warning(f"Historical chunk sync failed for {cs}..{ce}: {e}")
@@ -1447,9 +1463,9 @@ def background_polyline_fetcher(client, activity_ids, generation_id, missing_act
                         except (ValueError, TypeError):
                             continue
                 
-                # Downsample for heatmap (500 pts is plenty of resolution for a map line)
-                if len(compact) > 500:
-                    step = max(1, len(compact) // 500)
+                # Downsample for heatmap (200 pts is plenty of resolution for a global map line)
+                if len(compact) > 200:
+                    step = max(1, len(compact) // 200)
                     compact = compact[::step]
                     
                 poly_fail_counts.pop(aid, None)
@@ -1470,8 +1486,8 @@ def background_polyline_fetcher(client, activity_ids, generation_id, missing_act
         return None
 
     try:
-        # Use 3 workers for faster polyline fetching
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        # Use 6 workers for faster polyline fetching
+        with ThreadPoolExecutor(max_workers=6) as executor:
             # Filter IDs that need fetching
             to_fetch = [aid for aid in activity_ids if aid is not None and not poly_cache.has(aid)]
             
@@ -5451,19 +5467,23 @@ def get_heatmap_data():
                 poly = poly_cache.get(aid)
                 if poly:
                     valid_poly = [
-                        pt for pt in poly
+                        [round(float(pt[0]), 5), round(float(pt[1]), 5)]
+                        for pt in poly
                         if isinstance(pt, (list, tuple)) and len(pt) >= 2 and pt[0] is not None and pt[1] is not None
                     ]
+                    if len(valid_poly) > 160:
+                        step = max(1, len(valid_poly) // 150)
+                        valid_poly = valid_poly[::step]
                     if len(valid_poly) > 1:
                         result_points.append({
                             'id': aid,
                             'type': type_key,
                             'poly': valid_poly
                         })
+            elif act.get('hasPolyline') is False:
+                # Activity summary explicitly says no GPS polyline (e.g. indoor/strength/treadmill)
+                poly_cache.set(aid, [])
             else:
-                # Try to fetch polyline for ANY activity we haven't checked yet.
-                # The polyline fetcher will cache [] for activities with no GPS data,
-                # so they won't be re-fetched on subsequent requests.
                 missing_ids.append(aid)
         
         logger.info(f"Heatmap types: {type_counter}")

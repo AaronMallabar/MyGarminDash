@@ -156,9 +156,13 @@ window.updateGlobalHeatmapSilent = async function () {
             const missing = data.missing_count || 0;
             const routes = data.data || [];
 
-            if (routes.length !== (window.heatmapData || []).length) {
+            const prevLen = (window.heatmapData || []).length;
+            const nowMs = Date.now();
+            // During active syncing, avoid re-rendering 1,000+ routes every 3s; render at most every 9s (and always on completion)
+            if (routes.length !== prevLen && (missing === 0 || !window._lastHeatmapRenderMs || (nowMs - window._lastHeatmapRenderMs >= 9000))) {
                 window.heatmapData = routes;
                 window.renderGlobalHeatmap(false);
+                window._lastHeatmapRenderMs = nowMs;
             }
 
             if (missing > 0) {
@@ -240,7 +244,12 @@ window.renderGlobalHeatmap = function (resetView = true) {
     const showVirtual = document.getElementById('heatmap-virtual')?.checked ?? true;
 
     const boundsArr = [];
-    const renderer = L.canvas({ padding: 0.5 });
+    if (!window.globalCanvasRenderer) {
+        window.globalCanvasRenderer = L.canvas({ padding: 0.5 });
+    }
+    const renderer = window.globalCanvasRenderer;
+    const sharedHiddenIcon = window._sharedHiddenMarkerIcon || (window._sharedHiddenMarkerIcon = L.divIcon({ className: 'hidden-marker', html: '', iconSize: [0, 0] }));
+    const markersBatch = [];
     let routeCount = 0;
 
     window.heatmapData.forEach(item => {
@@ -266,15 +275,13 @@ window.renderGlobalHeatmap = function (resetView = true) {
                 );
                 if (latlngs.length < 2) return;
 
-                const marker = L.marker(latlngs[0], {
-                    icon: L.divIcon({ className: 'hidden-marker', html: '', iconSize: [0, 0] })
-                });
-                window.clusterLayerGroup.addLayer(marker);
+                markersBatch.push(L.marker(latlngs[0], { icon: sharedHiddenIcon }));
 
                 L.polyline(latlngs, {
                     color: color,
                     weight: 3,
                     opacity: 0.6,
+                    smoothFactor: 1.5,
                     renderer: renderer,
                     interactive: false
                 }).addTo(window.globalLayerGroup);
@@ -291,6 +298,10 @@ window.renderGlobalHeatmap = function (resetView = true) {
             }
         }
     });
+
+    if (markersBatch.length > 0) {
+        window.clusterLayerGroup.addLayers(markersBatch);
+    }
 
     if (resetView && boundsArr.length > 0) {
         window.globalHeatmap.fitBounds(L.latLngBounds(boundsArr), { padding: [20, 20] });
