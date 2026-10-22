@@ -6,15 +6,49 @@ window.globalHeatmap = null;
 window.heatmapData = [];
 window.heatmapPollInterval = null;
 window.activityMap = null;
+window.currentMapStyle = localStorage.getItem('garmin_map_style') || 'dark';
+window.globalBaseLayer = null;
+window.activityBaseLayer = null;
 
-function createDarkTileLayer() {
+function createBaseTileLayer(style) {
+    const mode = style || window.currentMapStyle || 'dark';
+    if (mode === 'satellite') {
+        const imagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: '&copy; Esri'
+        });
+        const labels = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            pane: 'overlayPane',
+            opacity: 0.85
+        });
+        return L.layerGroup([imagery, labels]);
+    }
+    if (mode === 'road') {
+        return L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19,
+            subdomains: 'abcd',
+            attribution: '&copy; OpenStreetMap, &copy; CARTO'
+        });
+    }
+    if (mode === 'topo') {
+        return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: '&copy; Esri'
+        });
+    }
+
+    // Default: 'dark'
     const tileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19,
         attribution: '&copy; Esri, OpenStreetMap contributors',
         subdomains: ['server', 'services']
     });
+    const darkLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        opacity: 0.75
+    });
 
-    // Graceful fallback to OpenStreetMap if tile errors occur
     tileLayer.on('tileerror', function (error, tile) {
         if (!tile._fallbackTried) {
             tile._fallbackTried = true;
@@ -25,7 +59,44 @@ function createDarkTileLayer() {
         }
     });
 
-    return tileLayer;
+    return L.layerGroup([tileLayer, darkLabels]);
+}
+
+function syncMapStyleButtons(style) {
+    document.querySelectorAll('[data-map-style]').forEach(btn => {
+        const isActive = btn.getAttribute('data-map-style') === style;
+        btn.style.background = isActive ? 'var(--accent-color)' : 'transparent';
+        btn.style.color = isActive ? '#0f172a' : '#cbd5e1';
+        btn.style.fontWeight = isActive ? '700' : '600';
+    });
+}
+
+window.setMapBaseStyle = function (style) {
+    window.currentMapStyle = style || 'dark';
+    try { localStorage.setItem('garmin_map_style', window.currentMapStyle); } catch (e) {}
+    syncMapStyleButtons(window.currentMapStyle);
+
+    if (window.globalHeatmap) {
+        if (window.globalBaseLayer) {
+            window.globalHeatmap.removeLayer(window.globalBaseLayer);
+        }
+        window.globalBaseLayer = createBaseTileLayer(window.currentMapStyle).addTo(window.globalHeatmap);
+        if (window.globalLayerGroup && window.globalLayerGroup.bringToFront) {
+            window.globalLayerGroup.eachLayer(l => { if (l.bringToFront) l.bringToFront(); });
+        }
+    }
+
+    if (window.activityMap) {
+        if (window.activityBaseLayer) {
+            window.activityMap.removeLayer(window.activityBaseLayer);
+        }
+        window.activityBaseLayer = createBaseTileLayer(window.currentMapStyle).addTo(window.activityMap);
+    }
+}
+
+window.resetGlobalHeatmapView = function () {
+    if (!window.globalHeatmap || !window.heatmapData || window.heatmapData.length === 0) return;
+    window.renderGlobalHeatmap(true);
 }
 
 window.initMap = function () {
@@ -33,13 +104,15 @@ window.initMap = function () {
     const mapEl = document.getElementById('globalHeatmap');
     if (!mapEl) return;
 
+    syncMapStyleButtons(window.currentMapStyle);
+
     window.globalHeatmap = L.map('globalHeatmap', {
         zoomControl: true,
         attributionControl: false,
         preferCanvas: true
     }).setView([0, 0], 2);
 
-    createDarkTileLayer().addTo(window.globalHeatmap);
+    window.globalBaseLayer = createBaseTileLayer(window.currentMapStyle).addTo(window.globalHeatmap);
 
     window.globalLayerGroup = L.layerGroup().addTo(window.globalHeatmap);
 
@@ -338,12 +411,14 @@ window.renderActivityMap = function (polylineData) {
     // Filtered points for display (only valid lat/lng)
     const displayPoints = window.currentActivityPoints.filter(p => p !== null);
 
+    syncMapStyleButtons(window.currentMapStyle);
+
     window.activityMap = L.map('activityMap', {
         zoomControl: false,
         attributionControl: false
     });
 
-    createDarkTileLayer().addTo(window.activityMap);
+    window.activityBaseLayer = createBaseTileLayer(window.currentMapStyle).addTo(window.activityMap);
 
     if (displayPoints.length > 1) {
         const path = L.polyline(displayPoints, {

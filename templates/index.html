@@ -2072,11 +2072,22 @@
 
                 <!-- Map Controls Overlay -->
                 <div
-                    style="position: absolute; top: 1rem; left: 1rem; z-index: 500; display: flex; flex-direction: column; gap: 0.5rem;">
+                    style="position: absolute; top: 0.75rem; left: 3.4rem; z-index: 500; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                     <button onclick="resetGlobalHeatmapView()"
-                        style="background: rgba(30, 41, 59, 0.9); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 0.4rem 0.8rem; border-radius: 0.4rem; font-size: 0.8rem; cursor: pointer; backdrop-filter: blur(4px);">
+                        style="background: rgba(15, 23, 42, 0.88); color: #f8fafc; border: 1px solid rgba(255,255,255,0.2); padding: 0.38rem 0.75rem; border-radius: 0.45rem; font-size: 0.78rem; font-weight: 600; cursor: pointer; backdrop-filter: blur(6px);">
                         Reset View
                     </button>
+                    <div id="global-map-style-group"
+                        style="display: inline-flex; background: rgba(15, 23, 42, 0.88); border: 1px solid rgba(255,255,255,0.2); border-radius: 0.45rem; padding: 0.15rem; gap: 0.15rem; backdrop-filter: blur(6px);">
+                        <button type="button" data-map-style="dark" onclick="setMapBaseStyle('dark')"
+                            style="background: var(--accent-color); color: #0f172a; border: none; padding: 0.25rem 0.55rem; border-radius: 0.3rem; font-size: 0.74rem; font-weight: 700; cursor: pointer;">Dark</button>
+                        <button type="button" data-map-style="road" onclick="setMapBaseStyle('road')"
+                            style="background: transparent; color: #cbd5e1; border: none; padding: 0.25rem 0.55rem; border-radius: 0.3rem; font-size: 0.74rem; font-weight: 600; cursor: pointer;">Road</button>
+                        <button type="button" data-map-style="satellite" onclick="setMapBaseStyle('satellite')"
+                            style="background: transparent; color: #cbd5e1; border: none; padding: 0.25rem 0.55rem; border-radius: 0.3rem; font-size: 0.74rem; font-weight: 600; cursor: pointer;">Satellite</button>
+                        <button type="button" data-map-style="topo" onclick="setMapBaseStyle('topo')"
+                            style="background: transparent; color: #cbd5e1; border: none; padding: 0.25rem 0.55rem; border-radius: 0.3rem; font-size: 0.74rem; font-weight: 600; cursor: pointer;">Topo</button>
+                    </div>
                 </div>
 
                 <div id="heatmap-loading"
@@ -2248,6 +2259,17 @@
 
             <div id="activity-map-container"
                 style="height: 350px; margin-bottom: 2rem; border-radius: 0.75rem; overflow: hidden; display: none; border: 1px solid rgba(255,255,255,0.1); position: relative;">
+                <div id="activity-map-style-group"
+                    style="position: absolute; top: 0.75rem; left: 0.75rem; z-index: 1000; display: inline-flex; background: rgba(15, 23, 42, 0.88); border: 1px solid rgba(255,255,255,0.2); border-radius: 0.45rem; padding: 0.15rem; gap: 0.15rem; backdrop-filter: blur(6px);">
+                    <button type="button" data-map-style="dark" onclick="setMapBaseStyle('dark')"
+                        style="background: var(--accent-color); color: #0f172a; border: none; padding: 0.22rem 0.5rem; border-radius: 0.3rem; font-size: 0.72rem; font-weight: 700; cursor: pointer;">Dark</button>
+                    <button type="button" data-map-style="road" onclick="setMapBaseStyle('road')"
+                        style="background: transparent; color: #cbd5e1; border: none; padding: 0.22rem 0.5rem; border-radius: 0.3rem; font-size: 0.72rem; font-weight: 600; cursor: pointer;">Road</button>
+                    <button type="button" data-map-style="satellite" onclick="setMapBaseStyle('satellite')"
+                        style="background: transparent; color: #cbd5e1; border: none; padding: 0.22rem 0.5rem; border-radius: 0.3rem; font-size: 0.72rem; font-weight: 600; cursor: pointer;">Satellite</button>
+                    <button type="button" data-map-style="topo" onclick="setMapBaseStyle('topo')"
+                        style="background: transparent; color: #cbd5e1; border: none; padding: 0.22rem 0.5rem; border-radius: 0.3rem; font-size: 0.72rem; font-weight: 600; cursor: pointer;">Topo</button>
+                </div>
                 <div class="map-controls" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem;">
                     <button onclick="window.zoomActivityMap(1)" style="width: 30px; height: 30px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(129, 140, 248, 0.3); border-radius: 0.4rem; color: white; cursor: pointer; font-size: 1.2rem;">+</button>
                     <button onclick="window.zoomActivityMap(-1)" style="width: 30px; height: 30px; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(129, 140, 248, 0.3); border-radius: 0.4rem; color: white; cursor: pointer; font-size: 1.2rem;">-</button>
