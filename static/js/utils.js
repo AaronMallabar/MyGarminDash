@@ -175,30 +175,101 @@ window.isDateToday = function (date) {
         d.getFullYear() === today.getFullYear();
 };
 
+window.ensureChartAnimatorSafe = function () {
+    if (!window.Chart) return;
+    if (window.Chart.prototype && !window.Chart.prototype._safeDrawPatched) {
+        const origDraw = window.Chart.prototype.draw;
+        window.Chart.prototype.draw = function (...args) {
+            if (!this.ctx || !this.canvas) return;
+            try {
+                return origDraw.apply(this, args);
+            } catch (err) {
+                console.warn('Chart.draw error caught safely:', err);
+            }
+        };
+        window.Chart.prototype._safeDrawPatched = true;
+    }
+    if (window.Chart.animator && !window.Chart.animator._safePatched) {
+        const anim = window.Chart.animator;
+        const origUpdate = anim._update.bind(anim);
+        anim._update = function (date) {
+            try {
+                if (this._charts) {
+                    this._charts.forEach((anims, chart) => {
+                        if (!chart || !chart.ctx || !chart.canvas) {
+                            this._charts.delete(chart);
+                        }
+                    });
+                }
+                return origUpdate(date);
+            } catch (err) {
+                console.warn('Chart.animator._update error caught safely:', err);
+                this._running = false;
+            }
+        };
+        anim._refresh = function () {
+            if (this._request) return;
+            this._running = true;
+            this._request = window.requestAnimationFrame(() => {
+                try {
+                    this._update();
+                } catch (err) {
+                    console.warn('Chart.animator._refresh error caught safely:', err);
+                    this._running = false;
+                } finally {
+                    this._request = null;
+                    if (this._running) {
+                        this._refresh();
+                    }
+                }
+            });
+        };
+        anim._safePatched = true;
+    }
+};
+window.ensureChartAnimatorSafe();
+
 window.destroyChartIfExists = function (canvasIdOrEl) {
+    window.ensureChartAnimatorSafe();
     if (!canvasIdOrEl) return;
     const canvas = typeof canvasIdOrEl === 'string' ? document.getElementById(canvasIdOrEl) : canvasIdOrEl;
     const id = typeof canvasIdOrEl === 'string' ? canvasIdOrEl : (canvas ? canvas.id : null);
     if (window.Chart && canvas) {
         try {
             const chart = window.Chart.getChart(canvas);
-            if (chart) chart.destroy();
+            if (chart) {
+                if (window.Chart.animator && window.Chart.animator._charts) {
+                    window.Chart.animator._charts.delete(chart);
+                }
+                chart.destroy();
+            }
         } catch (e) {}
         try {
             if (window.Chart.instances) {
                 Object.values(window.Chart.instances).forEach(c => {
-                    if (c && (c.canvas === canvas || (id && c.canvas && c.canvas.id === id))) {
-                        c.destroy();
+                    if (c && (c.canvas === canvas || (id && c.canvas && c.canvas.id === id) || !c.ctx || !c.canvas)) {
+                        if (window.Chart.animator && window.Chart.animator._charts) {
+                            window.Chart.animator._charts.delete(c);
+                        }
+                        if (c.ctx) c.destroy();
                     }
                 });
             }
         } catch (e) {}
     }
-    if (id && window.chartInstances && window.chartInstances[id]) {
-        try {
-            window.chartInstances[id].destroy();
-        } catch (e) {}
-        delete window.chartInstances[id];
+    if (window.chartInstances) {
+        Object.keys(window.chartInstances).forEach(k => {
+            const inst = window.chartInstances[k];
+            if (!inst || inst.canvas === canvas || (id && k === id) || !inst.ctx || !inst.canvas) {
+                try {
+                    if (inst && window.Chart && window.Chart.animator && window.Chart.animator._charts) {
+                        window.Chart.animator._charts.delete(inst);
+                    }
+                    if (inst && inst.ctx) inst.destroy();
+                } catch (e) {}
+                delete window.chartInstances[k];
+            }
+        });
     }
     if (canvas) {
         canvas.style.display = 'block';

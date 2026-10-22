@@ -139,35 +139,35 @@ window.refreshDashboardDataSilently = async function () {
         const isModalActive = metricModal && metricModal.classList.contains('active');
         const isPaneActive = (id) => isModalActive && document.getElementById(id) && document.getElementById(id).style.display !== 'none';
 
-        if (isPaneActive('modal-pane-hr') && window.renderHRVisual) {
-            const hrData = (window.currentHRRange === '1d' ? today1d.hr : hist.hr) || hist.hr || today1d.hr;
+        if (isPaneActive('modal-pane-hr') && (!window.currentHRRange || window.currentHRRange === '1d' || window.currentHRRange === '1w') && window.isDateToday(window.currentHREndDate) && window.renderHRVisual) {
+            const hrData = (window.currentHRRange === '1d' ? today1d.hr : hist.hr);
             if (hrData) window.renderHRVisual(hrData);
         }
-        if (isPaneActive('modal-pane-stress') && window.renderStressVisual) {
-            const stressData = (window.currentStressRange === '1d' ? today1d.stress : hist.stress) || hist.stress || today1d.stress;
+        if (isPaneActive('modal-pane-stress') && (!window.currentStressRange || window.currentStressRange === '1d' || window.currentStressRange === '1w') && window.isDateToday(window.currentStressEndDate) && window.renderStressVisual) {
+            const stressData = (window.currentStressRange === '1d' ? today1d.stress : hist.stress);
             if (stressData) window.renderStressVisual(stressData);
         }
-        if (isPaneActive('modal-pane-sleep') && window.renderSleepVisual) {
-            const sleepData = (window.currentSleepRange === '1d' ? today1d.sleep : hist.sleep) || hist.sleep || today1d.sleep;
+        if (isPaneActive('modal-pane-sleep') && (!window.currentSleepRange || window.currentSleepRange === '1d' || window.currentSleepRange === '1w') && window.isDateToday(window.currentSleepEndDate) && window.renderSleepVisual) {
+            const sleepData = (window.currentSleepRange === '1d' ? today1d.sleep : hist.sleep);
             if (sleepData) window.renderSleepVisual(sleepData);
         }
-        if (isPaneActive('modal-pane-hydration') && window.renderHydrationVisual) {
-            const hydData = (window.currentHydrationRange === '1d' ? today1d.hydration : hist.hydration) || hist.hydration || today1d.hydration;
+        if (isPaneActive('modal-pane-hydration') && (!window.currentHydrationRange || window.currentHydrationRange === '1d' || window.currentHydrationRange === '1w') && window.isDateToday(window.currentHydrationEndDate) && window.renderHydrationVisual) {
+            const hydData = (window.currentHydrationRange === '1d' ? today1d.hydration : hist.hydration);
             if (hydData) window.renderHydrationVisual(hydData);
         }
-        if (isPaneActive('modal-pane-hrv') && window.renderHRVVisual) {
-            const hrvData = (window.currentHRVRange === '1d' ? today1d.hrv : hist.hrv) || hist.hrv || today1d.hrv;
+        if (isPaneActive('modal-pane-hrv') && (!window.currentHRVRange || window.currentHRVRange === '1d' || window.currentHRVRange === '1w') && window.isDateToday(window.currentHRVEndDate) && window.renderHRVVisual) {
+            const hrvData = (window.currentHRVRange === '1d' ? today1d.hrv : hist.hrv);
             if (hrvData) window.renderHRVVisual(hrvData);
         }
-        if (isPaneActive('modal-pane-im') && window.renderIntensityMinutesVisualV2) {
-            const imData = (window.currentIMRange === '1d' ? today1d.intensity_minutes : hist.intensity_minutes) || hist.intensity_minutes || today1d.intensity_minutes;
+        if (isPaneActive('modal-pane-im') && (!window.currentIMRange || window.currentIMRange === '1d' || window.currentIMRange === '1w') && window.isDateToday(window.currentIMEndDate) && window.renderIntensityMinutesVisualV2) {
+            const imData = (window.currentIMRange === '1d' ? today1d.intensity_minutes : hist.intensity_minutes);
             if (imData) window.renderIntensityMinutesVisualV2(imData);
         }
-        if (isPaneActive('modal-pane-steps') && hist.steps && window.renderStepsVisual) {
+        if (isPaneActive('modal-pane-steps') && (!window.currentStepsRange || window.currentStepsRange === '1w') && window.isDateToday(window.currentStepsEndDate) && hist.steps && window.renderStepsVisual) {
             window.renderStepsVisual(hist.steps);
         }
-        if (isPaneActive('modal-pane-weight') && hist.weight && window.renderWeightChart) {
-            window.renderWeightChart(hist.weight, window.currentWeightRange || '1m');
+        if (isPaneActive('modal-pane-weight') && (!window.currentWeightRange || window.currentWeightRange === '1m') && window.isDateToday(window.currentWeightEndDate) && hist.weight && window.renderWeightChart) {
+            window.renderWeightChart(hist.weight, '1m');
         }
 
         // 4. Update AI Insights if present
@@ -268,35 +268,35 @@ window.fetchDashboardData = async function () {
                     const isInitModalActive = initMetricModal && initMetricModal.classList.contains('active');
                     const isInitPaneActive = (id) => isInitModalActive && document.getElementById(id) && document.getElementById(id).style.display !== 'none';
 
-                    if (isInitPaneActive('modal-pane-hr') && window.renderHRVisual) {
-                        const hrData = (window.currentHRRange === '1d' ? today1d.hr : hist.hr) || hist.hr || today1d.hr;
+                    if (isInitPaneActive('modal-pane-hr') && (!window.currentHRRange || window.currentHRRange === '1d' || window.currentHRRange === '1w') && window.isDateToday(window.currentHREndDate) && window.renderHRVisual) {
+                        const hrData = (window.currentHRRange === '1d' ? today1d.hr : hist.hr);
                         if (hrData) window.renderHRVisual(hrData);
                     }
-                    if (isInitPaneActive('modal-pane-stress') && window.renderStressVisual) {
-                        const stressData = (window.currentStressRange === '1d' ? today1d.stress : hist.stress) || hist.stress || today1d.stress;
+                    if (isInitPaneActive('modal-pane-stress') && (!window.currentStressRange || window.currentStressRange === '1d' || window.currentStressRange === '1w') && window.isDateToday(window.currentStressEndDate) && window.renderStressVisual) {
+                        const stressData = (window.currentStressRange === '1d' ? today1d.stress : hist.stress);
                         if (stressData) window.renderStressVisual(stressData);
                     }
-                    if (isInitPaneActive('modal-pane-sleep') && window.renderSleepVisual) {
-                        const sleepData = (window.currentSleepRange === '1d' ? today1d.sleep : hist.sleep) || hist.sleep || today1d.sleep;
+                    if (isInitPaneActive('modal-pane-sleep') && (!window.currentSleepRange || window.currentSleepRange === '1d' || window.currentSleepRange === '1w') && window.isDateToday(window.currentSleepEndDate) && window.renderSleepVisual) {
+                        const sleepData = (window.currentSleepRange === '1d' ? today1d.sleep : hist.sleep);
                         if (sleepData) window.renderSleepVisual(sleepData);
                     }
-                    if (isInitPaneActive('modal-pane-hydration') && window.renderHydrationVisual) {
-                        const hydData = (window.currentHydrationRange === '1d' ? today1d.hydration : hist.hydration) || hist.hydration || today1d.hydration;
+                    if (isInitPaneActive('modal-pane-hydration') && (!window.currentHydrationRange || window.currentHydrationRange === '1d' || window.currentHydrationRange === '1w') && window.isDateToday(window.currentHydrationEndDate) && window.renderHydrationVisual) {
+                        const hydData = (window.currentHydrationRange === '1d' ? today1d.hydration : hist.hydration);
                         if (hydData) window.renderHydrationVisual(hydData);
                     }
-                    if (isInitPaneActive('modal-pane-hrv') && window.renderHRVVisual) {
-                        const hrvData = (window.currentHRVRange === '1d' ? today1d.hrv : hist.hrv) || hist.hrv || today1d.hrv;
+                    if (isInitPaneActive('modal-pane-hrv') && (!window.currentHRVRange || window.currentHRVRange === '1d' || window.currentHRVRange === '1w') && window.isDateToday(window.currentHRVEndDate) && window.renderHRVVisual) {
+                        const hrvData = (window.currentHRVRange === '1d' ? today1d.hrv : hist.hrv);
                         if (hrvData) window.renderHRVVisual(hrvData);
                     }
-                    if (isInitPaneActive('modal-pane-im') && window.renderIntensityMinutesVisualV2) {
-                        const imData = (window.currentIMRange === '1d' ? today1d.intensity_minutes : hist.intensity_minutes) || hist.intensity_minutes || today1d.intensity_minutes;
+                    if (isInitPaneActive('modal-pane-im') && (!window.currentIMRange || window.currentIMRange === '1d' || window.currentIMRange === '1w') && window.isDateToday(window.currentIMEndDate) && window.renderIntensityMinutesVisualV2) {
+                        const imData = (window.currentIMRange === '1d' ? today1d.intensity_minutes : hist.intensity_minutes);
                         if (imData) window.renderIntensityMinutesVisualV2(imData);
                     }
-                    if (isInitPaneActive('modal-pane-steps') && hist.steps && window.renderStepsVisual) {
+                    if (isInitPaneActive('modal-pane-steps') && (!window.currentStepsRange || window.currentStepsRange === '1w') && window.isDateToday(window.currentStepsEndDate) && hist.steps && window.renderStepsVisual) {
                         window.renderStepsVisual(hist.steps);
                     }
-                    if (isInitPaneActive('modal-pane-weight') && hist.weight && window.renderWeightChart) {
-                        window.renderWeightChart(hist.weight, window.currentWeightRange || '1m');
+                    if (isInitPaneActive('modal-pane-weight') && (!window.currentWeightRange || window.currentWeightRange === '1m') && window.isDateToday(window.currentWeightEndDate) && hist.weight && window.renderWeightChart) {
+                        window.renderWeightChart(hist.weight, '1m');
                     }
 
                     if (boot.ai_insights && window.renderAIInsights) {

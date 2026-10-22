@@ -2999,7 +2999,9 @@
         window.addEventListener('resize', () => {
             if (window.chartInstances) {
                 Object.values(window.chartInstances).forEach(chart => {
-                    if (chart && typeof chart.update === 'function') chart.update();
+                    if (chart && chart.ctx && chart.canvas && chart.canvas.offsetParent !== null && typeof chart.resize === 'function') {
+                        try { chart.resize(); } catch (e) {}
+                    }
                 });
             }
         });

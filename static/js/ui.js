@@ -69,10 +69,11 @@ window.openMetricDetail = function (metricKey) {
         else if (metricKey === 'weight' && window.updateWeightRange) window.updateWeightRange(window.currentWeightRange || '1m');
         else if (metricKey === 'hydration' && window.updateHydrationRange) window.updateHydrationRange(window.currentHydrationRange || '1w');
 
-        if (window.chartInstances) {
-            Object.values(window.chartInstances).forEach(chart => {
-                if (chart && typeof chart.resize === 'function') {
-                    chart.resize();
+        if (targetPane) {
+            targetPane.querySelectorAll('canvas').forEach(cv => {
+                const chart = (window.Chart && window.Chart.getChart) ? window.Chart.getChart(cv) : (cv.id && window.chartInstances ? window.chartInstances[cv.id] : null);
+                if (chart && chart.ctx && chart.canvas && typeof chart.resize === 'function') {
+                    try { chart.resize(); } catch (e) {}
                 }
             });
         }

@@ -7,35 +7,7 @@
 window.chartInstances = window.chartInstances || {};
 const chartInstances = window.chartInstances;
 
-window.destroyChartIfExists = function (canvasIdOrEl) {
-    if (!canvasIdOrEl) return;
-    const canvas = typeof canvasIdOrEl === 'string' ? document.getElementById(canvasIdOrEl) : canvasIdOrEl;
-    const id = typeof canvasIdOrEl === 'string' ? canvasIdOrEl : (canvas ? canvas.id : null);
-    if (window.Chart && canvas) {
-        try {
-            const chart = window.Chart.getChart(canvas);
-            if (chart) chart.destroy();
-        } catch (e) {}
-        try {
-            if (window.Chart.instances) {
-                Object.values(window.Chart.instances).forEach(c => {
-                    if (c && (c.canvas === canvas || (id && c.canvas && c.canvas.id === id))) {
-                        c.destroy();
-                    }
-                });
-            }
-        } catch (e) {}
-    }
-    if (id && window.chartInstances && window.chartInstances[id]) {
-        try {
-            window.chartInstances[id].destroy();
-        } catch (e) {}
-        delete window.chartInstances[id];
-    }
-    if (canvas) {
-        canvas.style.display = 'block';
-    }
-};
+if (window.ensureChartAnimatorSafe) window.ensureChartAnimatorSafe();
 
 window.getCleanCanvas = function (canvasIdOrEl) {
     if (!canvasIdOrEl) return null;
