@@ -38,48 +38,54 @@ window.shiftIMDate = function (dir) {
 const goalMetBadgePlugin = {
     id: 'goalMetBadges',
     afterDatasetsDraw(chart) {
-        const ctx = chart.ctx;
-        chart.data.datasets.forEach((dataset, datasetIndex) => {
-            if (!dataset.goalMetIndices || dataset.goalMetIndices.length === 0) return;
-            const meta = chart.getDatasetMeta(datasetIndex);
-            if (meta.hidden) return;
+        try {
+            if (!chart || !chart.ctx || !chart.data || !chart.data.datasets) return;
+            const ctx = chart.ctx;
+            chart.data.datasets.forEach((dataset, datasetIndex) => {
+                if (!dataset.goalMetIndices || dataset.goalMetIndices.length === 0) return;
+                const meta = chart.getDatasetMeta(datasetIndex);
+                if (!meta || meta.hidden || !meta.data) return;
 
-            dataset.goalMetIndices.forEach(idx => {
-                const element = meta.data[idx];
-                if (!element) return;
-                const { x, y } = element;
+                dataset.goalMetIndices.forEach(idx => {
+                    const element = meta.data[idx];
+                    if (!element || typeof element.x !== 'number' || typeof element.y !== 'number' || !isFinite(element.x) || !isFinite(element.y)) return;
+                    const { x, y } = element;
 
-                ctx.save();
-                // Draw white circle with green border
-                ctx.beginPath();
-                ctx.arc(x, y, 9, 0, 2 * Math.PI);
-                ctx.fillStyle = '#ffffff';
-                ctx.fill();
-                ctx.lineWidth = 2.5;
-                ctx.strokeStyle = '#22c55e';
-                ctx.stroke();
+                    ctx.save();
+                    // Draw white circle with green border
+                    ctx.beginPath();
+                    ctx.arc(x, y, 9, 0, 2 * Math.PI);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fill();
+                    ctx.lineWidth = 2.5;
+                    ctx.strokeStyle = '#22c55e';
+                    ctx.stroke();
 
-                // Draw green checkmark inside
-                ctx.beginPath();
-                ctx.moveTo(x - 4, y);
-                ctx.lineTo(x - 1, y + 3.5);
-                ctx.lineTo(x + 4, y - 3.5);
-                ctx.lineWidth = 2;
-                ctx.strokeStyle = '#22c55e';
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                ctx.stroke();
-                ctx.restore();
+                    // Draw green checkmark inside
+                    ctx.beginPath();
+                    ctx.moveTo(x - 4, y);
+                    ctx.lineTo(x - 1, y + 3.5);
+                    ctx.lineTo(x + 4, y - 3.5);
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = '#22c55e';
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.stroke();
+                    ctx.restore();
+                });
             });
-        });
+        } catch (e) {
+            console.warn('goalMetBadgePlugin error:', e);
+        }
     }
 };
 
 window.renderIntensityMinutesVisualV2 = function (data) {
-    const canvasId = 'imHistoryChart';
-    const canvas = window.getCleanCanvas(canvasId);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    try {
+        const canvasId = 'imHistoryChart';
+        const canvas = window.getCleanCanvas(canvasId);
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
 
     const range = data.range || window.currentIMRange || '1w';
     const goal = data.goal || 420;
@@ -502,8 +508,8 @@ window.renderIntensityMinutesVisualV2 = function (data) {
                 scales: {
                     x: {
                         grid: {
-                            color: (ctx) => (ctx.index % 7 === 0 ? 'rgba(255, 255, 255, 0.18)' : 'transparent'),
-                            lineWidth: (ctx) => (ctx.index % 7 === 0 ? 1.5 : 0)
+                            color: (c) => (c && typeof c.index === 'number' && c.index % 7 === 0 ? 'rgba(255, 255, 255, 0.18)' : 'transparent'),
+                            lineWidth: (c) => (c && typeof c.index === 'number' && c.index % 7 === 0 ? 1.5 : 0)
                         },
                         ticks: { color: '#94a3b8', font: { size: 11 } }
                     },
@@ -629,5 +635,8 @@ window.renderIntensityMinutesVisualV2 = function (data) {
                 }
             }
         });
+    }
+    } catch (err) {
+        console.error('Error in renderIntensityMinutesVisualV2:', err);
     }
 };

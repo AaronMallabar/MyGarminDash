@@ -1751,38 +1751,42 @@ function renderSleepConsistencyChart(history, summary, range) {
     const sleepConsistencyLinesPlugin = {
         id: 'sleepConsistencyLines',
         afterDraw(chart) {
-            if (!chart || !chart.chartArea || !chart.scales || !chart.scales.y) return;
-            const { ctx, chartArea: { left, right, top, bottom }, scales: { y } } = chart;
-            ctx.save();
+            try {
+                if (!chart || !chart.chartArea || !chart.scales || !chart.scales.y) return;
+                const { ctx, chartArea: { left, right, top, bottom }, scales: { y } } = chart;
+                ctx.save();
 
-            // Avg Bedtime Solid Line
-            if (summary && summary.avgBedHour != null) {
-                const yBed = y.getPixelForValue(summary.avgBedHour);
-                if (yBed >= top && yBed <= bottom) {
-                    ctx.strokeStyle = '#cbd5e1';
-                    ctx.lineWidth = 2;
-                    ctx.setLineDash([]);
-                    ctx.beginPath();
-                    ctx.moveTo(left, yBed);
-                    ctx.lineTo(right, yBed);
-                    ctx.stroke();
+                // Avg Bedtime Solid Line
+                if (summary && summary.avgBedHour != null) {
+                    const yBed = y.getPixelForValue(summary.avgBedHour);
+                    if (yBed >= top && yBed <= bottom) {
+                        ctx.strokeStyle = '#cbd5e1';
+                        ctx.lineWidth = 2;
+                        ctx.setLineDash([]);
+                        ctx.beginPath();
+                        ctx.moveTo(left, yBed);
+                        ctx.lineTo(right, yBed);
+                        ctx.stroke();
+                    }
                 }
-            }
 
-            // Avg Wake Time Dashed Line
-            if (summary && summary.avgWakeHour != null) {
-                const yWake = y.getPixelForValue(summary.avgWakeHour);
-                if (yWake >= top && yWake <= bottom) {
-                    ctx.strokeStyle = '#94a3b8';
-                    ctx.lineWidth = 2;
-                    ctx.setLineDash([4, 4]);
-                    ctx.beginPath();
-                    ctx.moveTo(left, yWake);
-                    ctx.lineTo(right, yWake);
-                    ctx.stroke();
+                // Avg Wake Time Dashed Line
+                if (summary && summary.avgWakeHour != null) {
+                    const yWake = y.getPixelForValue(summary.avgWakeHour);
+                    if (yWake >= top && yWake <= bottom) {
+                        ctx.strokeStyle = '#94a3b8';
+                        ctx.lineWidth = 2;
+                        ctx.setLineDash([4, 4]);
+                        ctx.beginPath();
+                        ctx.moveTo(left, yWake);
+                        ctx.lineTo(right, yWake);
+                        ctx.stroke();
+                    }
                 }
+                ctx.restore();
+            } catch (e) {
+                console.warn('sleepConsistencyLines error:', e);
             }
-            ctx.restore();
         }
     };
 

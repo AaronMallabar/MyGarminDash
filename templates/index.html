@@ -3022,11 +3022,23 @@
         </div>
     </div>
     <script>
-        // Register PWA Service Worker
+        // Register PWA Service Worker with cache busting
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/static/sw.js')
-                    .then(reg => console.log('ServiceWorker registered with scope:', reg.scope))
+                navigator.serviceWorker.register('/static/sw.js?v={{ app_version }}')
+                    .then(reg => {
+                        console.log('ServiceWorker registered with scope:', reg.scope);
+                        reg.onupdatefound = () => {
+                            const installingWorker = reg.installing;
+                            if (installingWorker) {
+                                installingWorker.onstatechange = () => {
+                                    if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                        installingWorker.postMessage({ type: 'SKIP_WAITING' });
+                                    }
+                                };
+                            }
+                        };
+                    })
                     .catch(err => console.log('ServiceWorker registration failed:', err));
             });
         }
