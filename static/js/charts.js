@@ -2171,10 +2171,11 @@ window.updateHRVRange = async function (range, btn) {
 }
 
 window.renderHRVVisual = function (data) {
-    const canvasId = 'hrvHistoryChart';
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    try {
+        const canvasId = 'hrvHistoryChart';
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
     const statusContainer = document.getElementById('hrv-status-container');
     window.updateMetricDatePill('hrv', window.currentHRVRange, window.currentHRVEndDate);
 
@@ -2261,6 +2262,16 @@ window.renderHRVVisual = function (data) {
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
 
+        const getStatusColor = (s) => {
+            if (!s) return '#22c55e';
+            const str = String(s).toLowerCase();
+            if (str.includes('balanced') && !str.includes('unbalanced')) return '#22c55e';
+            if (str.includes('low') || str.includes('unbalanced')) return '#eab308';
+            if (str.includes('poor')) return '#ef4444';
+            return '#22c55e';
+        };
+        const statusColors = history.map(d => getStatusColor(d.status || d.lastNightStatus || d.last_night_status));
+
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
             data: {
@@ -2344,6 +2355,9 @@ window.renderHRVVisual = function (data) {
                 }
             }
         });
+    }
+    } catch (err) {
+        console.error('Error in renderHRVVisual:', err);
     }
 }
 
