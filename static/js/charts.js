@@ -2099,59 +2099,64 @@ window.renderHydrationVisual = async function (data) {
 }
 
 function renderHydrationContent(data, oz) {
-    const hChart = document.getElementById('hydration-chart');
-    const hDonutContainer = document.getElementById('hydration-donut-container');
-    const hHistoryChart = document.getElementById('hydrationHistoryChart');
-    window.updateMetricDatePill('hydration', window.currentHydrationRange, window.currentHydrationEndDate);
+    try {
+        const canvasId = 'hydrationHistoryChart';
+        const hChart = document.getElementById('hydration-chart');
+        const hDonutContainer = document.getElementById('hydration-donut-container');
+        const hHistoryChart = document.getElementById(canvasId);
+        window.updateMetricDatePill('hydration', window.currentHydrationRange, window.currentHydrationEndDate);
 
-    if (window.currentHydrationRange === '1d') {
-        window.destroyChartIfExists(canvasId);
-        const oldC = document.getElementById(canvasId);
-        if (oldC) oldC.style.display = 'none';
-        if (hDonutContainer) hDonutContainer.style.display = 'flex';
+        if (window.currentHydrationRange === '1d') {
+            window.destroyChartIfExists(canvasId);
+            const oldC = document.getElementById(canvasId);
+            if (oldC) oldC.style.display = 'none';
+            if (hDonutContainer) hDonutContainer.style.display = 'flex';
 
-        const summary = data.summary || data;
-        const intake = summary.intake || 0;
-        const goal = summary.goal || 2839;
-        const p = goal > 0 ? Math.min(100, Math.round((intake / goal) * 100)) : 0;
-        const intakeOz = oz(intake);
-        const goalOz = oz(goal);
-        
-        safeSetText('hydration-val', intakeOz + ' oz');
-        safeSetText('hydration-percent', p + '%');
-        safeSetText('hydration-goal', `Goal: ${goalOz} oz`);
-        safeSetText('hydration-drilldown-intake', `${intakeOz} oz`);
-        safeSetText('hydration-drilldown-goal', `${goalOz} oz`);
-        safeSetText('hydration-drilldown-avg', `${intakeOz} oz`);
-        safeSetText('hydration-drilldown-adherence', `${p}%`);
-        
-        if (hChart) {
-            hChart.style.background = `conic-gradient(${p >= 100 ? '#22c55e' : '#38bdf8'} ${p}%, rgba(255,255,255,0.05) ${p}% 100%)`;
+            const summary = data.summary || data;
+            const intake = summary.intake || 0;
+            const goal = summary.goal || 2839;
+            const p = goal > 0 ? Math.min(100, Math.round((intake / goal) * 100)) : 0;
+            const intakeOz = oz(intake);
+            const goalOz = oz(goal);
+            
+            safeSetText('hydration-val', intakeOz + ' oz');
+            safeSetText('hydration-percent', p + '%');
+            safeSetText('hydration-goal', `Goal: ${goalOz} oz`);
+            safeSetText('hydration-drilldown-intake', `${intakeOz} oz`);
+            safeSetText('hydration-drilldown-goal', `${goalOz} oz`);
+            safeSetText('hydration-drilldown-avg', `${intakeOz} oz`);
+            safeSetText('hydration-drilldown-adherence', `${p}%`);
+            
+            if (hChart) {
+                hChart.style.background = `conic-gradient(${p >= 100 ? '#22c55e' : '#38bdf8'} ${p}%, rgba(255,255,255,0.05) ${p}% 100%)`;
+            }
+        } else {
+            if (hDonutContainer) hDonutContainer.style.display = 'none';
+            const canvas = window.getCleanCanvas(canvasId);
+            if (!canvas) return;
+
+            const history = data.history || [];
+            const validIntake = history.map(d => parseFloat(oz(d.intake || 0))).filter(v => v > 0);
+            const avgOz = validIntake.length > 0 ? Math.round(validIntake.reduce((a, b) => a + b, 0) / validIntake.length) : '--';
+            const latestGoal = history.length > 0 ? oz(history[history.length - 1].goal || 2839) : '96.0';
+
+            const metDays = history.filter(d => (d.intake || 0) >= (d.goal || 2839)).length;
+            const adherencePct = history.length > 0 ? Math.round((metDays / history.length) * 100) : 0;
+
+            safeSetText('hydration-drilldown-intake', validIntake.length > 0 ? `${validIntake[validIntake.length - 1]} oz` : '-- oz');
+            safeSetText('hydration-drilldown-goal', `${latestGoal} oz`);
+            safeSetText('hydration-drilldown-avg', `${avgOz} oz`);
+            safeSetText('hydration-drilldown-adherence', `${adherencePct}%`);
+
+            const ctx = canvas.getContext('2d');
+            chartInstances[canvasId] = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: history.map(d => (d.date || '').split('-').slice(1).join('/')), datasets: [{ data: history.map(d => parseFloat(oz(d.intake || 0))), backgroundColor: '#38bdf8', borderRadius: 4 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
         }
-    } else {
-        if (hDonutContainer) hDonutContainer.style.display = 'none';
-        const canvas = window.getCleanCanvas(canvasId);
-        if (!canvas) return;
-
-        const history = data.history || [];
-        const validIntake = history.map(d => parseFloat(oz(d.intake || 0))).filter(v => v > 0);
-        const avgOz = validIntake.length > 0 ? Math.round(validIntake.reduce((a, b) => a + b, 0) / validIntake.length) : '--';
-        const latestGoal = history.length > 0 ? oz(history[history.length - 1].goal || 2839) : '96.0';
-
-        const metDays = history.filter(d => (d.intake || 0) >= (d.goal || 2839)).length;
-        const adherencePct = history.length > 0 ? Math.round((metDays / history.length) * 100) : 0;
-
-        safeSetText('hydration-drilldown-intake', validIntake.length > 0 ? `${validIntake[validIntake.length - 1]} oz` : '-- oz');
-        safeSetText('hydration-drilldown-goal', `${latestGoal} oz`);
-        safeSetText('hydration-drilldown-avg', `${avgOz} oz`);
-        safeSetText('hydration-drilldown-adherence', `${adherencePct}%`);
-
-        const ctx = canvas.getContext('2d');
-        chartInstances['hydrationHistoryChart'] = new Chart(ctx, {
-            type: 'bar',
-            data: { labels: history.map(d => (d.date || '').split('-').slice(1).join('/')), datasets: [{ data: history.map(d => parseFloat(oz(d.intake || 0))), backgroundColor: '#38bdf8', borderRadius: 4 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-        });
+    } catch (err) {
+        console.error('Error in renderHydrationContent:', err);
     }
 }
 
