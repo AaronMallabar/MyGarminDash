@@ -103,6 +103,10 @@ window.updateGlobalHeatmap = async function () {
     const rangeEl = document.getElementById('heatmap-range');
     const range = rangeEl ? rangeEl.value : 'all';
 
+    window._heatmapStallCount = 0;
+    window._heatmapLastMissing = null;
+    window._heatmapLastLoaded = null;
+
     showHeatmapLoading('Fetching routes...');
 
     try {
@@ -115,6 +119,9 @@ window.updateGlobalHeatmap = async function () {
             const loaded = data.count || 0;
             const total = data.total_activities || 0;
             const missing = data.missing_count || 0;
+
+            window._heatmapLastMissing = missing;
+            window._heatmapLastLoaded = loaded;
 
             if (missing > 0) {
                 showHeatmapLoading(`Syncing ${missing} routes... (${loaded}/${total} loaded)`);
@@ -145,25 +152,43 @@ window.updateGlobalHeatmapSilent = async function () {
             const loaded = data.count || 0;
             const total = data.total_activities || 0;
             const missing = data.missing_count || 0;
+            const routes = data.data || [];
 
-            if (data.data.length > window.heatmapData.length) {
-                window.heatmapData = data.data;
+            if (routes.length !== (window.heatmapData || []).length) {
+                window.heatmapData = routes;
                 window.renderGlobalHeatmap(false);
             }
 
-            // Update status text live during syncing
-            const statusEl = document.getElementById('heatmap-status');
             if (missing > 0) {
-                if (statusEl) statusEl.textContent = `Syncing ${missing} routes... (${loaded}/${total} loaded)`;
-            }
+                if (missing === window._heatmapLastMissing && loaded === window._heatmapLastLoaded) {
+                    window._heatmapStallCount = (window._heatmapStallCount || 0) + 1;
+                } else {
+                    window._heatmapStallCount = 0;
+                    window._heatmapLastMissing = missing;
+                    window._heatmapLastLoaded = loaded;
+                }
 
-            if (missing === 0) {
+                // If syncing stalls for ~18 seconds with zero progress, finish gracefully
+                if (window._heatmapStallCount >= 6) {
+                    if (window.heatmapPollInterval) {
+                        clearInterval(window.heatmapPollInterval);
+                        window.heatmapPollInterval = null;
+                    }
+                    window.heatmapData = routes;
+                    window.renderGlobalHeatmap(false);
+                    hideHeatmapLoading(`${loaded} routes loaded`);
+                    return;
+                }
+
+                const statusEl = document.getElementById('heatmap-status');
+                if (statusEl) statusEl.textContent = `Syncing ${missing} routes... (${loaded}/${total} loaded)`;
+            } else {
                 if (window.heatmapPollInterval) {
                     clearInterval(window.heatmapPollInterval);
                     window.heatmapPollInterval = null;
                 }
                 // Final update with all data
-                window.heatmapData = data.data;
+                window.heatmapData = routes;
                 window.renderGlobalHeatmap(false);
                 hideHeatmapLoading(`${loaded} routes loaded`);
             }
@@ -226,28 +251,40 @@ window.renderGlobalHeatmap = function (resetView = true) {
         else if (category === 'virtual' && showVirtual) include = true;
         else if (category === 'other') include = true; // Always show uncategorized
 
-        if (include && item.poly && item.poly.length > 1) {
-            const latlngs = Array.isArray(item.poly[0]) ? item.poly : item.poly.map(p => [p.lat, p.lon]);
+        if (include && Array.isArray(item.poly) && item.poly.length > 1) {
+            try {
+                const rawLatlngs = Array.isArray(item.poly[0]) ? item.poly : item.poly.map(p => p ? [p.lat, p.lon] : null);
+                const latlngs = rawLatlngs.filter(pt =>
+                    Array.isArray(pt) &&
+                    pt.length >= 2 &&
+                    pt[0] !== null && pt[1] !== null &&
+                    Number.isFinite(Number(pt[0])) &&
+                    Number.isFinite(Number(pt[1]))
+                );
+                if (latlngs.length < 2) return;
 
-            const marker = L.marker(latlngs[0], {
-                icon: L.divIcon({ className: 'hidden-marker', html: '', iconSize: [0, 0] })
-            });
-            window.clusterLayerGroup.addLayer(marker);
+                const marker = L.marker(latlngs[0], {
+                    icon: L.divIcon({ className: 'hidden-marker', html: '', iconSize: [0, 0] })
+                });
+                window.clusterLayerGroup.addLayer(marker);
 
-            L.polyline(latlngs, {
-                color: color,
-                weight: 3,
-                opacity: 0.6,
-                renderer: renderer,
-                interactive: false
-            }).addTo(window.globalLayerGroup);
+                L.polyline(latlngs, {
+                    color: color,
+                    weight: 3,
+                    opacity: 0.6,
+                    renderer: renderer,
+                    interactive: false
+                }).addTo(window.globalLayerGroup);
 
-            routeCount++;
+                routeCount++;
 
-            if (resetView) {
-                boundsArr.push(latlngs[0]);
-                boundsArr.push(latlngs[Math.floor(latlngs.length / 2)]);
-                boundsArr.push(latlngs[latlngs.length - 1]);
+                if (resetView) {
+                    boundsArr.push(latlngs[0]);
+                    boundsArr.push(latlngs[Math.floor(latlngs.length / 2)]);
+                    boundsArr.push(latlngs[latlngs.length - 1]);
+                }
+            } catch (routeErr) {
+                console.warn('Skipping malformed route in heatmap:', item.id, routeErr);
             }
         }
     });

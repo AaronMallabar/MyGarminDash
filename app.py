@@ -489,34 +489,77 @@ polyline_lock = threading.Lock()
 class PolylineCache:
     def __init__(self):
         self.cache = {}
+        self.last_mtime = 0.0
         self.load()
+
+    def _norm_id(self, activity_id):
+        if activity_id is None:
+            return None
+        try:
+            return int(activity_id)
+        except (ValueError, TypeError):
+            return activity_id
 
     def load(self):
         if os.path.exists(CACHE_FILE):
             try:
+                mtime = os.path.getmtime(CACHE_FILE)
                 with open(CACHE_FILE, 'rb') as f:
-                    self.cache = pickle.load(f)
+                    loaded = pickle.load(f)
+                if isinstance(loaded, dict):
+                    self.cache = {self._norm_id(k): v for k, v in loaded.items() if k is not None}
+                else:
+                    self.cache = {}
+                self.last_mtime = mtime
             except Exception as e:
                 logger.error(f"Failed to load cache: {e}")
                 self.cache = {}
 
+    def reload_if_changed(self):
+        if not os.path.exists(CACHE_FILE):
+            return
+        try:
+            mtime = os.path.getmtime(CACHE_FILE)
+            if mtime > self.last_mtime:
+                with polyline_lock:
+                    if mtime > self.last_mtime:
+                        with open(CACHE_FILE, 'rb') as f:
+                            loaded = pickle.load(f)
+                        if isinstance(loaded, dict):
+                            for k, v in loaded.items():
+                                if k is not None:
+                                    self.cache[self._norm_id(k)] = v
+                        self.last_mtime = mtime
+        except Exception as e:
+            logger.debug(f"Could not reload polyline cache: {e}")
+
     def save(self):
         try:
-            with open(CACHE_FILE, 'wb') as f:
-                pickle.dump(self.cache, f, protocol=pickle.HIGHEST_PROTOCOL)
+            with polyline_lock:
+                tmp_file = f"{CACHE_FILE}.tmp.{os.getpid()}"
+                with open(tmp_file, 'wb') as f:
+                    pickle.dump(self.cache, f, protocol=pickle.HIGHEST_PROTOCOL)
+                os.replace(tmp_file, CACHE_FILE)
+                self.last_mtime = os.path.getmtime(CACHE_FILE)
         except Exception as e:
             logger.error(f"Failed to save cache: {e}")
 
     def get(self, activity_id):
+        nid = self._norm_id(activity_id)
+        if nid in self.cache:
+            return self.cache[nid]
         return self.cache.get(activity_id)
 
     def set(self, activity_id, polyline):
+        nid = self._norm_id(activity_id)
+        if nid is None:
+            return
         with polyline_lock:
-            self.cache[activity_id] = polyline
-            # Auto-save every 50 updates or so could be added, but for now explicitly called
-    
+            self.cache[nid] = polyline
+
     def has(self, activity_id):
-        return activity_id in self.cache
+        nid = self._norm_id(activity_id)
+        return (nid in self.cache) or (activity_id in self.cache)
 
 # ==============================================================================
 # PERSISTENT SYNC SYSTEM
@@ -1102,6 +1145,8 @@ def get_sync_manager():
     if not sync_manager:
         client = get_garmin_client()
         sync_manager = GarminSyncManager(client)
+    elif not sync_manager.client:
+        sync_manager.client = get_garmin_client()
     return sync_manager
 
 # AI Memory and State Cache
@@ -1324,44 +1369,79 @@ def trigger_warmup():
 if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
     threading.Thread(target=server_warmup, daemon=True).start()
 
+# Track repeated polyline fetch failures so broken/deleted activities don't block syncing forever
+poly_fail_counts = {}
+
 # Background Worker for polylines
 def background_polyline_fetcher(client, activity_ids, generation_id):
     """Fetch polylines for given IDs in background using parallel threads."""
-    global is_fetching
+    global is_fetching, heatmap_cache
     
+    if not client:
+        client = get_garmin_client()
+    if not client:
+        logger.warning(f"Background fetch gen:{generation_id} aborted: no Garmin client available.")
+        if generation_id == fetch_generation:
+            is_fetching = False
+        return
+
     logger.info(f"Background fetch gen:{generation_id} started for {len(activity_ids)} items using parallel threads.")
     count = 0
     
     # Helper to fetch a single item
     def fetch_item(aid):
         # Quick check inside thread (though outer loop handles most)
-        if generation_id != fetch_generation: return None
-        
-        try:
-            details = client.get_activity_details(aid)
-            poly = (details.get('geoPolylineDTO') or {}).get('polyline', [])
-            if not poly:
-                return (aid, [])
-            
-            # Optimize: Convert to compact [[lat, lon]] format and downsample
-            compact = [[p['lat'], p['lon']] for p in poly if 'lat' in p and 'lon' in p]
-            
-            # Downsample for heatmap (500 pts is plenty of resolution for a map line)
-            if len(compact) > 500:
-                step = len(compact) // 500
-                compact = compact[::step]
-                
-            return (aid, compact)
-        except Exception as e:
-            # Rate limit or net error?
-            logger.warning(f"Error fetching polyline for {aid}: {e}")
+        if generation_id != fetch_generation:
             return None
+        
+        last_err = None
+        for attempt in range(2):
+            try:
+                details = client.get_activity_details(aid)
+                if not details or not isinstance(details, dict):
+                    return (aid, [])
+                poly = (details.get('geoPolylineDTO') or {}).get('polyline') or []
+                if not poly:
+                    return (aid, [])
+                
+                # Optimize: Convert to compact [[lat, lon]] format, filtering out null/invalid coords
+                compact = []
+                for p in poly:
+                    if isinstance(p, dict) and p.get('lat') is not None and p.get('lon') is not None:
+                        try:
+                            lat_v = float(p['lat'])
+                            lon_v = float(p['lon'])
+                            compact.append([lat_v, lon_v])
+                        except (ValueError, TypeError):
+                            continue
+                
+                # Downsample for heatmap (500 pts is plenty of resolution for a map line)
+                if len(compact) > 500:
+                    step = max(1, len(compact) // 500)
+                    compact = compact[::step]
+                    
+                poly_fail_counts.pop(aid, None)
+                return (aid, compact)
+            except Exception as e:
+                last_err = e
+                if attempt == 0:
+                    time.sleep(0.4)
+
+        fail_cnt = poly_fail_counts.get(aid, 0) + 1
+        poly_fail_counts[aid] = fail_cnt
+        err_str = str(last_err)
+        # Mark as empty polyline [] if permanent error (404/403/400) or after 2 failed background passes
+        if fail_cnt >= 2 or any(code in err_str for code in ('404', '403', '400', 'Not Found')):
+            logger.warning(f"Error fetching polyline for {aid} (attempt {fail_cnt}, caching empty route): {last_err}")
+            return (aid, [])
+        logger.warning(f"Transient error fetching polyline for {aid} (attempt {fail_cnt}): {last_err}")
+        return None
 
     try:
         # Use 3 workers for faster polyline fetching
         with ThreadPoolExecutor(max_workers=3) as executor:
             # Filter IDs that need fetching
-            to_fetch = [aid for aid in activity_ids if not poly_cache.has(aid)]
+            to_fetch = [aid for aid in activity_ids if aid is not None and not poly_cache.has(aid)]
             
             # Submit all
             future_to_aid = {executor.submit(fetch_item, aid): aid for aid in to_fetch}
@@ -1381,12 +1461,14 @@ def background_polyline_fetcher(client, activity_ids, generation_id):
                     
                     if count % 20 == 0:
                         poly_cache.save()
+                        heatmap_cache['timestamp'] = 0
                         logger.info(f"Background fetch gen:{generation_id} progress: {count}")
 
     finally:
         if generation_id == fetch_generation:
             is_fetching = False
             poly_cache.save()
+            heatmap_cache['timestamp'] = 0
             logger.info(f"Background fetch gen:{generation_id} completed. Updated {count} activities.")
 
 
@@ -5243,28 +5325,40 @@ def get_heatmap_data():
 
         # 1. Fetch Activity List via Sync Manager (Local Cache Priority)
         activities = mgr.get_range('activities', start_date, end_date)
+        poly_cache.reload_if_changed()
         
         # 2. Identify missing Cached Polylines
         missing_ids = []
         result_points = []
         type_counter = {}  # Debug: count activity types
+        seen_aids = set()
         
         for act in activities:
+            if not isinstance(act, dict):
+                continue
             aid = act.get('activityId')
-            type_key = act.get('activityType', {}).get('typeKey', 'unknown') or 'unknown'
+            if aid is None or aid in seen_aids:
+                continue
+            seen_aids.add(aid)
+            type_key = (act.get('activityType') or {}).get('typeKey', 'unknown') or 'unknown'
             
             # Debug: track type distribution
             type_counter[type_key] = type_counter.get(type_key, 0) + 1
             
             if poly_cache.has(aid):
-                # Retrieve from cache
+                # Retrieve from cache and sanitize coordinates
                 poly = poly_cache.get(aid)
                 if poly:
-                    result_points.append({
-                        'id': aid,
-                        'type': type_key,
-                        'poly': poly
-                    })
+                    valid_poly = [
+                        pt for pt in poly
+                        if isinstance(pt, (list, tuple)) and len(pt) >= 2 and pt[0] is not None and pt[1] is not None
+                    ]
+                    if len(valid_poly) > 1:
+                        result_points.append({
+                            'id': aid,
+                            'type': type_key,
+                            'poly': valid_poly
+                        })
             else:
                 # Try to fetch polyline for ANY activity we haven't checked yet.
                 # The polyline fetcher will cache [] for activities with no GPS data,
