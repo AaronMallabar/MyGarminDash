@@ -166,12 +166,14 @@ window.parseLocalDate = function (dateStr) {
 };
 
 window.isDateToday = function (date) {
-    const d = new Date(date);
+    if (!date) return true;
+    const d = (date instanceof Date) ? date : new Date(date);
+    if (isNaN(d.getTime())) return true;
     const today = new Date();
     return d.getDate() === today.getDate() &&
         d.getMonth() === today.getMonth() &&
         d.getFullYear() === today.getFullYear();
-}
+};
 
 window.destroyChartIfExists = function (canvasIdOrEl) {
     if (!canvasIdOrEl) return;
@@ -200,8 +202,6 @@ window.destroyChartIfExists = function (canvasIdOrEl) {
     }
     if (canvas) {
         canvas.style.display = 'block';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
     }
 };
 
@@ -215,8 +215,6 @@ window.getCleanCanvas = function (canvasIdOrEl) {
 
     // 2. Keep the existing canvas element in the DOM to preserve layout geometry, dimensions, and observers
     canvas.style.display = 'block';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
 
     // 3. Reset 2D buffer
     const ctx = canvas.getContext('2d');

@@ -32,14 +32,14 @@ window.updateIMRange = async function (range, btn) {
         btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
-    if (window.updateMetricDatePill) window.updateMetricDatePill('im', window.currentIMRange, window.currentIMEndDate);
-    const cached = window.getCachedData ? window.getCachedData('im', window.currentIMRange, window.currentIMEndDate) : null;
-    if (cached) {
-        if (window.renderIntensityMinutesVisualV2) window.renderIntensityMinutesVisualV2(cached);
-        return;
+    const targetRange = window.currentIMRange || '1w';
+    const targetEndDate = window.currentIMEndDate || new Date();
+    if (window.updateMetricDatePill) window.updateMetricDatePill('im', targetRange, targetEndDate);
+    const url = `/api/intensity_minutes_history?range=${targetRange}&end_date=${window.getLocalDateStr(targetEndDate)}`;
+    if (window.fetchAndRenderMetric && window.renderIntensityMinutesVisualV2) {
+        await window.fetchAndRenderMetric('im', targetRange, targetEndDate, url, 'imHistoryChart', window.renderIntensityMinutesVisualV2);
     }
-    if (window.fetchIMHistory) await window.fetchIMHistory();
-}
+};
 
 window.shiftIMDate = function (dir) {
     if (window.shiftDate) window.shiftDate('IM', dir);

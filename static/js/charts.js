@@ -34,8 +34,6 @@ window.destroyChartIfExists = function (canvasIdOrEl) {
     }
     if (canvas) {
         canvas.style.display = 'block';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
     }
 };
 
@@ -49,8 +47,6 @@ window.getCleanCanvas = function (canvasIdOrEl) {
 
     // 2. Keep the existing canvas element in the DOM to preserve layout geometry, dimensions, and observers
     canvas.style.display = 'block';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
 
     // 3. Reset 2D buffer
     const ctx = canvas.getContext('2d');
@@ -100,6 +96,78 @@ window.setCachedData = setCachedData;
 window.populateChartCache = function(metric, range, endDate, data) {
     if (chartDataCache[metric]) {
         setCachedData(metric, range, endDate, data);
+    }
+};
+
+window.activeMetricControllers = window.activeMetricControllers || {};
+window.metricRequestSeq = window.metricRequestSeq || {};
+
+window.fetchAndRenderMetric = async function(metric, range, endDate, endpointUrl, canvasId, renderFn) {
+    window.metricRequestSeq[metric] = (window.metricRequestSeq[metric] || 0) + 1;
+    const seq = window.metricRequestSeq[metric];
+
+    if (window.activeMetricControllers[metric]) {
+        try {
+            window.activeMetricControllers[metric].abort();
+        } catch (e) {}
+    }
+    const controller = new AbortController();
+    window.activeMetricControllers[metric] = controller;
+
+    const targetRange = range;
+    const targetEndDate = endDate || new Date();
+
+    const cached = window.getCachedData ? window.getCachedData(metric, targetRange, targetEndDate) : null;
+    if (cached) {
+        window.hideChartLoading && window.hideChartLoading(canvasId);
+        try {
+            renderFn(cached, targetRange);
+        } catch (err) {
+            console.error('Error rendering cached ' + metric + ':', err);
+        }
+        return;
+    }
+
+    if (targetRange === '1y' && window.isDateToday(targetEndDate) && window.preloadedData && window.preloadedData[metric]) {
+        const preData = window.preloadedData[metric];
+        if (window.setCachedData) window.setCachedData(metric, targetRange, targetEndDate, preData);
+        window.hideChartLoading && window.hideChartLoading(canvasId);
+        try {
+            renderFn(preData, targetRange);
+        } catch (err) {
+            console.error('Error rendering preloaded ' + metric + ':', err);
+        }
+        return;
+    }
+
+    window.showChartLoading && window.showChartLoading(canvasId);
+
+    try {
+        const res = await fetch(endpointUrl, { signal: controller.signal });
+        if (res.ok) {
+            const data = await res.json();
+            if (seq !== window.metricRequestSeq[metric]) {
+                return;
+            }
+            if (data && !data.error) {
+                if (window.setCachedData) window.setCachedData(metric, targetRange, targetEndDate, data);
+                try {
+                    renderFn(data, targetRange);
+                } catch (err) {
+                    console.error('Error rendering fetched ' + metric + ':', err);
+                }
+            }
+        }
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            return;
+        }
+        console.error(metric + ' fetch error:', err);
+    } finally {
+        if (seq === window.metricRequestSeq[metric]) {
+            window.hideChartLoading && window.hideChartLoading(canvasId);
+            delete window.activeMetricControllers[metric];
+        }
     }
 };
 
@@ -172,32 +240,12 @@ window.updateWeightRange = async function (range, btn) {
         btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
-    window.updateMetricDatePill('weight', window.currentWeightRange, window.currentWeightEndDate);
-    try {
-        const cached = getCachedData('weight', window.currentWeightRange, window.currentWeightEndDate);
-        if (cached) {
-            renderWeightChart(cached, window.currentWeightRange);
-            return;
-        }
-
-        if (window.currentWeightRange === '1y' && isDateToday(window.currentWeightEndDate) && window.preloadedData['weight']) {
-            setCachedData('weight', window.currentWeightRange, window.currentWeightEndDate, window.preloadedData['weight']);
-            renderWeightChart(window.preloadedData['weight'], window.currentWeightRange);
-            return;
-        }
-
-        window.showChartLoading && window.showChartLoading('weightHistoryChart');
-        const res = await fetch(`/api/weight_history?range=${window.currentWeightRange}&end_date=${getLocalDateStr(window.currentWeightEndDate)}`);
-        if (res.ok) {
-            const data = await res.json();
-            if (!data.error) {
-                setCachedData('weight', window.currentWeightRange, window.currentWeightEndDate, data);
-                renderWeightChart(data, window.currentWeightRange);
-            }
-        }
-    } catch (err) { console.error('Weight history error:', err); }
-    finally { window.hideChartLoading && window.hideChartLoading('weightHistoryChart'); }
-}
+    const targetRange = window.currentWeightRange || '1m';
+    const targetEndDate = window.currentWeightEndDate || new Date();
+    window.updateMetricDatePill('weight', targetRange, targetEndDate);
+    const url = `/api/weight_history?range=${targetRange}&end_date=${getLocalDateStr(targetEndDate)}`;
+    await window.fetchAndRenderMetric('weight', targetRange, targetEndDate, url, 'weightHistoryChart', renderWeightChart);
+};
 
 window.renderWeightChart = function (data, range) {
     const canvasId = 'weightHistoryChart';
@@ -706,24 +754,12 @@ window.updateStepsRange = async function (range, btn) {
         btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
-    window.updateMetricDatePill('steps', window.currentStepsRange, window.currentStepsEndDate);
-    try {
-        const cached = getCachedData('steps', window.currentStepsRange, window.currentStepsEndDate);
-        if (cached) { renderStepsVisual(cached); return; }
-        if (window.currentStepsRange === '1y' && isDateToday(window.currentStepsEndDate) && window.preloadedData['steps']) {
-            setCachedData('steps', window.currentStepsRange, window.currentStepsEndDate, window.preloadedData['steps']);
-            renderStepsVisual(window.preloadedData['steps']);
-            return;
-        }
-        window.showChartLoading && window.showChartLoading('stepsHistoryChart');
-        const res = await fetch(`/api/steps_history?range=${window.currentStepsRange}&end_date=${getLocalDateStr(window.currentStepsEndDate)}`);
-        if (res.ok) {
-            const data = await res.json();
-            if (!data.error) { setCachedData('steps', window.currentStepsRange, window.currentStepsEndDate, data); renderStepsVisual(data); }
-        }
-    } catch (err) { console.error('Steps history error:', err); }
-    finally { window.hideChartLoading && window.hideChartLoading('stepsHistoryChart'); }
-}
+    const targetRange = window.currentStepsRange || '1w';
+    const targetEndDate = window.currentStepsEndDate || new Date();
+    window.updateMetricDatePill('steps', targetRange, targetEndDate);
+    const url = `/api/steps_history?range=${targetRange}&end_date=${getLocalDateStr(targetEndDate)}`;
+    await window.fetchAndRenderMetric('steps', targetRange, targetEndDate, url, 'stepsHistoryChart', renderStepsVisual);
+};
 
 window.renderStepsVisual = function (data) {
     const canvasId = 'stepsHistoryChart';
@@ -781,175 +817,169 @@ window.updateHRRange = async function (range, btn) {
         btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
-    window.updateMetricDatePill('hr', window.currentHRRange, window.currentHREndDate);
-    try {
-        const cached = getCachedData('hr', window.currentHRRange, window.currentHREndDate);
-        if (cached) { renderHRVisual(cached); return; }
-        if (window.currentHRRange === '1y' && isDateToday(window.currentHREndDate) && window.preloadedData['hr']) {
-            setCachedData('hr', window.currentHRRange, window.currentHREndDate, window.preloadedData['hr']);
-            renderHRVisual(window.preloadedData['hr']);
-            return;
-        }
-        window.showChartLoading && window.showChartLoading('hrHistoryChart');
-        const res = await fetch(`/api/hr_history?range=${window.currentHRRange}&end_date=${getLocalDateStr(window.currentHREndDate)}`);
-        if (res.ok) {
-            const data = await res.json();
-            if (!data.error) { setCachedData('hr', window.currentHRRange, window.currentHREndDate, data); renderHRVisual(data); }
-        }
-    } catch (err) { console.error('HR history error:', err); }
-    finally { window.hideChartLoading && window.hideChartLoading('hrHistoryChart'); }
-}
+    const targetRange = window.currentHRRange || '1w';
+    const targetEndDate = window.currentHREndDate || new Date();
+    window.updateMetricDatePill('hr', targetRange, targetEndDate);
+    const url = `/api/hr_history?range=${targetRange}&end_date=${getLocalDateStr(targetEndDate)}`;
+    await window.fetchAndRenderMetric('hr', targetRange, targetEndDate, url, 'hrHistoryChart', renderHRVisual);
+};
 
 window.renderHRVisual = function (data) {
-    const canvasId = 'hrHistoryChart';
-    const canvas = window.getCleanCanvas(canvasId);
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    try {
+        const canvasId = 'hrHistoryChart';
+        const canvas = window.getCleanCanvas(canvasId);
+        if (!canvas) return;
 
-    const range = data.range || window.currentHRRange || '1d';
-    window.updateMetricDatePill('hr', range, window.currentHREndDate);
+        const range = data.range || window.currentHRRange || '1d';
+        window.updateMetricDatePill('hr', range, window.currentHREndDate);
 
-    if (range === '1d') {
-        const summary = data.summary || {};
-        const dailyMax = parseInt(summary.max) || 0;
-        const dailyRhr = parseInt(summary.rhr) || 0;
-        const dailyMin = parseInt(summary.min) || 0;
-        const zones = data.zones || [95, 114, 133, 152, 171];
-        safeSetText('hr-max-val', `Max: ${dailyMax || '--'}`);
-        safeSetText('hr-drilldown-avg-label', 'Resting HR');
-        safeSetText('hr-drilldown-current', `${dailyRhr || '--'} bpm`);
-        safeSetText('hr-drilldown-7d', `${dailyRhr || '--'} bpm`);
-        safeSetText('hr-drilldown-max', `${dailyMax || '--'} bpm`);
-        safeSetText('hr-drilldown-min', `${dailyMin || '--'} bpm`);
+        if (range === '1d') {
+            const summary = data.summary || {};
+            const dailyMax = parseInt(summary.max) || 0;
+            const dailyRhr = parseInt(summary.rhr) || 0;
+            const dailyMin = parseInt(summary.min) || 0;
+            const zones = data.zones || [95, 114, 133, 152, 171];
+            safeSetText('hr-max-val', 'Max: ' + (dailyMax || '--'));
+            safeSetText('hr-drilldown-avg-label', 'Resting HR');
+            safeSetText('hr-drilldown-current', (dailyRhr || '--') + ' bpm');
+            safeSetText('hr-drilldown-7d', (dailyRhr || '--') + ' bpm');
+            safeSetText('hr-drilldown-max', (dailyMax || '--') + ' bpm');
+            safeSetText('hr-drilldown-min', (dailyMin || '--') + ' bpm');
 
-        const rawSamples = data.samples || [];
-        const points = rawSamples
-            .filter(s => Array.isArray(s) && s[0] != null && s[1] != null)
-            .map(s => ({ x: s[0], y: s[1] }));
-        const getZoneColor = (hr) => {
-            if (hr == null) return '#38bdf8';
-            if (hr >= zones[4]) return '#a855f7';
-            if (hr >= zones[3]) return '#ef4444';
-            if (hr >= zones[2]) return '#f97316';
-            if (hr >= zones[1]) return '#22c55e';
-            if (hr >= zones[0]) return '#38bdf8';
-            return '#94a3b8';
-        };
-        const minY = points.length > 0 ? Math.max(30, Math.min(...points.map(p => p.y)) - 5) : 40;
-        const maxY = points.length > 0 ? Math.max(dailyMax || 120, Math.max(...points.map(p => p.y)) + 5) : 120;
-        chartInstances[canvasId] = new Chart(ctx, {
-            type: 'line',
-            data: {
-                datasets: [{
-                    label: 'HR',
-                    data: points,
-                    borderColor: '#38bdf8',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    spanGaps: true,
-                    segment: {
-                        borderColor: ctx => getZoneColor(ctx.p1?.parsed?.y ?? ctx.p0?.parsed?.y)
+            const rawSamples = data.samples || [];
+            const points = rawSamples
+                .filter(s => Array.isArray(s) && s[0] != null && s[1] != null)
+                .map(s => ({ x: s[0], y: s[1] }));
+            const getZoneColor = (hr) => {
+                if (hr == null) return '#38bdf8';
+                if (hr >= zones[4]) return '#a855f7';
+                if (hr >= zones[3]) return '#ef4444';
+                if (hr >= zones[2]) return '#f97316';
+                if (hr >= zones[1]) return '#22c55e';
+                if (hr >= zones[0]) return '#38bdf8';
+                return '#94a3b8';
+            };
+            const minY = points.length > 0 ? Math.max(30, Math.min(...points.map(p => p.y)) - 5) : 40;
+            const maxY = points.length > 0 ? Math.max(dailyMax || 120, Math.max(...points.map(p => p.y)) + 5) : 120;
+            chartInstances[canvasId] = new Chart(canvas, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'HR',
+                        data: points,
+                        borderColor: '#38bdf8',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        spanGaps: true,
+                        segment: {
+                            borderColor: ctx => getZoneColor(ctx.p1?.parsed?.y ?? ctx.p0?.parsed?.y)
+                        },
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: (items) => {
+                                    if (!items.length) return '';
+                                    const d = new Date(items[0].parsed.x);
+                                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                },
+                                label: (ctx) => 'Heart Rate: ' + ctx.parsed.y + ' bpm'
+                            }
+                        }
                     },
-                    tension: 0.3
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            title: (items) => {
-                                if (!items.length) return '';
-                                const d = new Date(items[0].parsed.x);
-                                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                            },
-                            label: (ctx) => `Heart Rate: ${ctx.parsed.y} bpm`
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { displayFormats: { hour: 'HH:mm', minute: 'HH:mm' } },
+                            grid: { display: false },
+                            ticks: { color: '#94a3b8', maxTicksLimit: 8 }
+                        },
+                        y: {
+                            min: minY,
+                            max: maxY,
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#94a3b8' }
                         }
                     }
+                }
+            });
+        } else {
+            const history = data.history || [];
+            const validRhr = history.map(d => d.rhr).filter(v => typeof v === 'number' && v > 0);
+            const avgRhr = validRhr.length > 0 ? Math.round(validRhr.reduce((a, b) => a + b, 0) / validRhr.length) : '--';
+            const maxRecorded = Math.max(0, ...history.map(d => d.max || 0));
+            const minRecorded = Math.min(...history.map(d => d.min || 999).filter(v => v < 999));
+            const currentRhr = history.length > 0 ? (history[history.length - 1].rhr || '--') : '--';
+
+            const avgLabel = range === '1m' ? '4-Week Avg RHR' : (range === '1y' ? '1-Year Avg RHR' : '7-Day Avg RHR');
+            safeSetText('hr-drilldown-avg-label', avgLabel);
+            safeSetText('hr-drilldown-current', currentRhr + ' bpm');
+            safeSetText('hr-drilldown-7d', avgRhr + ' bpm');
+            safeSetText('hr-drilldown-max', (maxRecorded > 0 ? maxRecorded : '--') + ' bpm');
+            safeSetText('hr-drilldown-min', (minRecorded < 999 ? minRecorded : '--') + ' bpm');
+
+            const isLong = history.length > 35;
+            const labels = history.map(d => {
+                if (!d.date) return '';
+                const p = d.date.split('-');
+                return p.length >= 3 ? (p[1] + '/' + p[2]) : d.date;
+            });
+            chartInstances[canvasId] = new Chart(canvas, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Resting',
+                            data: history.map(d => (typeof d.rhr === 'number' && d.rhr > 0) ? d.rhr : null),
+                            borderColor: '#38bdf8',
+                            backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                            borderWidth: isLong ? 2 : 3,
+                            pointRadius: isLong ? 0 : 3,
+                            pointHoverRadius: 5,
+                            tension: 0.3,
+                            spanGaps: true,
+                            fill: false
+                        },
+                        {
+                            label: 'Max',
+                            data: history.map(d => (typeof d.max === 'number' && d.max > 0) ? d.max : null),
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            borderWidth: isLong ? 1.5 : 2,
+                            pointRadius: isLong ? 0 : 3,
+                            pointHoverRadius: 5,
+                            tension: 0.3,
+                            spanGaps: true,
+                            fill: false
+                        }
+                    ]
                 },
-                scales: {
-                    x: {
-                        type: 'time',
-                        time: { displayFormats: { hour: 'HH:mm', minute: 'HH:mm' } },
-                        grid: { display: false },
-                        ticks: { color: '#94a3b8', maxTicksLimit: 8 }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true, labels: { color: '#94a3b8' } },
+                        zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
                     },
-                    y: {
-                        min: minY,
-                        max: maxY,
-                        grid: { color: 'rgba(255,255,255,0.05)' },
-                        ticks: { color: '#94a3b8' }
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 12 } },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
                     }
                 }
-            }
-        });
-    } else {
-        const history = data.history || [];
-        const validRhr = history.map(d => d.rhr).filter(v => typeof v === 'number' && v > 0);
-        const avgRhr = validRhr.length > 0 ? Math.round(validRhr.reduce((a, b) => a + b, 0) / validRhr.length) : '--';
-        const maxRecorded = Math.max(0, ...history.map(d => d.max || 0));
-        const minRecorded = Math.min(...history.map(d => d.min || 999).filter(v => v < 999));
-        const currentRhr = history.length > 0 ? (history[history.length - 1].rhr || '--') : '--';
-
-        const avgLabel = range === '1m' ? '4-Week Avg RHR' : (range === '1y' ? '1-Year Avg RHR' : '7-Day Avg RHR');
-        safeSetText('hr-drilldown-avg-label', avgLabel);
-        safeSetText('hr-drilldown-current', `${currentRhr} bpm`);
-        safeSetText('hr-drilldown-7d', `${avgRhr} bpm`);
-        safeSetText('hr-drilldown-max', `${maxRecorded > 0 ? maxRecorded : '--'} bpm`);
-        safeSetText('hr-drilldown-min', `${minRecorded < 999 ? minRecorded : '--'} bpm`);
-
-        const isLong = history.length > 35;
-        const labels = history.map(d => {
-            if (!d.date) return '';
-            const p = d.date.split('-');
-            return p.length >= 3 ? `${p[1]}/${p[2]}` : d.date;
-        });
-        chartInstances[canvasId] = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels,
-                datasets: [
-                    {
-                        label: 'Resting',
-                        data: history.map(d => d.rhr),
-                        borderColor: '#38bdf8',
-                        backgroundColor: 'rgba(56, 189, 248, 0.1)',
-                        borderWidth: isLong ? 2 : 3,
-                        pointRadius: isLong ? 0 : 3,
-                        pointHoverRadius: 5,
-                        tension: 0.3,
-                        fill: false
-                    },
-                    {
-                        label: 'Max',
-                        data: history.map(d => d.max),
-                        borderColor: '#ef4444',
-                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                        borderWidth: isLong ? 1.5 : 2,
-                        pointRadius: isLong ? 0 : 3,
-                        pointHoverRadius: 5,
-                        tension: 0.3,
-                        fill: false
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: true, labels: { color: '#94a3b8' } },
-                    zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
-                },
-                scales: {
-                    x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 12 } },
-                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } }
-                }
-            }
-        });
+            });
+        }
+    } catch (err) {
+        console.error('Error in renderHRVisual:', err);
     }
-}
+};
+
 
 window.updateStressRange = async function (range, btn) {
     if (range) window.currentStressRange = range;
@@ -957,24 +987,12 @@ window.updateStressRange = async function (range, btn) {
         btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
-    window.updateMetricDatePill('stress', window.currentStressRange, window.currentStressEndDate);
-    try {
-        const cached = getCachedData('stress', window.currentStressRange, window.currentStressEndDate);
-        if (cached) { renderStressVisual(cached); return; }
-        if (window.currentStressRange === '1y' && isDateToday(window.currentStressEndDate) && window.preloadedData['stress']) {
-            setCachedData('stress', window.currentStressRange, window.currentStressEndDate, window.preloadedData['stress']);
-            renderStressVisual(window.preloadedData['stress']);
-            return;
-        }
-        window.showChartLoading && window.showChartLoading('stressHistoryChart');
-        const res = await fetch(`/api/stress_history?range=${window.currentStressRange}&end_date=${getLocalDateStr(window.currentStressEndDate)}`);
-        if (res.ok) {
-            const data = await res.json();
-            if (!data.error) { setCachedData('stress', window.currentStressRange, window.currentStressEndDate, data); renderStressVisual(data); }
-        }
-    } catch (err) { console.error('Stress history error:', err); }
-    finally { window.hideChartLoading && window.hideChartLoading('stressHistoryChart'); }
-}
+    const targetRange = window.currentStressRange || '1w';
+    const targetEndDate = window.currentStressEndDate || new Date();
+    window.updateMetricDatePill('stress', targetRange, targetEndDate);
+    const url = `/api/stress_history?range=${targetRange}&end_date=${getLocalDateStr(targetEndDate)}`;
+    await window.fetchAndRenderMetric('stress', targetRange, targetEndDate, url, 'stressHistoryChart', renderStressVisual);
+};
 
 window.renderStressVisual = function (data) {
     const canvasId = 'stressHistoryChart';
@@ -1261,50 +1279,26 @@ window.updateSleepRange = async function (range, btn) {
         btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
-    window.updateMetricDatePill('sleep', window.currentSleepRange, window.currentSleepEndDate);
+    const targetRange = window.currentSleepRange || '1w';
+    const targetEndDate = window.currentSleepEndDate || new Date();
+    window.updateMetricDatePill('sleep', targetRange, targetEndDate);
 
     const nextBtn = document.getElementById('sleep-next');
     if (nextBtn) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        const checkEnd = new Date(window.currentSleepEndDate || new Date());
+        const checkEnd = new Date(targetEndDate);
         checkEnd.setHours(0, 0, 0, 0);
         const atToday = checkEnd >= today;
         nextBtn.disabled = atToday;
         nextBtn.style.opacity = atToday ? '0.4' : '1';
     }
 
-    try {
-        const cached = getCachedData('sleep', window.currentSleepRange, window.currentSleepEndDate);
-        const is1d = window.currentSleepRange === '1d';
-        const hasValid1d = is1d && cached && cached.summary && Array.isArray(cached.summary.sleepLevels) && cached.summary.sleepLevels.length > 0;
-        const hasValidMulti = !is1d && cached && Array.isArray(cached.history) && cached.history.length > 0;
-
-        if (hasValid1d || hasValidMulti) {
-            cached.range = window.currentSleepRange;
-            window.renderSleepVisual(cached);
-            return;
-        }
-        if (window.currentSleepRange === '1y' && isDateToday(window.currentSleepEndDate) && window.preloadedData['sleep']) {
-            setCachedData('sleep', window.currentSleepRange, window.currentSleepEndDate, window.preloadedData['sleep']);
-            window.renderSleepVisual(window.preloadedData['sleep']);
-            return;
-        }
-        window.showChartLoading && window.showChartLoading('sleepTrendChart');
-        const res = await fetch(`/api/sleep_history?range=${window.currentSleepRange}&end_date=${getLocalDateStr(window.currentSleepEndDate)}`);
-        if (res.ok) {
-            const data = await res.json();
-            if (!data.error) {
-                data.range = window.currentSleepRange;
-                setCachedData('sleep', window.currentSleepRange, window.currentSleepEndDate, data);
-                window.renderSleepVisual(data);
-            }
-        }
-    } catch (err) {
-        console.error('Sleep history error:', err);
-    } finally {
-        window.hideChartLoading && window.hideChartLoading('sleepTrendChart');
-    }
+    const url = `/api/sleep_history?range=${targetRange}&end_date=${getLocalDateStr(targetEndDate)}`;
+    await window.fetchAndRenderMetric('sleep', targetRange, targetEndDate, url, 'modal-pane-sleep', (data) => {
+        data.range = targetRange;
+        renderSleepVisual(data);
+    });
 };
 
 window.renderSleepVisual = function (data) {
@@ -2115,9 +2109,14 @@ window.updateHydrationRange = async function (range, btn) {
         btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
-    window.updateMetricDatePill('hydration', window.currentHydrationRange, window.currentHydrationEndDate);
-    await renderHydrationVisual();
-}
+    const targetRange = window.currentHydrationRange || '1w';
+    const targetEndDate = window.currentHydrationEndDate || new Date();
+    window.updateMetricDatePill('hydration', targetRange, targetEndDate);
+    const url = `/api/hydration_history?range=${targetRange}&end_date=${getLocalDateStr(targetEndDate)}`;
+    await window.fetchAndRenderMetric('hydration', targetRange, targetEndDate, url, 'hydrationHistoryChart', (data) => {
+        renderHydrationContent(data, (ml) => (ml * 0.033814).toFixed(1));
+    });
+};
 
 window.renderHydrationVisual = async function (data) {
     const oz = (ml) => (ml * 0.033814).toFixed(1);
@@ -2210,9 +2209,12 @@ window.updateHRVRange = async function (range, btn) {
         btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
-    window.updateMetricDatePill('hrv', window.currentHRVRange, window.currentHRVEndDate);
-    if (window.fetchHRVHistory) window.fetchHRVHistory();
-}
+    const targetRange = window.currentHRVRange || '1w';
+    const targetEndDate = window.currentHRVEndDate || new Date();
+    window.updateMetricDatePill('hrv', targetRange, targetEndDate);
+    const url = `/api/hrv?range=${targetRange}&end_date=${getLocalDateStr(targetEndDate)}`;
+    await window.fetchAndRenderMetric('hrv', targetRange, targetEndDate, url, 'hrvHistoryChart', renderHRVVisual);
+};
 
 window.renderHRVVisual = function (data) {
     try {
