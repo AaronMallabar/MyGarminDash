@@ -106,6 +106,7 @@ window.updateGlobalHeatmap = async function () {
     window._heatmapStallCount = 0;
     window._heatmapLastMissing = null;
     window._heatmapLastLoaded = null;
+    window._heatmapLastTotal = null;
 
     showHeatmapLoading('Fetching routes...');
 
@@ -122,6 +123,7 @@ window.updateGlobalHeatmap = async function () {
 
             window._heatmapLastMissing = missing;
             window._heatmapLastLoaded = loaded;
+            window._heatmapLastTotal = total;
 
             if (missing > 0) {
                 showHeatmapLoading(`Syncing ${missing} routes... (${loaded}/${total} loaded)`);
@@ -160,16 +162,17 @@ window.updateGlobalHeatmapSilent = async function () {
             }
 
             if (missing > 0) {
-                if (missing === window._heatmapLastMissing && loaded === window._heatmapLastLoaded) {
+                if (missing === window._heatmapLastMissing && loaded === window._heatmapLastLoaded && total === window._heatmapLastTotal) {
                     window._heatmapStallCount = (window._heatmapStallCount || 0) + 1;
                 } else {
                     window._heatmapStallCount = 0;
                     window._heatmapLastMissing = missing;
                     window._heatmapLastLoaded = loaded;
+                    window._heatmapLastTotal = total;
                 }
 
-                // If syncing stalls for ~18 seconds with zero progress, finish gracefully
-                if (window._heatmapStallCount >= 6) {
+                // If syncing stalls for ~45 seconds with zero progress, finish gracefully
+                if (window._heatmapStallCount >= 15) {
                     if (window.heatmapPollInterval) {
                         clearInterval(window.heatmapPollInterval);
                         window.heatmapPollInterval = null;

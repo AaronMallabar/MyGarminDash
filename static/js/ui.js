@@ -176,49 +176,94 @@ window.openSettings = async function () {
 window.refreshCacheRange = async function () {
     const start = document.getElementById('refresh-start').value;
     const end = document.getElementById('refresh-end').value;
+    const scopeEl = document.getElementById('refresh-scope');
+    let scope = scopeEl ? scopeEl.value : 'all';
     const btn = document.getElementById('btn-refresh-cache');
     const progressBar = document.getElementById('refresh-progress');
     const progressBarFill = document.getElementById('refresh-progress-bar');
+    const inlineStatus = document.getElementById('refresh-cache-status');
+
+    const setInlineStatus = (msg, type) => {
+        if (!inlineStatus) return;
+        if (!msg) {
+            inlineStatus.style.display = 'none';
+            inlineStatus.textContent = '';
+            return;
+        }
+        inlineStatus.style.display = 'block';
+        inlineStatus.textContent = msg;
+        inlineStatus.style.color = type === 'error' ? '#ef4444' : (type === 'success' ? '#10b981' : '#38bdf8');
+    };
 
     if (!start || !end) {
+        setInlineStatus('Please select both start and end dates.', 'error');
         window.showSettingsStatus('Please select both start and end dates', 'error');
         return;
     }
 
-    if (new Date(start) > new Date(end)) {
+    const startDt = new Date(start);
+    const endDt = new Date(end);
+    if (startDt > endDt) {
+        setInlineStatus('Start date must be before end date.', 'error');
         window.showSettingsStatus('Start date must be before end date', 'error');
         return;
+    }
+
+    const diffDays = Math.round((endDt - startDt) / 86400000);
+    // Automatically switch to Activities & Routes mode if user selected > 31 days
+    if (diffDays > 31 && scope === 'all') {
+        scope = 'activities';
+        if (scopeEl) scopeEl.value = 'activities';
     }
 
     btn.disabled = true;
     btn.textContent = 'Syncing...';
     progressBar.style.display = 'block';
-    progressBarFill.style.width = '20%';
+    progressBarFill.style.width = '25%';
+    setInlineStatus(
+        scope === 'activities'
+            ? `Fetching activities & routes from ${start} to ${end}...`
+            : `Refreshing all metrics from ${start} to ${end}...`,
+        'info'
+    );
 
     try {
         const res = await fetch('/api/cache/refresh', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ start_date: start, end_date: end })
+            body: JSON.stringify({
+                start_date: start,
+                end_date: end,
+                scope: scope,
+                metrics: scope === 'activities' ? ['activities'] : undefined
+            })
         });
 
-        progressBarFill.style.width = '80%';
         const data = await res.json();
 
         if (res.ok && data.success) {
             progressBarFill.style.width = '100%';
-            window.showSettingsStatus(data.message || 'Cache refreshed successfully!', 'success');
+            const msg = data.message || 'Cache refreshed successfully!';
+            setInlineStatus(msg, 'success');
+            window.showSettingsStatus(msg, 'success');
+            if (window.updateGlobalHeatmap) window.updateGlobalHeatmap();
             setTimeout(() => {
                 progressBar.style.display = 'none';
                 progressBarFill.style.width = '0%';
-                // Reload dashboard data to show new numbers
                 if (window.fetchDashboardData) window.fetchDashboardData();
             }, 2000);
         } else {
-            window.showSettingsStatus(data.error || 'Failed to refresh cache', 'error');
+            progressBar.style.display = 'none';
+            progressBarFill.style.width = '0%';
+            const errMsg = data.error || 'Failed to refresh cache';
+            setInlineStatus(errMsg, 'error');
+            window.showSettingsStatus(errMsg, 'error');
         }
     } catch (err) {
         console.error('Cache refresh failed:', err);
+        progressBar.style.display = 'none';
+        progressBarFill.style.width = '0%';
+        setInlineStatus('Error connecting to server.', 'error');
         window.showSettingsStatus('Error connecting to server', 'error');
     } finally {
         btn.disabled = false;

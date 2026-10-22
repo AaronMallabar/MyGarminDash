@@ -1372,9 +1372,9 @@ if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
 # Track repeated polyline fetch failures so broken/deleted activities don't block syncing forever
 poly_fail_counts = {}
 
-# Background Worker for polylines
-def background_polyline_fetcher(client, activity_ids, generation_id):
-    """Fetch polylines for given IDs in background using parallel threads."""
+# Background Worker for polylines (and optional historical activity range backfill)
+def background_polyline_fetcher(client, activity_ids, generation_id, missing_act_ranges=None):
+    """Backfill any missing historical activity ranges and fetch polylines in background."""
     global is_fetching, heatmap_cache
     
     if not client:
@@ -1384,6 +1384,38 @@ def background_polyline_fetcher(client, activity_ids, generation_id):
         if generation_id == fetch_generation:
             is_fetching = False
         return
+
+    activity_ids = list(activity_ids or [])
+
+    # Step 1: If historical activity months are missing from disk, backfill them in 1-year chunks (newest first)
+    if missing_act_ranges:
+        mgr = get_sync_manager()
+        chunks = []
+        for rs, re in missing_act_ranges:
+            curr_end = re
+            while curr_end >= rs:
+                curr_start = max(rs, curr_end - timedelta(days=364))
+                chunks.append((curr_start, curr_end))
+                curr_end = curr_start - timedelta(days=1)
+
+        logger.info(f"Background fetch gen:{generation_id} backfilling {len(chunks)} historical activity chunks...")
+        existing_ids = set(activity_ids)
+        for cs, ce in chunks:
+            if generation_id != fetch_generation:
+                logger.info("Historical activity backfill aborted by newer generation.")
+                return
+            try:
+                mgr._sync_activities_range(cs, ce)
+                chunk_acts = mgr.get_range('activities', cs, ce, allow_live_sync=False)
+                for act in chunk_acts:
+                    if isinstance(act, dict):
+                        aid = act.get('activityId')
+                        if aid is not None and not poly_cache.has(aid) and aid not in existing_ids:
+                            activity_ids.append(aid)
+                            existing_ids.add(aid)
+                heatmap_cache['timestamp'] = 0
+            except Exception as e:
+                logger.warning(f"Historical chunk sync failed for {cs}..{ce}: {e}")
 
     logger.info(f"Background fetch gen:{generation_id} started for {len(activity_ids)} items using parallel threads.")
     count = 0
@@ -1604,8 +1636,11 @@ def refresh_cache():
             
         start_str = data.get('start_date')
         end_str = data.get('end_date')
-        # Default metrics to refresh
-        metrics = data.get('metrics', ['stats', 'activities', 'steps', 'sleep', 'weight', 'hr', 'hrv', 'stress', 'intensity_minutes', 'hydration'])
+        scope = data.get('scope', 'all')
+        if scope == 'activities':
+            metrics = ['activities']
+        else:
+            metrics = data.get('metrics') or ['stats', 'activities', 'steps', 'sleep', 'weight', 'hr', 'hrv', 'stress', 'intensity_minutes', 'hydration']
         
         if not start_str or not end_str:
             return jsonify({'error': 'Missing start_date or end_date'}), 400
@@ -1616,17 +1651,60 @@ def refresh_cache():
         if start_date > end_date:
             return jsonify({'error': 'start_date must be before end_date'}), 400
             
-        # Limit range to avoid timing out or hitting rate limits too hard
-        if (end_date - start_date).days > 31:
-             return jsonify({'error': 'Range too large. Max 31 days at once.'}), 400
+        is_activities_only = (metrics == ['activities'])
+        # Limit range for per-day health metrics to avoid timing out or hitting rate limits
+        if not is_activities_only and (end_date - start_date).days > 31:
+            return jsonify({'error': 'All Daily Metrics is limited to 31 days at once. Select "Activities & Heatmap Routes" to refresh longer historical ranges.'}), 400
 
         mgr = get_sync_manager()
+        global activity_heatmap_cache, heatmap_cache, ai_insights_cache, fetch_generation, active_fetch_range, is_fetching
+
+        if is_activities_only:
+            # Batch-sync activities in 1-year chunks so multi-year ranges never time out
+            curr_start = start_date
+            while curr_start <= end_date:
+                curr_end = min(end_date, curr_start + timedelta(days=364))
+                logger.info(f"Manual activities refresh: {curr_start} to {curr_end}")
+                mgr._sync_activities_range(curr_start, curr_end)
+                curr_start = curr_end + timedelta(days=1)
+
+            acts = mgr.get_range('activities', start_date, end_date, allow_live_sync=False)
+            poly_cache.reload_if_changed()
+            missing_poly = []
+            seen = set()
+            for act in acts:
+                if isinstance(act, dict):
+                    aid = act.get('activityId')
+                    if aid is not None and aid not in seen:
+                        seen.add(aid)
+                        if not poly_cache.has(aid):
+                            missing_poly.append(aid)
+
+            activity_heatmap_cache = {'data': None, 'timestamp': 0}
+            heatmap_cache = {'data': None, 'timestamp': 0, 'range': None}
+            ai_insights_cache = {'data': None, 'timestamp': 0}
+
+            if missing_poly and mgr.client:
+                with fetch_lock:
+                    fetch_generation += 1
+                    active_fetch_range = 'manual_refresh'
+                    is_fetching = True
+                    current_gen = fetch_generation
+                    t = threading.Thread(target=background_polyline_fetcher, args=(mgr.client, missing_poly, current_gen))
+                    t.daemon = True
+                    t.start()
+
+            route_msg = f" Syncing {len(missing_poly)} GPS routes in background." if missing_poly else " All GPS routes cached."
+            return jsonify({
+                'success': True,
+                'message': f'Synced {len(seen)} activities from {start_str} to {end_str}.{route_msg}'
+            })
+
         for metric in metrics:
             logger.info(f"Manual refresh: {metric} from {start_date} to {end_date}")
             mgr.get_range(metric, start_date, end_date, force_refresh=True)
             
         # Invalidate memory-based summaries that might be affected
-        global activity_heatmap_cache, heatmap_cache, ai_insights_cache
         activity_heatmap_cache = {'data': None, 'timestamp': 0}
         heatmap_cache = {'data': None, 'timestamp': 0, 'range': None}
         ai_insights_cache = {'data': None, 'timestamp': 0}
@@ -5315,7 +5393,7 @@ def get_heatmap_data():
             start_date = date(today.year - 1, 1, 1)
             end_date = date(today.year - 1, 12, 31)
         elif range_val == 'all':
-            start_date = date(2010, 1, 1)
+            start_date = date(2016, 1, 1)
         else:
             start_date = today - timedelta(days=90)
             
@@ -5326,6 +5404,29 @@ def get_heatmap_data():
         # 1. Fetch Activity List via Sync Manager (Local Cache Priority)
         activities = mgr.get_range('activities', start_date, end_date)
         poly_cache.reload_if_changed()
+
+        # Check if any historical dates in [start_date, end_date] have never been synced to disk
+        missing_act_ranges = []
+        curr_d = start_date
+        miss_start = None
+        loaded_months = {}
+        while curr_d <= end_date:
+            d_str = curr_d.isoformat()
+            ym = d_str[:7]
+            if ym not in loaded_months:
+                loaded_months[ym] = GarminPersistence.load_month('activities', d_str)
+            if d_str not in loaded_months[ym]:
+                if miss_start is None:
+                    miss_start = curr_d
+            else:
+                if miss_start is not None:
+                    missing_act_ranges.append((miss_start, curr_d - timedelta(days=1)))
+                    miss_start = None
+            curr_d += timedelta(days=1)
+        if miss_start is not None:
+            missing_act_ranges.append((miss_start, end_date))
+
+        missing_chunks = sum(max(1, ((re - rs).days // 365) + 1) for rs, re in missing_act_ranges)
         
         # 2. Identify missing Cached Polylines
         missing_ids = []
@@ -5367,8 +5468,8 @@ def get_heatmap_data():
         
         logger.info(f"Heatmap types: {type_counter}")
 
-        # 3. Trigger Background Fill if needed
-        if missing_ids:
+        # 3. Trigger Background Fill if needed (for missing polylines OR missing historical activity months)
+        if missing_ids or missing_act_ranges:
             global fetch_generation, active_fetch_range, is_fetching
             
             with fetch_lock:
@@ -5378,23 +5479,22 @@ def get_heatmap_data():
                     is_fetching = True
                     current_gen = fetch_generation
                     
-                    logger.info(f"New range '{range_val}': cancelling old, starting gen:{current_gen} for {len(missing_ids)} items.")
-                    # Use a lock to ensure only one fetcher runs at a time globally
-                    thread = threading.Thread(target=background_polyline_fetcher, args=(client, missing_ids, current_gen))
+                    logger.info(f"New range '{range_val}': cancelling old, starting gen:{current_gen} for {len(missing_ids)} items and {len(missing_act_ranges)} historical ranges.")
+                    thread = threading.Thread(target=background_polyline_fetcher, args=(client, missing_ids, current_gen, missing_act_ranges))
                     thread.daemon = True
                     thread.start()
                 elif not is_fetching:
                     is_fetching = True
                     current_gen = fetch_generation
-                    logger.info(f"Range '{range_val}' active but no worker. Spawning gen:{current_gen} for {len(missing_ids)} items.")
-                    thread = threading.Thread(target=background_polyline_fetcher, args=(client, missing_ids, current_gen))
+                    logger.info(f"Range '{range_val}' active but no worker. Spawning gen:{current_gen} for {len(missing_ids)} items and {len(missing_act_ranges)} historical ranges.")
+                    thread = threading.Thread(target=background_polyline_fetcher, args=(client, missing_ids, current_gen, missing_act_ranges))
                     thread.daemon = True
                     thread.start()
             
         result = {
             'count': len(result_points),
-            'total_activities': len(activities),
-            'missing_count': len(missing_ids),
+            'total_activities': len(seen_aids),
+            'missing_count': len(missing_ids) + missing_chunks,
             'data': result_points
         }
         
