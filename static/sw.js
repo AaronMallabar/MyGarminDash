@@ -1,5 +1,5 @@
 // Service Worker for GarminDash PWA
-const CACHE_NAME = 'garmindash-v5';
+const CACHE_NAME = 'garmindash-v6';
 const STATIC_ASSETS = [
   '/',
   '/static/style.css',

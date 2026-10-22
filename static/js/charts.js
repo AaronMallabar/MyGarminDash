@@ -151,6 +151,17 @@ window.updateMetricDatePill = function(metricKey, range, endDate) {
     if (range === '1d') {
         pill.textContent = `📅 ${end.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
         return;
+    } else if (metricKey === 'im' && (range === '1w' || range === '1m')) {
+        const dayOfWeek = (end.getDay() + 6) % 7; // Monday = 0, Sunday = 6
+        const monday = new Date(end);
+        monday.setDate(end.getDate() - dayOfWeek);
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+        end.setTime(sunday.getTime());
+        start.setTime(monday.getTime());
+        if (range === '1m') {
+            start.setDate(monday.getDate() - 21);
+        }
     } else if (range === '1w') {
         start.setDate(end.getDate() - 6);
     } else if (range === '1m') {

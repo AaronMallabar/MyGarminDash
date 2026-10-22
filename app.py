@@ -3785,7 +3785,7 @@ def build_im_weekly_payload(mgr, end_date=None, today_dt=None, allow_live_sync=T
     for i in range(7):
         day_dt = current_monday + timedelta(days=i)
         d_str = day_dt.isoformat()
-        is_future = day_dt > today_dt or day_dt > end_date
+        is_future = day_dt > today_dt
         it = item_map.get(d_str, {})
         if it.get('goal'):
             goal = it.get('goal')
@@ -3812,7 +3812,8 @@ def build_im_weekly_payload(mgr, end_date=None, today_dt=None, allow_live_sync=T
             'isFuture': is_future
         })
 
-    latest_item = item_map.get(end_date.isoformat()) or (items[-1] if items else {})
+    week_end_dt = min(current_sunday, today_dt)
+    latest_item = item_map.get(week_end_dt.isoformat()) or (items[-1] if items else {})
     weekly_tot = latest_item.get('weeklyTotal', cum_running)
     if latest_item.get('weeklyModerate') is not None:
         weekly_mod = latest_item.get('weeklyModerate')
@@ -3959,7 +3960,7 @@ def get_intensity_minutes_history():
                     for d in range(7):
                         day_dt = w_monday + timedelta(days=d)
                         d_str = day_dt.isoformat()
-                        is_future = day_dt > today_dt or day_dt > end_date
+                        is_future = day_dt > today_dt
                         it = item_map.get(d_str, {})
                         if it.get('goal'):
                             w_goal = it.get('goal')
