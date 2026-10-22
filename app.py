@@ -3226,7 +3226,7 @@ def get_dashboard_bootstrap():
                 'weight': {'history': weight_history, 'summary': weight_summary, 'range': '1m'},
                 'hydration': {'history': hydration_history, 'range': '1w'},
                 'hrv': {'history': hrv_history, 'range': '1w'},
-                'intensity_minutes': {'history': im_history, 'range': '1w'}
+                'intensity_minutes': build_im_weekly_payload(mgr, today, today, allow_live_sync=False)
             }
         })
     except Exception as e:
@@ -3759,6 +3759,87 @@ def get_hydration_history():
         logger.error(f"Error in hydration history: {e}")
         return jsonify({'error': str(e)}), 500
 
+def build_im_weekly_payload(mgr, end_date=None, today_dt=None, allow_live_sync=True):
+    import math
+    if end_date is None:
+        end_date = get_today()
+    if today_dt is None:
+        today_dt = get_today()
+    days_to_monday = end_date.weekday()
+    current_monday = end_date - timedelta(days=days_to_monday)
+    current_sunday = current_monday + timedelta(days=6)
+    start_date = current_monday
+    items = mgr.get_range('intensity_minutes', start_date, min(current_sunday, today_dt), allow_live_sync=allow_live_sync)
+    item_map = { (it.get('calendarDate') or it.get('date')): it for it in items if (it.get('calendarDate') or it.get('date')) }
+
+    goal = 420
+    for it in items:
+        if it.get('goal'):
+            goal = it.get('goal')
+
+    days = []
+    cum_running = 0
+    weekly_mod = 0
+    weekly_vig = 0
+
+    for i in range(7):
+        day_dt = current_monday + timedelta(days=i)
+        d_str = day_dt.isoformat()
+        is_future = day_dt > today_dt or day_dt > end_date
+        it = item_map.get(d_str, {})
+        if it.get('goal'):
+            goal = it.get('goal')
+        
+        d_mod = it.get('moderate', 0)
+        d_vig = it.get('vigorous', 0)
+        d_tot = it.get('total') if 'total' in it else (d_mod + 2 * d_vig)
+
+        if not is_future:
+            weekly_mod += d_mod
+            weekly_vig += d_vig
+            if it.get('endDayMinutes') is not None:
+                cum_running = it.get('endDayMinutes')
+            else:
+                cum_running += d_tot
+
+        days.append({
+            'date': d_str,
+            'dayName': day_dt.strftime('%a'),
+            'moderate': d_mod,
+            'vigorous': d_vig,
+            'total': d_tot,
+            'cumulativeTotal': cum_running if not is_future else None,
+            'isFuture': is_future
+        })
+
+    latest_item = item_map.get(end_date.isoformat()) or (items[-1] if items else {})
+    weekly_tot = latest_item.get('weeklyTotal', cum_running)
+    if latest_item.get('weeklyModerate') is not None:
+        weekly_mod = latest_item.get('weeklyModerate')
+    if latest_item.get('weeklyVigorous') is not None:
+        weekly_vig = latest_item.get('weeklyVigorous')
+
+    needed_mod = max(0, goal - weekly_tot)
+    needed_vig = int(math.ceil(needed_mod / 2.0))
+
+    return {
+        'range': '1w',
+        'startDate': current_monday.isoformat(),
+        'endDate': current_sunday.isoformat(),
+        'goal': goal,
+        'days': days,
+        'summary': {
+            'weeklyTotal': weekly_tot,
+            'weeklyModerate': weekly_mod,
+            'weeklyVigorous': weekly_vig,
+            'goal': goal,
+            'neededModerate': needed_mod,
+            'neededVigorous': needed_vig,
+            'isGoalMet': weekly_tot >= goal and weekly_tot > 0
+        },
+        'history': items
+    }
+
 @app.route('/api/intensity_minutes_history')
 @login_required
 def get_intensity_minutes_history():
@@ -3847,78 +3928,7 @@ def get_intensity_minutes_history():
             current_sunday = current_monday + timedelta(days=6)
             
             if range_val == '1w':
-                start_date = current_monday
-                items = mgr.get_range('intensity_minutes', start_date, min(current_sunday, today_dt))
-                item_map = { (it.get('calendarDate') or it.get('date')): it for it in items if (it.get('calendarDate') or it.get('date')) }
-
-                goal = 420
-                for it in items:
-                    if it.get('goal'):
-                        goal = it.get('goal')
-
-                days = []
-                cum_running = 0
-                weekly_mod = 0
-                weekly_vig = 0
-
-                for i in range(7):
-                    day_dt = current_monday + timedelta(days=i)
-                    d_str = day_dt.isoformat()
-                    is_future = day_dt > today_dt or day_dt > end_date
-                    it = item_map.get(d_str, {})
-                    if it.get('goal'):
-                        goal = it.get('goal')
-                    
-                    d_mod = it.get('moderate', 0)
-                    d_vig = it.get('vigorous', 0)
-                    d_tot = it.get('total') if 'total' in it else (d_mod + 2 * d_vig)
-
-                    if not is_future:
-                        weekly_mod += d_mod
-                        weekly_vig += d_vig
-                        if it.get('endDayMinutes') is not None:
-                            cum_running = it.get('endDayMinutes')
-                        else:
-                            cum_running += d_tot
-
-                    days.append({
-                        'date': d_str,
-                        'dayName': day_dt.strftime('%a'),
-                        'moderate': d_mod,
-                        'vigorous': d_vig,
-                        'total': d_tot,
-                        'cumulativeTotal': cum_running if not is_future else None,
-                        'isFuture': is_future
-                    })
-
-                # Check latest item for exact weekly stats if available
-                latest_item = item_map.get(end_date.isoformat()) or (items[-1] if items else {})
-                weekly_tot = latest_item.get('weeklyTotal', cum_running)
-                if latest_item.get('weeklyModerate') is not None:
-                    weekly_mod = latest_item.get('weeklyModerate')
-                if latest_item.get('weeklyVigorous') is not None:
-                    weekly_vig = latest_item.get('weeklyVigorous')
-
-                needed_mod = max(0, goal - weekly_tot)
-                needed_vig = int(math.ceil(needed_mod / 2.0))
-
-                return jsonify({
-                    'range': '1w',
-                    'startDate': current_monday.isoformat(),
-                    'endDate': current_sunday.isoformat(),
-                    'goal': goal,
-                    'days': days,
-                    'summary': {
-                        'weeklyTotal': weekly_tot,
-                        'weeklyModerate': weekly_mod,
-                        'weeklyVigorous': weekly_vig,
-                        'goal': goal,
-                        'neededModerate': needed_mod,
-                        'neededVigorous': needed_vig,
-                        'isGoalMet': weekly_tot >= goal and weekly_tot > 0
-                    },
-                    'history': items
-                })
+                return jsonify(build_im_weekly_payload(mgr, end_date, today_dt, allow_live_sync=True))
 
             else:  # 1m (4 Weeks)
                 start_date = current_monday - timedelta(weeks=3)

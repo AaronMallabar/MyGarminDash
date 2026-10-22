@@ -763,21 +763,31 @@ window.fetchWeightHistory = async function () {
         const endDate = window.currentWeightEndDate || new Date();
         const range = window.currentWeightRange || '1m';
 
-        // Check cache for 1y
+        const cached = window.getCachedData ? window.getCachedData('weight', range, endDate) : null;
+        if (cached) {
+            if (window.renderWeightChart) window.renderWeightChart(cached, range);
+            return;
+        }
+
         if (range === '1y' && window.isDateToday(endDate) && window.preloadedData['weight']) {
+            if (window.setCachedData) window.setCachedData('weight', range, endDate, window.preloadedData['weight']);
             if (window.renderWeightChart) window.renderWeightChart(window.preloadedData['weight'], range);
             return;
         }
 
+        window.showChartLoading && window.showChartLoading('weightHistoryChart');
         const res = await fetch(`/api/weight_history?end_date=${window.getLocalDateStr(endDate)}&range=${range}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
+                if (window.setCachedData) window.setCachedData('weight', range, endDate, data);
                 if (window.renderWeightChart) window.renderWeightChart(data, range);
             }
         }
     } catch (err) {
         console.error('Weight history error:', err);
+    } finally {
+        window.hideChartLoading && window.hideChartLoading('weightHistoryChart');
     }
 }
 
@@ -794,20 +804,31 @@ window.fetchStepsHistory = async function () {
         const endDate = window.currentStepsEndDate || new Date();
         const range = window.currentStepsRange || '1w';
 
+        const cached = window.getCachedData ? window.getCachedData('steps', range, endDate) : null;
+        if (cached) {
+            if (window.renderStepsVisual) window.renderStepsVisual(cached);
+            return;
+        }
+
         if (range === '1y' && window.isDateToday(endDate) && window.preloadedData['steps']) {
+            if (window.setCachedData) window.setCachedData('steps', range, endDate, window.preloadedData['steps']);
             if (window.renderStepsVisual) window.renderStepsVisual(window.preloadedData['steps']);
             return;
         }
 
+        window.showChartLoading && window.showChartLoading('stepsHistoryChart');
         const res = await fetch(`/api/steps_history?end_date=${window.getLocalDateStr(endDate)}&range=${range}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
+                if (window.setCachedData) window.setCachedData('steps', range, endDate, data);
                 if (window.renderStepsVisual) window.renderStepsVisual(data);
             }
         }
     } catch (err) {
         console.error('Steps history error:', err);
+    } finally {
+        window.hideChartLoading && window.hideChartLoading('stepsHistoryChart');
     }
 }
 
@@ -823,20 +844,31 @@ window.fetchHRHistory = async function () {
         const endDate = window.currentHREndDate || new Date();
         const range = window.currentHRRange || '1d';
 
+        const cached = window.getCachedData ? window.getCachedData('hr', range, endDate) : null;
+        if (cached) {
+            if (window.renderHRVisual) window.renderHRVisual(cached);
+            return;
+        }
+
         if (range === '1y' && window.isDateToday(endDate) && window.preloadedData['hr']) {
+            if (window.setCachedData) window.setCachedData('hr', range, endDate, window.preloadedData['hr']);
             if (window.renderHRVisual) window.renderHRVisual(window.preloadedData['hr']);
             return;
         }
 
+        window.showChartLoading && window.showChartLoading('hrHistoryChart');
         const res = await fetch(`/api/hr_history?end_date=${window.getLocalDateStr(endDate)}&range=${range}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
+                if (window.setCachedData) window.setCachedData('hr', range, endDate, data);
                 if (window.renderHRVisual) window.renderHRVisual(data);
             }
         }
     } catch (err) {
         console.error('HR History error:', err);
+    } finally {
+        window.hideChartLoading && window.hideChartLoading('hrHistoryChart');
     }
 }
 
@@ -852,20 +884,31 @@ window.fetchStressHistory = async function () {
         const endDate = window.currentStressEndDate || new Date();
         const range = window.currentStressRange || '1d';
 
+        const cached = window.getCachedData ? window.getCachedData('stress', range, endDate) : null;
+        if (cached) {
+            if (window.renderStressVisual) window.renderStressVisual(cached);
+            return;
+        }
+
         if (range === '1y' && window.isDateToday(endDate) && window.preloadedData['stress']) {
+            if (window.setCachedData) window.setCachedData('stress', range, endDate, window.preloadedData['stress']);
             if (window.renderStressVisual) window.renderStressVisual(window.preloadedData['stress']);
             return;
         }
 
+        window.showChartLoading && window.showChartLoading('stressHistoryChart');
         const res = await fetch(`/api/stress_history?end_date=${window.getLocalDateStr(endDate)}&range=${range}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
+                if (window.setCachedData) window.setCachedData('stress', range, endDate, data);
                 if (window.renderStressVisual) window.renderStressVisual(data);
             }
         }
     } catch (err) {
         console.error('Stress history error:', err);
+    } finally {
+        window.hideChartLoading && window.hideChartLoading('stressHistoryChart');
     }
 }
 
@@ -881,20 +924,31 @@ window.fetchSleepHistory = async function () {
         const endDate = window.currentSleepEndDate || new Date();
         const range = window.currentSleepRange || '1d';
 
+        const cached = window.getCachedData ? window.getCachedData('sleep', range, endDate) : null;
+        if (cached) {
+            if (window.renderSleepVisual) window.renderSleepVisual(cached);
+            return;
+        }
+
         if (range === '1y' && window.isDateToday(endDate) && window.preloadedData['sleep']) {
+            if (window.setCachedData) window.setCachedData('sleep', range, endDate, window.preloadedData['sleep']);
             if (window.renderSleepVisual) window.renderSleepVisual(window.preloadedData['sleep']);
             return;
         }
 
+        window.showChartLoading && window.showChartLoading('sleepTrendChart');
         const res = await fetch(`/api/sleep_history?end_date=${window.getLocalDateStr(endDate)}&range=${range}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
+                if (window.setCachedData) window.setCachedData('sleep', range, endDate, data);
                 if (window.renderSleepVisual) window.renderSleepVisual(data);
             }
         }
     } catch (err) {
         console.error('Sleep history error:', err);
+    } finally {
+        window.hideChartLoading && window.hideChartLoading('sleepTrendChart');
     }
 }
 
@@ -910,20 +964,31 @@ window.fetchHydrationHistory = async function () {
         const endDate = window.currentHydrationEndDate || new Date();
         const range = window.currentHydrationRange || '1d';
 
+        const cached = window.getCachedData ? window.getCachedData('hydration', range, endDate) : null;
+        if (cached) {
+            if (window.renderHydrationVisual) await window.renderHydrationVisual(cached);
+            return;
+        }
+
         if (range === '1y' && window.isDateToday(endDate) && window.preloadedData['hydration']) {
+            if (window.setCachedData) window.setCachedData('hydration', range, endDate, window.preloadedData['hydration']);
             if (window.renderHydrationVisual) await window.renderHydrationVisual(window.preloadedData['hydration']);
             return;
         }
 
+        window.showChartLoading && window.showChartLoading('hydrationHistoryChart');
         const res = await fetch(`/api/hydration_history?end_date=${window.getLocalDateStr(endDate)}&range=${range}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
+                if (window.setCachedData) window.setCachedData('hydration', range, endDate, data);
                 if (window.renderHydrationVisual) await window.renderHydrationVisual(data);
             }
         }
     } catch (err) {
         console.error('Hydration history error:', err);
+    } finally {
+        window.hideChartLoading && window.hideChartLoading('hydrationHistoryChart');
     }
 }
 
@@ -939,20 +1004,31 @@ window.fetchHRVHistory = async function () {
         const endDate = window.currentHRVEndDate || new Date();
         const range = window.currentHRVRange || '1d';
 
+        const cached = window.getCachedData ? window.getCachedData('hrv', range, endDate) : null;
+        if (cached) {
+            if (window.renderHRVVisual) window.renderHRVVisual(cached);
+            return;
+        }
+
         if (range === '1y' && window.isDateToday(endDate) && window.preloadedData['hrv']) {
+            if (window.setCachedData) window.setCachedData('hrv', range, endDate, window.preloadedData['hrv']);
             if (window.renderHRVVisual) window.renderHRVVisual(window.preloadedData['hrv']);
             return;
         }
 
+        window.showChartLoading && window.showChartLoading('hrvHistoryChart');
         const res = await fetch(`/api/hrv?end_date=${window.getLocalDateStr(endDate)}&range=${range}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error) {
+                if (window.setCachedData) window.setCachedData('hrv', range, endDate, data);
                 if (window.renderHRVVisual) window.renderHRVVisual(data);
             }
         }
     } catch (err) {
         console.error('HRV history error:', err);
+    } finally {
+        window.hideChartLoading && window.hideChartLoading('hrvHistoryChart');
     }
 }
 
@@ -961,15 +1037,25 @@ window.fetchIMHistory = async function () {
         const endDate = window.currentIMEndDate || new Date();
         const range = window.currentIMRange || '1w';
 
+        const cached = window.getCachedData ? window.getCachedData('im', range, endDate) : null;
+        if (cached) {
+            if (window.renderIntensityMinutesVisualV2) window.renderIntensityMinutesVisualV2(cached);
+            return;
+        }
+
+        window.showChartLoading && window.showChartLoading('imHistoryChart');
         const res = await fetch(`/api/intensity_minutes_history?range=${range}&end_date=${window.getLocalDateStr(endDate)}`);
         if (res.ok) {
             const data = await res.json();
             if (!data.error && window.renderIntensityMinutesVisualV2) {
+                if (window.setCachedData) window.setCachedData('im', range, endDate, data);
                 window.renderIntensityMinutesVisualV2(data);
             }
         }
     } catch (err) {
         console.error('IM history error:', err);
+    } finally {
+        window.hideChartLoading && window.hideChartLoading('imHistoryChart');
     }
 }
 

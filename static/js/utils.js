@@ -248,6 +248,39 @@ window.safeSetText = function (id, text) {
     if (el) el.textContent = text;
 }
 
+window.showChartLoading = function (idOrEl) {
+    if (!idOrEl) return;
+    const el = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+    if (!el) return;
+    const wrapper = el.closest('.drilldown-chart-wrapper') || el.closest('.metric-detail-pane') || el.parentElement;
+    if (!wrapper) return;
+    
+    let overlay = wrapper.querySelector('.chart-loading-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'chart-loading-overlay';
+        overlay.innerHTML = '<div class="chart-loading-spinner"></div><div class="chart-loading-text">Loading data...</div>';
+        wrapper.appendChild(overlay);
+    }
+    overlay.classList.add('active');
+    el.style.opacity = '0.35';
+    el.style.transition = 'opacity 0.2s ease';
+};
+
+window.hideChartLoading = function (idOrEl) {
+    if (!idOrEl) return;
+    const el = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+    if (!el) return;
+    const wrapper = el.closest('.drilldown-chart-wrapper') || el.closest('.metric-detail-pane') || el.parentElement;
+    if (!wrapper) return;
+    
+    const overlay = wrapper.querySelector('.chart-loading-overlay');
+    if (overlay) {
+        overlay.classList.remove('active');
+    }
+    el.style.opacity = '1';
+};
+
 window.safeSetHTML = function (id, text) {
     const el = document.getElementById(id);
     if (el) {

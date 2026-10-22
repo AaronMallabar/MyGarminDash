@@ -14,6 +14,11 @@ window.updateHRVRange = async function (range, btn) {
         btn.classList.add('active');
     }
     if (window.updateMetricDatePill) window.updateMetricDatePill('hrv', window.currentHRVRange, window.currentHRVEndDate);
+    const cached = window.getCachedData ? window.getCachedData('hrv', window.currentHRVRange, window.currentHRVEndDate) : null;
+    if (cached) {
+        if (window.renderHRVVisual) window.renderHRVVisual(cached);
+        return;
+    }
     if (window.fetchHRVHistory) await window.fetchHRVHistory();
 }
 
@@ -28,6 +33,11 @@ window.updateIMRange = async function (range, btn) {
         btn.classList.add('active');
     }
     if (window.updateMetricDatePill) window.updateMetricDatePill('im', window.currentIMRange, window.currentIMEndDate);
+    const cached = window.getCachedData ? window.getCachedData('im', window.currentIMRange, window.currentIMEndDate) : null;
+    if (cached) {
+        if (window.renderIntensityMinutesVisualV2) window.renderIntensityMinutesVisualV2(cached);
+        return;
+    }
     if (window.fetchIMHistory) await window.fetchIMHistory();
 }
 
