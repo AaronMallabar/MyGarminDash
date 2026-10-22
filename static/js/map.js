@@ -205,15 +205,19 @@ window.updateGlobalHeatmapSilent = async function () {
 
 /**
  * Classify an activity type string into a category.
- * Returns { category: 'run'|'cycle'|'walk'|'virtual'|'other', color: string }
+ * Returns { category: 'run'|'cycle'|'walk'|'swim'|'virtual'|'other', color: string }
  */
 function classifyActivityType(typeStr) {
-    if (!typeStr) return { category: 'other', color: '#94a3b8' };
+    if (!typeStr) return { category: 'other', color: '#eab308' };
     const t = typeStr.toLowerCase();
 
-    // Virtual / indoor first (before cycling check, since 'indoor_cycling' contains 'cycling')
-    if (t.includes('virtual') || t.includes('indoor')) {
+    // Virtual / indoor first (before cycling/running check, since 'indoor_cycling' contains 'cycling')
+    if (t.includes('virtual') || t.includes('indoor') || t.includes('treadmill')) {
         return { category: 'virtual', color: '#a855f7' };
+    }
+    // Swimming — open_water_swimming, lap_swimming, swimming, pool_swimming
+    if (t.includes('swim')) {
+        return { category: 'swim', color: '#06b6d4' };
     }
     // Running
     if (t.includes('run')) {
@@ -223,12 +227,12 @@ function classifyActivityType(typeStr) {
     if (t.includes('cycl') || t.includes('ride') || t.includes('bik')) {
         return { category: 'cycle', color: '#3b82f6' };
     }
-    // Walking / Hiking
-    if (t.includes('walk') || t.includes('hik')) {
+    // Walking / Hiking / Snowshoeing
+    if (t.includes('walk') || t.includes('hik') || t.includes('snow_shoe') || t.includes('mountaineer')) {
         return { category: 'walk', color: '#22c55e' };
     }
-    // Fallback — still show it as a generic activity
-    return { category: 'other', color: '#94a3b8' };
+    // Fallback (multi_sport / triathlon, skiing, generic 'other', etc.)
+    return { category: 'other', color: '#eab308' };
 }
 
 window.renderGlobalHeatmap = function (resetView = true) {
@@ -241,7 +245,9 @@ window.renderGlobalHeatmap = function (resetView = true) {
     const showRun = document.getElementById('heatmap-run')?.checked ?? true;
     const showCycle = document.getElementById('heatmap-cycle')?.checked ?? true;
     const showWalk = document.getElementById('heatmap-walk')?.checked ?? true;
+    const showSwim = document.getElementById('heatmap-swim')?.checked ?? true;
     const showVirtual = document.getElementById('heatmap-virtual')?.checked ?? true;
+    const showOther = document.getElementById('heatmap-other')?.checked ?? true;
 
     const boundsArr = [];
     if (!window.globalCanvasRenderer) {
@@ -260,8 +266,9 @@ window.renderGlobalHeatmap = function (resetView = true) {
         if (category === 'run' && showRun) include = true;
         else if (category === 'cycle' && showCycle) include = true;
         else if (category === 'walk' && showWalk) include = true;
+        else if (category === 'swim' && showSwim) include = true;
         else if (category === 'virtual' && showVirtual) include = true;
-        else if (category === 'other') include = true; // Always show uncategorized
+        else if (category === 'other' && showOther) include = true;
 
         if (include && Array.isArray(item.poly) && item.poly.length > 1) {
             try {
