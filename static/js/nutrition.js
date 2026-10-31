@@ -1682,3 +1682,109 @@ document.addEventListener('DOMContentLoaded', () => {
         checkAndSyncFoodLogs();
     });
 })();
+
+
+// JSON Food Import Handler (Automated & Hands-Off Logging)
+window.submitJsonFoodLog = async function () {
+    const input = document.getElementById('json-food-input');
+    const submitBtn = document.getElementById('json-food-submit');
+    const statusEl = document.getElementById('json-food-status');
+    if (!input) return;
+
+    const rawText = input.value.trim();
+    if (!rawText) {
+        if (statusEl) {
+            statusEl.textContent = 'Please paste a JSON payload.';
+            statusEl.style.color = '#f87171';
+        }
+        return;
+    }
+
+    let payload;
+    try {
+        payload = JSON.parse(rawText);
+    } catch (err) {
+        if (statusEl) {
+            statusEl.textContent = `Invalid JSON: ${err.message}`;
+            statusEl.style.color = '#f87171';
+        }
+        return;
+    }
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Logging...';
+    }
+    if (statusEl) {
+        statusEl.textContent = 'Sending...';
+        statusEl.style.color = 'var(--text-secondary)';
+    }
+
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryKey = urlParams.get('key') || urlParams.get('api_key') || localStorage.getItem('dashboard_api_key');
+        const headers = { 'Content-Type': 'application/json' };
+        if (queryKey) {
+            headers['X-API-Key'] = queryKey;
+        }
+
+        const endpoint = queryKey ? `/api/food/log?key=${encodeURIComponent(queryKey)}` : '/api/food/log';
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            input.value = '';
+            if (statusEl) {
+                const mealName = data.entry?.name || 'Meal';
+                const kcal = data.entry?.totalKcal ? ` (${data.entry.totalKcal} kcal)` : '';
+                statusEl.textContent = `✓ Logged ${mealName}${kcal}!`;
+                statusEl.style.color = '#10b981';
+                setTimeout(() => {
+                    if (statusEl && statusEl.textContent.startsWith('✓')) {
+                        statusEl.textContent = '';
+                    }
+                }, 6000);
+            }
+            if (window.fetchNutritionData) {
+                window.fetchNutritionData();
+            }
+            if (window.fetchProactiveSuggestions) {
+                window.fetchProactiveSuggestions();
+            }
+        } else {
+            const errorMsg = data.message || data.error || `Server returned ${res.status}`;
+            if (statusEl) {
+                statusEl.textContent = `Error: ${errorMsg}`;
+                statusEl.style.color = '#f87171';
+            }
+        }
+    } catch (err) {
+        console.error('JSON food log error:', err);
+        if (statusEl) {
+            statusEl.textContent = `Network error: ${err.message}`;
+            statusEl.style.color = '#f87171';
+        }
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Log Meal (JSON)';
+        }
+    }
+};
+
+// Enable Ctrl+Enter / Cmd+Enter inside json-food-input
+document.addEventListener('DOMContentLoaded', () => {
+    const jsonInput = document.getElementById('json-food-input');
+    if (jsonInput) {
+        jsonInput.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                window.submitJsonFoodLog();
+            }
+        });
+    }
+});
