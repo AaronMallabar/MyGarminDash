@@ -180,6 +180,7 @@ DEFAULT_SETTINGS = {
 # Nutrition Storage
 FOOD_LOGS_FILE = 'food_logs.json'
 CUSTOM_FOODS_FILE = 'custom_foods.json'
+food_logs_lock = threading.Lock()
 
 # Caching
 user_profile_cache = {'data': None, 'timestamp': None}
@@ -3842,9 +3843,81 @@ def get_weight_history():
         logger.error(f"Error fetching weight history: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/hydration')
-@login_required
-def get_hydration():
+@app.route('/api/hydration', methods=['GET', 'POST'])
+@app.route('/api/hydration/log', methods=['POST'])
+def handle_hydration():
+    if request.method == 'POST':
+        if not authenticate_food_api():
+            return jsonify({
+                "error": "Unauthorized",
+                "message": "Authentication required. Provide dashboard key via ?key=..., X-API-Key header, or Authorization: Bearer <key>."
+            }), 401
+
+        data = request.get_json(silent=True) or {}
+        now_est = datetime.now(EST)
+
+        # Check ounces vs ml
+        raw_oz = data.get('ounces') if data.get('ounces') is not None else data.get('oz')
+        raw_ml = data.get('ml')
+
+        if raw_oz is not None:
+            try:
+                added_ml = float(raw_oz) * 29.5735
+            except (ValueError, TypeError):
+                return jsonify({"error": "Bad Request", "message": "Invalid value for ounces."}), 400
+        elif raw_ml is not None:
+            try:
+                added_ml = float(raw_ml)
+            except (ValueError, TypeError):
+                return jsonify({"error": "Bad Request", "message": "Invalid value for ml."}), 400
+        else:
+            return jsonify({"error": "Bad Request", "message": "Missing 'ounces' or 'ml' in request payload."}), 400
+
+        # Date handling (default to America/New_York date)
+        raw_date = data.get('date')
+        if raw_date and isinstance(raw_date, str) and re.match(r'^\d{4}-\d{2}-\d{2}$', raw_date.strip()):
+            date_str = raw_date.strip()
+        else:
+            date_str = now_est.strftime('%Y-%m-%d')
+
+        mgr = get_sync_manager()
+        month_data = GarminPersistence.load_month('hydration', date_str)
+        curr_entry = month_data.get(date_str) or {}
+        curr_intake = float(curr_entry.get('intake', 0) or 0)
+        curr_goal = float(curr_entry.get('goal', 2839.0) or 2839.0)
+
+        new_intake = round(curr_intake + added_ml, 1)
+        month_data[date_str] = {
+            'intake': new_intake,
+            'goal': curr_goal,
+            'timestamp': time.time()
+        }
+        GarminPersistence.save_month('hydration', date_str, month_data)
+        if hasattr(mgr, 'sync_times'):
+            mgr.sync_times[f"hydration_{date_str}"] = time.time()
+
+        # Try to sync with Garmin Connect client if connected
+        if mgr.client is not None:
+            try:
+                mgr.client.add_hydration_data(value_in_ml=round(added_ml, 1), cdate=date_str)
+            except Exception as client_err:
+                logger.warning(f"Could not push hydration to Garmin Connect directly: {client_err}")
+
+        return jsonify({
+            "success": True,
+            "message": "Hydration logged successfully",
+            "date": date_str,
+            "added_oz": round(added_ml * 0.033814, 1),
+            "added_ml": round(added_ml, 1),
+            "intake_oz": round(new_intake * 0.033814, 1),
+            "intake_ml": new_intake,
+            "goal_oz": round(curr_goal * 0.033814, 1),
+            "pct_of_goal": round(new_intake / curr_goal * 100) if curr_goal else 0
+        }), 201
+
+    # GET request
+    if not (session.get('logged_in') or authenticate_food_api()):
+        return jsonify({"error": "Unauthorized"}), 401
     try:
         mgr = get_sync_manager()
         today = get_today().isoformat()
@@ -3857,6 +3930,7 @@ def get_hydration():
     except Exception as e:
         logger.error(f"Error fetching hydration: {e}")
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/hrv')
 @login_required
@@ -4675,6 +4749,340 @@ def extract_time_and_clean_text(text):
         logger.warning(f"Error extracting time from text '{text}': {e}")
         return text, None
 
+def authenticate_food_api():
+    """
+    Validate dashboard key passed either as:
+      1. Query param: ?key=Aaron!123 (or ?api_key=..., ?token=...)
+      2. Header: X-API-Key: Aaron!123 or Authorization: Bearer Aaron!123
+    Also supports existing authenticated session if requested from web UI.
+    """
+    api_key = request.args.get('key') or request.args.get('api_key') or request.args.get('token')
+    if not api_key:
+        api_key = request.headers.get('X-API-Key')
+    if not api_key:
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            api_key = auth_header.split(' ', 1)[1].strip()
+        elif auth_header.startswith('bearer '):
+            api_key = auth_header.split(' ', 1)[1].strip()
+        elif auth_header:
+            api_key = auth_header.strip()
+
+    valid_keys = set()
+    if APP_PASSWORD:
+        valid_keys.add(APP_PASSWORD)
+    flask_secret = os.getenv('FLASK_SECRET_KEY')
+    if flask_secret:
+        valid_keys.add(flask_secret)
+
+    if api_key:
+        return api_key in valid_keys
+
+    if session.get('logged_in'):
+        return True
+
+    return False
+
+
+@app.route('/api/food/log', methods=['POST'])
+@app.route('/api/food', methods=['POST'])
+def api_food_log():
+    if not authenticate_food_api():
+        return jsonify({
+            "error": "Unauthorized",
+            "message": "Authentication required. Provide dashboard key via ?key=..., X-API-Key header, or Authorization: Bearer <key>."
+        }), 401
+
+    data = request.get_json(silent=True) or {}
+    now_est = datetime.now(EST)
+
+    # Date handling: optional; defaults to current local date in America/New_York
+    # Guard against UTC midnight rollover!
+    raw_date = data.get('date')
+    if raw_date and isinstance(raw_date, str) and re.match(r'^\d{4}-\d{2}-\d{2}$', raw_date.strip()):
+        date_str = raw_date.strip()
+    else:
+        date_str = now_est.strftime('%Y-%m-%d')
+
+    # Time handling: optional string; defaults to current local time in America/New_York
+    raw_time = data.get('time')
+    if raw_time and isinstance(raw_time, str) and raw_time.strip():
+        time_display = raw_time.strip()
+    else:
+        time_display = now_est.strftime('%I:%M %p').lstrip('0')
+    time_24 = parse_time_str(time_display)
+
+    # Category handling: 'Breakfast' | 'Lunch' | 'Dinner' | 'Snack'
+    raw_category = data.get('category')
+    valid_categories = {'Breakfast': 'Breakfast', 'Lunch': 'Lunch', 'Dinner': 'Dinner', 'Snack': 'Snack'}
+    if raw_category and isinstance(raw_category, str) and raw_category.strip():
+        normalized_cat = raw_category.strip().capitalize()
+        category = valid_categories.get(normalized_cat, raw_category.strip())
+    else:
+        hour = now_est.hour
+        if hour < 11:
+            category = 'Breakfast'
+        elif hour < 15:
+            category = 'Lunch'
+        elif hour < 21:
+            category = 'Dinner'
+        else:
+            category = 'Snack'
+
+    # Items handling
+    raw_items = data.get('items')
+    if not isinstance(raw_items, list) or len(raw_items) == 0:
+        if any(k in data for k in ['kcal', 'calories', 'protein', 'protein_g', 'carbs', 'carbs_g', 'fat', 'fat_g']):
+            raw_items = [{
+                'name': data.get('name') or f"{category} Item",
+                'ingredients': data.get('ingredients', ''),
+                'qty': data.get('qty', 1),
+                'unit': data.get('unit', 'serving'),
+                'kcal': data.get('kcal', data.get('calories', 0)),
+                'protein': data.get('protein', data.get('protein_g', 0)),
+                'carbs': data.get('carbs', data.get('carbs_g', 0)),
+                'fat': data.get('fat', data.get('fat_g', 0)),
+                'sugar': data.get('sugar', data.get('sugar_g', 0)),
+                'cholesterol': data.get('cholesterol', data.get('cholesterol_mg', 0)),
+                'caffeine': data.get('caffeine', data.get('caffeine_mg', 0))
+            }]
+        else:
+            raw_items = []
+
+    def _parse_num(val, default=0.0):
+        if val is None:
+            return default
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return default
+
+    def _clean_num(val):
+        if isinstance(val, (int, float)):
+            return int(val) if val == int(val) else round(val, 2)
+        return val
+
+    saved_items = []
+    for idx, item in enumerate(raw_items):
+        if not isinstance(item, dict):
+            continue
+        it_name = str(item.get('name') or f"Item {idx + 1}").strip()
+        it_ingredients = str(item.get('ingredients') or '').strip()
+        it_unit = str(item.get('unit') or 'serving').strip()
+        it_qty = _parse_num(item.get('qty', 1), 1.0)
+
+        it_kcal = _parse_num(item.get('kcal', item.get('calories', 0)))
+        it_pro = _parse_num(item.get('protein', item.get('protein_g', 0)))
+        it_carb = _parse_num(item.get('carbs', item.get('carbs_g', 0)))
+        it_fat = _parse_num(item.get('fat', item.get('fat_g', 0)))
+        it_sug = _parse_num(item.get('sugar', item.get('sugar_g', 0)))
+        it_chol = _parse_num(item.get('cholesterol', item.get('cholesterol_mg', 0)))
+        it_caf = _parse_num(item.get('caffeine', item.get('caffeine_mg', 0)))
+
+        # Auto-calculate calories if 0 and macros specified
+        if it_kcal == 0 and (it_pro > 0 or it_carb > 0 or it_fat > 0):
+            it_kcal = round(it_pro * 4.0 + it_carb * 4.0 + it_fat * 9.0)
+
+        saved_items.append({
+            'name': it_name,
+            'ingredients': it_ingredients,
+            'qty': _clean_num(it_qty),
+            'unit': it_unit,
+            'kcal': int(round(it_kcal)),
+            'calories': int(round(it_kcal)),
+            'protein': _clean_num(round(it_pro, 1)),
+            'protein_g': _clean_num(round(it_pro, 1)),
+            'carbs': _clean_num(round(it_carb, 1)),
+            'carbs_g': _clean_num(round(it_carb, 1)),
+            'fat': _clean_num(round(it_fat, 1)),
+            'fat_g': _clean_num(round(it_fat, 1)),
+            'sugar': _clean_num(round(it_sug, 1)),
+            'sugar_g': _clean_num(round(it_sug, 1)),
+            'cholesterol': _clean_num(round(it_chol, 1)),
+            'cholesterol_mg': _clean_num(round(it_chol, 1)),
+            'caffeine': _clean_num(round(it_caf, 1)),
+            'caffeine_mg': _clean_num(round(it_caf, 1))
+        })
+
+    # Auto-calculate entry totals
+    entry_total_kcal = int(round(sum(it['kcal'] for it in saved_items)))
+    entry_total_pro = _clean_num(round(sum(it['protein'] for it in saved_items), 1))
+    entry_total_carb = _clean_num(round(sum(it['carbs'] for it in saved_items), 1))
+    entry_total_fat = _clean_num(round(sum(it['fat'] for it in saved_items), 1))
+    entry_total_sug = _clean_num(round(sum(it['sugar'] for it in saved_items), 1))
+    entry_total_chol = _clean_num(round(sum(it['cholesterol'] for it in saved_items), 1))
+    entry_total_caf = _clean_num(round(sum(it['caffeine'] for it in saved_items), 1))
+
+    # Entry name
+    raw_name = data.get('name')
+    if raw_name and isinstance(raw_name, str) and raw_name.strip():
+        entry_name = raw_name.strip()
+    elif saved_items:
+        entry_name = saved_items[0]['name']
+    else:
+        entry_name = f"{category} Entry"
+
+    entry_id = int(time.time() * 1000)
+
+    with food_logs_lock:
+        logs = load_json(FOOD_LOGS_FILE, [])
+        if not isinstance(logs, list):
+            logs = []
+
+        while any(l.get('id') == entry_id for l in logs):
+            entry_id += 1
+
+        new_log = {
+            'id': entry_id,
+            'date': date_str,
+            'time': time_24,
+            'display_time': time_display,
+            'name': entry_name,
+            'category': category,
+            'calories': entry_total_kcal,
+            'kcal': entry_total_kcal,
+            'protein': entry_total_pro,
+            'protein_g': entry_total_pro,
+            'carbs': entry_total_carb,
+            'carbs_g': entry_total_carb,
+            'fat': entry_total_fat,
+            'fat_g': entry_total_fat,
+            'sugar': entry_total_sug,
+            'sugar_g': entry_total_sug,
+            'cholesterol': entry_total_chol,
+            'cholesterol_mg': entry_total_chol,
+            'caffeine': entry_total_caf,
+            'caffeine_mg': entry_total_caf,
+            'ingredients': saved_items,
+            'items': saved_items
+        }
+        logs.append(new_log)
+        save_json(FOOD_LOGS_FILE, logs)
+
+        # Compute updated daily totals for date_str
+        day_entries = [l for l in logs if l.get('date') == date_str]
+
+        def _sum_macro(entries, *keys):
+            tot = 0.0
+            for e in entries:
+                for k in keys:
+                    if k in e and e[k] is not None:
+                        try:
+                            tot += float(e[k])
+                            break
+                        except (ValueError, TypeError):
+                            continue
+            return tot
+
+        daily_totals = {
+            "consumptionKcal": int(round(_sum_macro(day_entries, 'calories', 'kcal', 'totalKcal'))),
+            "protein": _clean_num(round(_sum_macro(day_entries, 'protein', 'protein_g'), 1)),
+            "carbs": _clean_num(round(_sum_macro(day_entries, 'carbs', 'carbs_g'), 1)),
+            "fat": _clean_num(round(_sum_macro(day_entries, 'fat', 'fat_g'), 1)),
+            "sugar": _clean_num(round(_sum_macro(day_entries, 'sugar', 'sugar_g'), 1)),
+            "cholesterol": _clean_num(round(_sum_macro(day_entries, 'cholesterol', 'cholesterol_mg'), 1)),
+            "caffeine": _clean_num(round(_sum_macro(day_entries, 'caffeine', 'caffeine_mg'), 1))
+        }
+
+    return jsonify({
+        "success": True,
+        "message": "Meal logged successfully",
+        "entry": {
+            "id": str(entry_id),
+            "date": date_str,
+            "category": category,
+            "name": entry_name,
+            "totalKcal": entry_total_kcal,
+            "itemsCount": len(saved_items)
+        },
+        "dailyTotals": daily_totals
+    }), 201
+
+
+@app.route('/api/food/<entry_id>', methods=['DELETE'])
+@app.route('/api/food/log/<entry_id>', methods=['DELETE'])
+@app.route('/api/food', methods=['DELETE'])
+@app.route('/api/food/log', methods=['DELETE'])
+def api_food_delete(entry_id=None):
+    if not authenticate_food_api():
+        return jsonify({
+            "error": "Unauthorized",
+            "message": "Authentication required. Provide dashboard key via ?key=..., X-API-Key header, or Authorization: Bearer <key>."
+        }), 401
+
+    if not entry_id:
+        entry_id = request.args.get('id')
+        if not entry_id:
+            req_data = request.get_json(silent=True) or {}
+            entry_id = req_data.get('id')
+
+    if not entry_id:
+        return jsonify({
+            "error": "Bad Request",
+            "message": "Missing entry id to delete."
+        }), 400
+
+    target_id_str = str(entry_id).strip()
+
+    with food_logs_lock:
+        logs = load_json(FOOD_LOGS_FILE, [])
+        if not isinstance(logs, list):
+            logs = []
+
+        target_log = None
+        for l in logs:
+            if str(l.get('id')) == target_id_str:
+                target_log = l
+                break
+
+        if not target_log:
+            return jsonify({
+                "error": "Not Found",
+                "message": f"Food entry with id '{entry_id}' not found."
+            }), 404
+
+        target_date = target_log.get('date') or datetime.now(EST).strftime('%Y-%m-%d')
+        logs = [l for l in logs if str(l.get('id')) != target_id_str]
+        save_json(FOOD_LOGS_FILE, logs)
+
+        day_entries = [l for l in logs if l.get('date') == target_date]
+
+        def _sum_macro(entries, *keys):
+            tot = 0.0
+            for e in entries:
+                for k in keys:
+                    if k in e and e[k] is not None:
+                        try:
+                            tot += float(e[k])
+                            break
+                        except (ValueError, TypeError):
+                            continue
+            return tot
+
+        def _clean_num(val):
+            if val is None:
+                return 0
+            return int(val) if isinstance(val, (int, float)) and val.is_integer() else round(float(val), 2)
+
+        daily_totals = {
+            "consumptionKcal": int(round(_sum_macro(day_entries, 'calories', 'kcal', 'totalKcal'))),
+            "protein": _clean_num(round(_sum_macro(day_entries, 'protein', 'protein_g'), 1)),
+            "carbs": _clean_num(round(_sum_macro(day_entries, 'carbs', 'carbs_g'), 1)),
+            "fat": _clean_num(round(_sum_macro(day_entries, 'fat', 'fat_g'), 1)),
+            "sugar": _clean_num(round(_sum_macro(day_entries, 'sugar', 'sugar_g'), 1)),
+            "cholesterol": _clean_num(round(_sum_macro(day_entries, 'cholesterol', 'cholesterol_mg'), 1)),
+            "caffeine": _clean_num(round(_sum_macro(day_entries, 'caffeine', 'caffeine_mg'), 1))
+        }
+
+    return jsonify({
+        "success": True,
+        "message": "Meal deleted successfully",
+        "deletedId": target_id_str,
+        "date": target_date,
+        "dailyTotals": daily_totals
+    }), 200
+
+
 @app.route('/api/nutrition/log', methods=['POST'])
 @login_required
 def log_food():
@@ -4878,10 +5286,11 @@ def copy_yesterday_meal():
 @app.route('/api/nutrition/delete', methods=['POST'])
 @login_required
 def delete_food_log():
-    log_id = request.json.get('id')
-    logs = load_json(FOOD_LOGS_FILE, [])
-    new_logs = [l for l in logs if l.get('id') != log_id]
-    save_json(FOOD_LOGS_FILE, new_logs)
+    log_id = (request.json or {}).get('id')
+    with food_logs_lock:
+        logs = load_json(FOOD_LOGS_FILE, [])
+        new_logs = [l for l in logs if str(l.get('id')) != str(log_id)]
+        save_json(FOOD_LOGS_FILE, new_logs)
     return jsonify({'status': 'success'})
 
 @app.route('/api/nutrition/custom_foods', methods=['GET', 'POST'])

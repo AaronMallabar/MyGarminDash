@@ -385,31 +385,17 @@ window.openManualTableDirectly = function () {
 
     window.toggleAIAssistant(false);
 
-    const list = document.getElementById('ingredient-list');
-    if (list && !window.editingLogId && !list.children.length) {
-        list.innerHTML = '';
-        ingredientIndex = 0;
-        window.addIngredientRow({
-            name: '',
-            qty: 1,
-            unit: 'serving',
-            calories: 0,
-            protein_g: 0,
-            carbs_g: 0,
-            fat_g: 0,
-            sugar_g: 0,
-            caffeine_mg: 0,
-            cholesterol_mg: 0
-        });
-        window.updateNutrientSummary();
-    }
-
-    const mealNameInput = document.getElementById('custom-name');
-    if (mealNameInput && !mealNameInput.value) {
-        mealNameInput.focus();
+    // If opening manual entry directly (not editing an existing log), clear and reset form every time
+    if (!window.editingLogId) {
+        window.clearManualFoodForm();
     } else {
-        const firstItem = document.querySelector('.ingredient-row .ing-name');
-        if (firstItem) firstItem.focus();
+        const mealNameInput = document.getElementById('custom-name');
+        if (mealNameInput && !mealNameInput.value) {
+            mealNameInput.focus();
+        } else {
+            const firstItem = document.querySelector('.ingredient-row .ing-name');
+            if (firstItem) firstItem.focus();
+        }
     }
 };
 
@@ -417,7 +403,13 @@ window.clearManualFoodForm = function () {
     const nameInput = document.getElementById('custom-name');
     if (nameInput) nameInput.value = '';
     const catInput = document.getElementById('custom-category');
-    if (catInput) catInput.value = 'Meal';
+    if (catInput) {
+        const hour = new Date().getHours();
+        if (hour < 11) catInput.value = 'Breakfast';
+        else if (hour < 15) catInput.value = 'Lunch';
+        else if (hour < 21) catInput.value = 'Dinner';
+        else catInput.value = 'Snack';
+    }
     window.editingLogId = null;
 
     const saveBtn = document.getElementById('btn-save-custom-food');
@@ -454,6 +446,15 @@ window.closeFoodModal = function () {
     if (saveBtn) saveBtn.textContent = 'Log Food';
     const titleEl = document.getElementById('food-modal-title');
     if (titleEl) titleEl.textContent = 'Log Food';
+
+    const chatInput = document.getElementById('food-chat-input');
+    if (chatInput) chatInput.value = '';
+    const searchResults = document.getElementById('food-chat-search-results');
+    if (searchResults) searchResults.style.display = 'none';
+    if (window.clearFoodImage) window.clearFoodImage();
+
+    // Reset manual form fields so next open starts completely fresh
+    if (window.clearManualFoodForm) window.clearManualFoodForm();
 };
 
 window.onFoodSearchInput = function () {
@@ -1039,12 +1040,13 @@ window.addIngredientRow = function (data = null) {
 
     div.innerHTML = `
         <div style="min-width: 0;">
-            <input type="text" class="ing-name" placeholder="Item Name" value="${data?.name || ''}" 
+            <input type="text" class="ing-name" placeholder="Ingredients" value="${data?.name || ''}" 
                 style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.5rem; font-size: 0.85rem;"
-                aria-label="Item name">
+                aria-label="Ingredients">
         </div>
         <div>
             <input type="number" step="any" class="ing-qty" placeholder="Qty" value="${data?.qty ?? 1}" 
+                onfocus="this.select()"
                 oninput="window.onQtyChange(this)"
                 style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.4rem; font-size: 0.85rem;"
                 aria-label="Quantity">
@@ -1057,37 +1059,44 @@ window.addIngredientRow = function (data = null) {
             </select>
         </div>
         <div>
-            <input type="number" step="any" class="ing-pro" placeholder="P" value="${data?.protein_g ?? 0}" oninput="window.updateNutrientSummary()"
+            <input type="number" step="any" class="ing-pro" placeholder="P" value="${data?.protein_g ?? 0}" 
+                onfocus="this.select()" oninput="window.updateNutrientSummary()"
                 style="width: 100%; height: 32px; background: rgba(244, 114, 182, 0.05); border: 1px solid rgba(244, 114, 182, 0.2); color: #f472b6; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
                 aria-label="Protein (g)">
         </div>
         <div>
-            <input type="number" step="any" class="ing-carb" placeholder="C" value="${data?.carbs_g ?? 0}" oninput="window.updateNutrientSummary()"
+            <input type="number" step="any" class="ing-carb" placeholder="C" value="${data?.carbs_g ?? 0}" 
+                onfocus="this.select()" oninput="window.updateNutrientSummary()"
                 style="width: 100%; height: 32px; background: rgba(234, 179, 8, 0.05); border: 1px solid rgba(234, 179, 8, 0.2); color: #eab308; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
                 aria-label="Carbs (g)">
         </div>
         <div>
-            <input type="number" step="any" class="ing-fat" placeholder="F" value="${data?.fat_g ?? 0}" oninput="window.updateNutrientSummary()"
+            <input type="number" step="any" class="ing-fat" placeholder="F" value="${data?.fat_g ?? 0}" 
+                onfocus="this.select()" oninput="window.updateNutrientSummary()"
                 style="width: 100%; height: 32px; background: rgba(249, 115, 22, 0.05); border: 1px solid rgba(249, 115, 22, 0.2); color: #f97316; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
                 aria-label="Fat (g)">
         </div>
         <div>
-            <input type="number" step="any" class="ing-sugar" placeholder="S" value="${data?.sugar_g ?? 0}" oninput="window.updateNutrientSummary()"
+            <input type="number" step="any" class="ing-sugar" placeholder="S" value="${data?.sugar_g ?? 0}" 
+                onfocus="this.select()" oninput="window.updateNutrientSummary()"
                 style="width: 100%; height: 32px; background: rgba(96, 165, 250, 0.05); border: 1px solid rgba(96, 165, 250, 0.2); color: #60a5fa; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
                 aria-label="Sugar (g)">
         </div>
         <div>
-            <input type="number" step="any" class="ing-caffeine" placeholder="Caf" value="${data?.caffeine_mg ?? 0}" oninput="window.updateNutrientSummary()"
+            <input type="number" step="any" class="ing-caffeine" placeholder="Caf" value="${data?.caffeine_mg ?? 0}" 
+                onfocus="this.select()" oninput="window.updateNutrientSummary()"
                 style="width: 100%; height: 32px; background: rgba(167, 139, 250, 0.05); border: 1px solid rgba(167, 139, 250, 0.2); color: #a78bfa; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
                 aria-label="Caffeine (mg)">
         </div>
         <div>
-            <input type="number" step="any" class="ing-chol" placeholder="Chol" value="${data?.cholesterol_mg ?? 0}" oninput="window.updateNutrientSummary()"
+            <input type="number" step="any" class="ing-chol" placeholder="Chol" value="${data?.cholesterol_mg ?? 0}" 
+                onfocus="this.select()" oninput="window.updateNutrientSummary()"
                 style="width: 100%; height: 32px; background: rgba(251, 146, 60, 0.05); border: 1px solid rgba(251, 146, 60, 0.2); color: #fb923c; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
                 aria-label="Cholesterol (mg)">
         </div>
         <div>
             <input type="number" step="any" class="ing-cal" placeholder="kcal" value="${data?.calories ?? 0}" 
+                onfocus="this.select()"
                 oninput="window.updateNutrientSummary()"
                 data-base-qty="${data?.qty || 1}"
                 style="width: 100%; height: 32px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #10b981; border-radius: 0.4rem; padding: 0 0.4rem; font-size: 0.8rem; font-weight: 800;"
@@ -1616,3 +1625,60 @@ window.copyYesterdayMeal = async function(logId) {
         }
     } catch (err) { console.error(err); }
 }
+
+// Delegated focus selection for numerical inputs in the food table
+document.addEventListener('DOMContentLoaded', () => {
+    const ingList = document.getElementById('ingredient-list');
+    if (ingList) {
+        ingList.addEventListener('focusin', (e) => {
+            if (e.target && e.target.matches('input[type="number"]')) {
+                e.target.select();
+            }
+        });
+    }
+});
+
+// Auto-sync food logs periodically and on visibility/focus
+(function setupFoodLogAutoSync() {
+    let lastKnownLogsHash = null;
+
+    async function checkAndSyncFoodLogs() {
+        const modal = document.getElementById('foodModal');
+        if (modal && modal.classList.contains('active')) {
+            return;
+        }
+
+        try {
+            const dateStr = window.getLocalDateStr ? window.getLocalDateStr(window.activeNutritionDate || new Date()) : new Date().toLocaleDateString('en-CA');
+            const res = await fetch(`/api/nutrition/logs?date=${dateStr}`);
+            if (res.ok) {
+                const logs = await res.json();
+                const newHash = JSON.stringify(logs.map(l => [l.id, l.name, l.calories]));
+                if (lastKnownLogsHash !== null && lastKnownLogsHash !== newHash) {
+                    if (window.fetchNutritionData) {
+                        window.fetchNutritionData();
+                    }
+                    if (window.fetchProactiveSuggestions) {
+                        window.fetchProactiveSuggestions();
+                    }
+                }
+                lastKnownLogsHash = newHash;
+            }
+        } catch (e) {
+            // Silently ignore poll errors
+        }
+    }
+
+    // Check every 15 seconds
+    setInterval(checkAndSyncFoodLogs, 15000);
+
+    // Sync on tab visibility change or window focus
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            checkAndSyncFoodLogs();
+        }
+    });
+    window.addEventListener('focus', () => {
+        checkAndSyncFoodLogs();
+    });
+})();

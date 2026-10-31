@@ -2194,9 +2194,11 @@ window.updateHRVRange = async function (range, btn) {
     }
     const targetRange = window.currentHRVRange || '1w';
     const targetEndDate = window.currentHRVEndDate || new Date();
-    window.updateMetricDatePill('hrv', targetRange, targetEndDate);
-    const url = `/api/hrv?range=${targetRange}&end_date=${getLocalDateStr(targetEndDate)}`;
-    await window.fetchAndRenderMetric('hrv', targetRange, targetEndDate, url, 'hrvHistoryChart', renderHRVVisual);
+    if (window.updateMetricDatePill) window.updateMetricDatePill('hrv', targetRange, targetEndDate);
+    const url = `/api/hrv?range=${targetRange}&end_date=${window.getLocalDateStr(targetEndDate)}`;
+    if (window.fetchAndRenderMetric && window.renderHRVVisual) {
+        await window.fetchAndRenderMetric('hrv', targetRange, targetEndDate, url, 'hrvHistoryChart', window.renderHRVVisual);
+    }
 };
 
 window.renderHRVVisual = function (data) {
@@ -2301,6 +2303,11 @@ window.renderHRVVisual = function (data) {
         };
         const statusColors = history.map(d => getStatusColor(d.status || d.lastNightStatus || d.last_night_status));
 
+        const isLong = (window.currentHRVRange === '1m' || window.currentHRVRange === '1y' || history.length > 14);
+        const pointRadius = isLong ? (window.currentHRVRange === '1y' || history.length > 35 ? 0 : 2) : 5;
+        const pointHoverRadius = isLong ? 4 : 7;
+        const borderWidth = isLong ? 2 : 3;
+
         chartInstances[canvasId] = new Chart(ctx, {
             type: 'line',
             data: {
@@ -2308,27 +2315,29 @@ window.renderHRVVisual = function (data) {
                 datasets: [
                     {
                         label: '7d Trend',
-                        data: history.map(d => d.weeklyAvg || d.weekly_avg),
-                        borderColor: '#ffffff', // Fallback
-                        borderWidth: 3,
+                        data: history.map(d => (d.weeklyAvg != null ? d.weeklyAvg : (d.weekly_avg != null ? d.weekly_avg : null))),
+                        borderColor: '#4ade80',
+                        borderWidth: borderWidth,
+                        spanGaps: true,
                         segment: {
-                            borderColor: ctx => statusColors[ctx.p1DataIndex] || '#ffffff'
+                            borderColor: ctx => statusColors[ctx.p1DataIndex] || '#4ade80'
                         },
                         pointBackgroundColor: statusColors,
                         pointBorderColor: '#1e293b',
-                        pointRadius: 6,
-                        pointHoverRadius: 8,
+                        pointRadius: pointRadius,
+                        pointHoverRadius: pointHoverRadius,
                         tension: 0.4,
                         fill: false,
                         order: 1
                     },
                     {
                         label: 'Nightly Avg',
-                        data: history.map(d => d.lastNightAvg || d.last_night_avg),
-                        borderColor: 'rgba(56, 189, 248, 0.4)',
+                        data: history.map(d => (d.lastNightAvg != null ? d.lastNightAvg : (d.last_night_avg != null ? d.last_night_avg : null))),
+                        borderColor: 'rgba(56, 189, 248, 0.5)',
                         borderDash: [5, 5],
-                        borderWidth: 2,
+                        borderWidth: isLong ? 1.5 : 2,
                         pointRadius: 0,
+                        spanGaps: true,
                         tension: 0.4,
                         fill: false,
                         order: 2
@@ -2337,10 +2346,12 @@ window.renderHRVVisual = function (data) {
                         label: 'Baseline Low',
                         data: history.map(d => {
                             const b = d.baseline || d.summary?.baseline || {};
-                            return b.balancedLow || d.baselineLow || 0;
+                            const val = b.balancedLow || d.baselineLow;
+                            return (val != null && val > 0) ? val : null;
                         }),
                         borderColor: 'transparent',
                         pointRadius: 0,
+                        spanGaps: true,
                         tension: 0.4,
                         fill: false,
                         order: 3
@@ -2349,11 +2360,13 @@ window.renderHRVVisual = function (data) {
                         label: 'Baseline Range',
                         data: history.map(d => {
                             const b = d.baseline || d.summary?.baseline || {};
-                            return b.balancedUpper || d.baselineHigh || 0;
+                            const val = b.balancedUpper || d.baselineHigh;
+                            return (val != null && val > 0) ? val : null;
                         }),
                         borderColor: 'transparent',
                         backgroundColor: 'rgba(255, 255, 255, 0.03)',
                         pointRadius: 0,
+                        spanGaps: true,
                         tension: 0.4,
                         fill: '-1',
                         order: 4
@@ -2374,7 +2387,14 @@ window.renderHRVVisual = function (data) {
                     }
                 },
                 scales: {
-                    x: { grid: { display: false }, ticks: { color: '#94a3b8' } },
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            color: '#94a3b8',
+                            maxTicksLimit: isLong ? 12 : 7,
+                            maxRotation: 0
+                        }
+                    },
                     y: {
                         grid: { color: 'rgba(255,255,255,0.05)' },
                         ticks: { color: '#94a3b8' },

@@ -127,9 +127,9 @@ window.openSettings = async function () {
     const modal = document.getElementById('settingsModal');
     if (!modal) return;
 
-    // Initialize refresh dates (yesterday and today)
-    const today = new Date().toISOString().split('T')[0];
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    // Initialize refresh dates (yesterday and today using local timezone)
+    const today = window.getLocalDateStr ? window.getLocalDateStr() : new Date().toLocaleDateString('en-CA');
+    const yesterday = window.getLocalDateStr ? window.getLocalDateStr(new Date(Date.now() - 86400000)) : new Date(Date.now() - 86400000).toLocaleDateString('en-CA');
 
     document.getElementById('refresh-start').value = yesterday;
     document.getElementById('refresh-end').value = today;

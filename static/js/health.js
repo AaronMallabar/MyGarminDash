@@ -13,13 +13,13 @@ window.updateHRVRange = async function (range, btn) {
         btn.parentElement.querySelectorAll('.range-btn, .drilldown-range-btn, button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
     }
-    if (window.updateMetricDatePill) window.updateMetricDatePill('hrv', window.currentHRVRange, window.currentHRVEndDate);
-    const cached = window.getCachedData ? window.getCachedData('hrv', window.currentHRVRange, window.currentHRVEndDate) : null;
-    if (cached) {
-        if (window.renderHRVVisual) window.renderHRVVisual(cached);
-        return;
+    const targetRange = window.currentHRVRange || '1w';
+    const targetEndDate = window.currentHRVEndDate || new Date();
+    if (window.updateMetricDatePill) window.updateMetricDatePill('hrv', targetRange, targetEndDate);
+    const url = `/api/hrv?range=${targetRange}&end_date=${window.getLocalDateStr(targetEndDate)}`;
+    if (window.fetchAndRenderMetric && window.renderHRVVisual) {
+        await window.fetchAndRenderMetric('hrv', targetRange, targetEndDate, url, 'hrvHistoryChart', window.renderHRVVisual);
     }
-    if (window.fetchHRVHistory) await window.fetchHRVHistory();
 }
 
 window.shiftHRVDate = function (dir) {
@@ -129,7 +129,7 @@ window.renderIntensityMinutesVisualV2 = function (data) {
 
         // Construct 24h timeline points
         let points = (data.timeline && data.timeline.length > 0) ? data.timeline : [];
-        const dateStr = sum.date || (window.currentIMEndDate ? window.getLocalDateStr(window.currentIMEndDate) : new Date().toISOString().split('T')[0]);
+        const dateStr = sum.date || (window.currentIMEndDate ? window.getLocalDateStr(window.currentIMEndDate) : (window.getLocalDateStr ? window.getLocalDateStr() : new Date().toLocaleDateString('en-CA')));
         const dayStart = new Date(`${dateStr}T00:00:00`);
         const dayEnd = new Date(`${dateStr}T23:59:59`);
         const startMs = dayStart.getTime();
