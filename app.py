@@ -5,6 +5,8 @@ import re
 from google import genai
 import json
 import traceback
+import urllib.request
+import glob
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 from functools import wraps
 from garminconnect import Garmin
@@ -174,7 +176,8 @@ garmin_client = None
 SETTINGS_FILE = 'settings.json'
 DEFAULT_SETTINGS = {
     'ai_model': 'gemini-3.5-flash',
-    'pb_start_year': 2025
+    'pb_start_year': 2025,
+    'athlete_ftp': 250
 }
 
 # Nutrition Storage
@@ -1614,6 +1617,13 @@ def update_settings():
                 yr = int(data['pb_start_year'])
                 current_settings['pb_start_year'] = yr
                 logger.info(f"PB Sync start year updated to: {yr}")
+            except: pass
+        if 'athlete_ftp' in data:
+            try:
+                ftp_val = float(data['athlete_ftp'])
+                if ftp_val > 0:
+                    current_settings['athlete_ftp'] = round(ftp_val)
+                    logger.info(f"Athlete FTP updated to: {current_settings['athlete_ftp']}")
             except: pass
         
         if save_settings(current_settings):
@@ -4348,11 +4358,256 @@ def get_intensity_minutes_history():
         logger.error(f"Error fetching intensity minutes history: {e}")
         return jsonify({'error': str(e)}), 500
 
+
+def degrees_to_compass(deg):
+    if deg is None:
+        return "N"
+    val = int((float(deg) / 22.5) + 0.5)
+    arr = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+    return arr[val % 16]
+
+def format_duration_sec(sec):
+    if not sec or sec <= 0:
+        return "0:00"
+    m = int(sec // 60)
+    s = int(sec % 60)
+    if m >= 60:
+        h = m // 60
+        m = m % 60
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+def get_activity_weather(lat, lon, start_time_str, fallback_temp_c=None):
+    """
+    Fetch weather and wind conditions for an activity using Open-Meteo archive API.
+    Caches result to garmin_cache/weather_cache.json for instant snappiness.
+    """
+    if not lat or not lon or not start_time_str:
+        if fallback_temp_c is not None:
+            temp_f = round(fallback_temp_c * 9/5 + 32)
+            return {
+                'temperature': temp_f,
+                'wind_speed': None,
+                'wind_direction': None,
+                'display': f"{temp_f}°F • Indoor / Virtual"
+            }
+        return None
+
+    cache_path = os.path.join(GarminPersistence.BASE_DIR, "weather_cache.json")
+    weather_cache = load_json(cache_path, {})
+    
+    date_part = start_time_str[:10]
+    hour_part = "00"
+    if 'T' in start_time_str:
+        hour_part = start_time_str.split('T')[1][:2]
+    elif ' ' in start_time_str:
+        hour_part = start_time_str.split(' ')[1][:2]
+
+    cache_key = f"{round(float(lat), 2)}_{round(float(lon), 2)}_{date_part}T{hour_part}"
+    if cache_key in weather_cache:
+        return weather_cache[cache_key]
+
+    try:
+        url = (
+            f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lon}"
+            f"&start_date={date_part}&end_date={date_part}"
+            f"&hourly=temperature_2m,wind_speed_10m,wind_direction_10m"
+            f"&temperature_unit=fahrenheit&wind_speed_unit=mph"
+        )
+        req = urllib.request.Request(url, headers={'User-Agent': 'MyGarminDash/1.0'})
+        payload = None
+        try:
+            with urllib.request.urlopen(req, timeout=3.5) as response:
+                payload = json.loads(response.read().decode())
+        except Exception:
+            # Fallback to forecast past_days API if archive doesn't have it yet
+            url_fb = (
+                f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
+                f"&start_date={date_part}&end_date={date_part}"
+                f"&hourly=temperature_2m,wind_speed_10m,wind_direction_10m"
+                f"&temperature_unit=fahrenheit&wind_speed_unit=mph"
+            )
+            req_fb = urllib.request.Request(url_fb, headers={'User-Agent': 'MyGarminDash/1.0'})
+            with urllib.request.urlopen(req_fb, timeout=3.5) as response:
+                payload = json.loads(response.read().decode())
+
+        if not payload:
+            raise ValueError("No weather payload returned")
+
+        hourly = payload.get('hourly', {})
+        times = hourly.get('time', [])
+        temps = hourly.get('temperature_2m', [])
+        winds = hourly.get('wind_speed_10m', [])
+        wind_dirs = hourly.get('wind_direction_10m', [])
+
+        target_str = f"{date_part}T{hour_part}:00"
+        idx = 0
+        if target_str in times:
+            idx = times.index(target_str)
+        elif times:
+            try:
+                target_h = int(hour_part)
+                idx = min(range(len(times)), key=lambda i: abs(int(times[i][11:13]) - target_h))
+            except Exception:
+                idx = 0
+
+        temp_f = round(temps[idx]) if idx < len(temps) and temps[idx] is not None else None
+        wind_spd = round(winds[idx]) if idx < len(winds) and winds[idx] is not None else None
+        wind_deg = wind_dirs[idx] if idx < len(wind_dirs) and wind_dirs[idx] is not None else None
+        wind_compass = degrees_to_compass(wind_deg) if wind_deg is not None else ""
+
+        if temp_f is not None and wind_spd is not None and wind_compass:
+            display_str = f"{temp_f}°F • Wind: {wind_compass} {wind_spd} mph"
+        elif temp_f is not None:
+            display_str = f"{temp_f}°F"
+        else:
+            display_str = "--"
+
+        res = {
+            'temperature': temp_f,
+            'wind_speed': wind_spd,
+            'wind_direction': wind_compass,
+            'display': display_str
+        }
+        weather_cache[cache_key] = res
+        save_json(cache_path, weather_cache)
+        return res
+    except Exception as e:
+        logger.warning(f"Failed to fetch weather for {cache_key}: {e}")
+        if fallback_temp_c is not None:
+            temp_f = round(fallback_temp_c * 9/5 + 32)
+            return {'temperature': temp_f, 'wind_speed': None, 'wind_direction': None, 'display': f"{temp_f}°F"}
+        return None
+
+def compute_power_and_hr_zones(activity_info, summary, charts, ftp):
+    """
+    Compute Power Zones (Z1-Z7) and Heart Rate Zones (Z1-Z5).
+    Uses native Garmin fields first (powerTimeInZone_1..7, hrTimeInZone_1..5),
+    with stream calculation fallback if needed.
+    """
+    pz_labels = [
+        {"zone": 1, "name": "Active Recovery", "range": "< 55% FTP", "color": "#64748b"},
+        {"zone": 2, "name": "Endurance", "range": "55-75% FTP", "color": "#38bdf8"},
+        {"zone": 3, "name": "Tempo", "range": "76-90% FTP", "color": "#10b981"},
+        {"zone": 4, "name": "Threshold", "range": "91-105% FTP", "color": "#f59e0b"},
+        {"zone": 5, "name": "VO2 Max", "range": "106-120% FTP", "color": "#f97316"},
+        {"zone": 6, "name": "Anaerobic Capacity", "range": "121-150% FTP", "color": "#ef4444"},
+        {"zone": 7, "name": "Neuromuscular", "range": "> 150% FTP", "color": "#a855f7"},
+    ]
+    
+    pz_seconds = [0.0] * 7
+    has_native_pz = False
+    for i in range(1, 8):
+        k = f"powerTimeInZone_{i}"
+        val = summary.get(k) or activity_info.get(k)
+        if val is not None and float(val) > 0:
+            has_native_pz = True
+            pz_seconds[i-1] = float(val)
+
+    if not has_native_pz and charts.get('power') and ftp:
+        for p in charts['power']:
+            if p is None or p < 0:
+                continue
+            ratio = p / ftp
+            if ratio < 0.55:
+                pz_seconds[0] += 1
+            elif ratio <= 0.75:
+                pz_seconds[1] += 1
+            elif ratio <= 0.90:
+                pz_seconds[2] += 1
+            elif ratio <= 1.05:
+                pz_seconds[3] += 1
+            elif ratio <= 1.20:
+                pz_seconds[4] += 1
+            elif ratio <= 1.50:
+                pz_seconds[5] += 1
+            else:
+                pz_seconds[6] += 1
+
+    total_pz_s = sum(pz_seconds)
+    power_zones = []
+    for i, meta in enumerate(pz_labels):
+        s = pz_seconds[i]
+        pct = round((s / total_pz_s) * 100, 1) if total_pz_s > 0 else 0.0
+        power_zones.append({
+            "zone": meta["zone"],
+            "name": meta["name"],
+            "range": meta["range"],
+            "color": meta["color"],
+            "seconds": round(s, 1),
+            "minutes": round(s / 60, 1),
+            "percent": pct
+        })
+
+    hr_labels = [
+        {"zone": 1, "name": "Warm Up", "range": "50-60% Max HR", "color": "#64748b"},
+        {"zone": 2, "name": "Easy", "range": "60-70% Max HR", "color": "#38bdf8"},
+        {"zone": 3, "name": "Aerobic", "range": "70-80% Max HR", "color": "#10b981"},
+        {"zone": 4, "name": "Threshold", "range": "80-90% Max HR", "color": "#f59e0b"},
+        {"zone": 5, "name": "Maximum", "range": "> 90% Max HR", "color": "#ef4444"},
+    ]
+    
+    hr_seconds = [0.0] * 5
+    has_native_hr = False
+    for i in range(1, 6):
+        k = f"hrTimeInZone_{i}"
+        val = summary.get(k) or activity_info.get(k)
+        if val is not None and float(val) > 0:
+            has_native_hr = True
+            hr_seconds[i-1] = float(val)
+
+    max_hr = summary.get('maxHR') or summary.get('maxHeartRate') or activity_info.get('maxHR')
+    if not has_native_hr and charts.get('heart_rate') and max_hr:
+        for hr in charts['heart_rate']:
+            if hr is None or hr <= 0:
+                continue
+            ratio = hr / max_hr
+            if ratio < 0.60:
+                hr_seconds[0] += 1
+            elif ratio <= 0.70:
+                hr_seconds[1] += 1
+            elif ratio <= 0.80:
+                hr_seconds[2] += 1
+            elif ratio <= 0.90:
+                hr_seconds[3] += 1
+            else:
+                hr_seconds[4] += 1
+
+    total_hr_s = sum(hr_seconds)
+    hr_zones = []
+    for i, meta in enumerate(hr_labels):
+        s = hr_seconds[i]
+        pct = round((s / total_hr_s) * 100, 1) if total_hr_s > 0 else 0.0
+        hr_zones.append({
+            "zone": meta["zone"],
+            "name": meta["name"],
+            "range": meta["range"],
+            "color": meta["color"],
+            "seconds": round(s, 1),
+            "minutes": round(s / 60, 1),
+            "percent": pct
+        })
+
+    return power_zones, hr_zones
+
 @app.route('/api/activity/<int:activity_id>')
 @login_required
 def get_activity_details(activity_id):
     try:
         logger.info(f"Fetching details for activity_id: {activity_id}")
+        
+        # Fast disk cache check for optimal snappiness
+        detail_cache_dir = os.path.join(GarminPersistence.BASE_DIR, "activity_details")
+        os.makedirs(detail_cache_dir, exist_ok=True)
+        cache_file = os.path.join(detail_cache_dir, f"{activity_id}.json")
+        if os.path.exists(cache_file):
+            try:
+                cached_data = load_json(cache_file, {})
+                if cached_data and not cached_data.get('error') and cached_data.get('telemetry'):
+                    return jsonify(cached_data)
+            except Exception as ce:
+                logger.warning(f"Error reading activity cache: {ce}")
+
         client = get_garmin_client()
         details = client.get_activity_details(activity_id)
         if not details:
@@ -4365,10 +4620,7 @@ def get_activity_details(activity_id):
         # Extract metrics and descriptors
         descriptors = details.get('metricDescriptors', [])
         metrics_list = details.get('activityDetailMetrics', [])
-        
-        # Create a mapping of key to index
         key_map = {d['key']: d['metricsIndex'] for d in descriptors}
-        logger.info(f"Available metrics keys: {list(key_map.keys())}")
         
         def get_val(row, key):
             idx = key_map.get(key)
@@ -4381,32 +4633,40 @@ def get_activity_details(activity_id):
             'cadence': [], 'power': [], 'timestamps': [], 'distance': []
         }
         
-        activity_info = client.get_activity(activity_id) or {}
+        # Look up activity_info from monthly cache first to eliminate unnecessary network request
+        activity_info = None
+        for ym_file in glob.glob(os.path.join(GarminPersistence.BASE_DIR, 'activities', '*.json')):
+            try:
+                month_dict = load_json(ym_file, {})
+                for day, act_list in month_dict.items():
+                    if isinstance(act_list, list):
+                        for a in act_list:
+                            if a.get('activityId') == activity_id:
+                                activity_info = dict(a)
+                                break
+                    if activity_info: break
+            except Exception:
+                pass
+            if activity_info: break
+
+        if not activity_info:
+            activity_info = client.get_activity(activity_id) or {}
         
-        # --- PB Tracking ---
+        # PB Tracking
         try:
             settings = load_settings()
-            pb_year = str(settings.get('pb_start_year', 2025))
             start_str = activity_info.get('startTimeLocal', '')
-            
-            # Use specific setting instead of hardcoded 2025
-            # For individual view, we allow calculation for ANY activity if needed,
-            # but usually we follow the sync settings. Let's be permissive here.
             pts = load_json('garmin_cache/personal_bests_details.json', {})
             aid_str = str(activity_id)
             
-            # Re-calculate if not in cache OR if it's in the old format (missing indices)
             needs_calc = aid_str not in pts
             if not needs_calc:
                 rec = pts[aid_str]
-                # Check for old format in power
                 p_items = rec.get('power', {})
                 if rec.get('is_bike') and p_items:
                     first_val = next(iter(p_items.values()), None)
                     if first_val is not None and not isinstance(first_val, dict):
                         needs_calc = True
-                
-                # Check for old format in pace
                 if not needs_calc and rec.get('is_run'):
                     pa_items = rec.get('pace', {})
                     if pa_items:
@@ -4429,16 +4689,12 @@ def get_activity_details(activity_id):
                     }
                     save_json('garmin_cache/personal_bests_details.json', pts)
             
-            # Attach to payload
             if aid_str in pts:
                 activity_info['activity_bests'] = pts[aid_str]
         except Exception as pb_e:
             logger.error(f"Error parsing PBs for {activity_id}: {pb_e}")
-            
-        summary = {}
-        info_summary = activity_info.get('summaryDTO', {})
-        
-        # Build strict chart lists
+
+        # Build chart lists
         for m in metrics_list:
             row = m.get('metrics')
             if not row: continue
@@ -4452,41 +4708,28 @@ def get_activity_details(activity_id):
                 charts['power'].append(get_val(row, 'directPower'))
                 charts['distance'].append(get_val(row, 'sumDistance'))
                 
-                # Cadence logic
-                cad = get_val(row, 'directRunCadence')
+                cad = get_val(row, 'directBikeCadence')
+                if cad is None: cad = get_val(row, 'directRunCadence')
                 if cad is None: cad = get_val(row, 'directDoubleCadence')
-                if cad is None: cad = get_val(row, 'directBikeCadence')
                 if cad is None: cad = get_val(row, 'directFractionalCadence')
                 charts['cadence'].append(cad)
 
-
-        # Summary Refinement: Merge details summary with full activity summary
-        saved_bests = activity_info.get('activity_bests')
-        activity_info = client.get_activity(activity_id) or {}
-        if saved_bests:
-            activity_info['activity_bests'] = saved_bests
+        # Merge activity summary
         summary = {}
-        # Start with the full activity summary (usually has movingDuration, etc.)
         info_summary = activity_info.get('summaryDTO')
         if info_summary: summary.update(info_summary)
-        
-        # Overlay with details summary (might have more precise measure-based stats)
         details_summary = details.get('summaryDTO')
         if details_summary: summary.update(details_summary)
         
-        if not summary or not isinstance(summary, dict):
-            summary = {}
-
         # Calculate missing summary fields from charts
         total_dist_m = summary.get('distance')
         if not total_dist_m and charts['distance']:
-            # Find last non-null distance
             for d in reversed(charts['distance']):
                 if d is not None:
                     total_dist_m = d
                     break
         
-        total_dur_s = summary.get('duration')
+        total_dur_s = summary.get('duration') or summary.get('movingDuration')
         if not total_dur_s and len(charts['timestamps']) > 1:
             total_dur_s = (charts['timestamps'][-1] - charts['timestamps'][0]) / 1000
 
@@ -4502,20 +4745,80 @@ def get_activity_details(activity_id):
             pace_seconds = 1609.34 / avg_speed
             avg_pace_str = f"{int(pace_seconds//60)}:{int(pace_seconds%60):02d}"
 
-        # Determine activity type for splits/logic
-        type_info = (activity_info.get('activityType') or 
-                     activity_info.get('activityTypeDTO') or {})
-        type_key = type_info.get('typeKey', '').lower()
-        act_name = activity_info.get('activityName', '').lower() if activity_info else ""
-        
-        # Comprehensive cycling check (Type or Name)
         is_cycling = is_cycling_activity(activity_info)
+        type_info = (activity_info.get('activityType') or activity_info.get('activityTypeDTO') or {})
+        type_key = type_info.get('typeKey', '').lower()
+
+        # Telemetry & Training Load Enhancements
+        settings = load_settings()
+        ftp = float(settings.get('athlete_ftp') or summary.get('functionalThresholdPower') or activity_info.get('functionalThresholdPower') or 250.0)
         
+        norm_power = summary.get('normalizedPower') or summary.get('normPower') or activity_info.get('normalizedPower') or activity_info.get('normPower')
+        if norm_power:
+            norm_power = round(float(norm_power))
+        
+        if_val = summary.get('intensityFactor') or activity_info.get('intensityFactor')
+        if not if_val and norm_power and ftp > 0:
+            if_val = round(norm_power / ftp, 2)
+        elif if_val:
+            if_val = round(float(if_val), 2)
+            
+        tss_val = summary.get('trainingStressScore') or activity_info.get('trainingStressScore')
+        if not tss_val and norm_power and if_val and ftp > 0 and total_dur_s:
+            tss_val = round(((total_dur_s * norm_power * if_val) / (ftp * 3600)) * 100, 1)
+        elif tss_val:
+            tss_val = round(float(tss_val), 1)
+
+        total_work_kj = None
+        if charts.get('power') and any(p for p in charts['power'] if p is not None and p > 0):
+            valid_powers = [p for p in charts['power'] if p is not None and p >= 0]
+            total_work_kj = round(sum(valid_powers) / 1000.0)
+        elif summary.get('averagePower') and summary.get('movingDuration'):
+            total_work_kj = round((summary['averagePower'] * summary['movingDuration']) / 1000.0)
+        elif summary.get('totalWork'):
+            tw = float(summary['totalWork'])
+            total_work_kj = round(tw if tw > 100 else tw * 4.184)
+
+        active_calories = round(summary.get('calories') or activity_info.get('calories') or 0)
+        avg_hr = round(summary.get('averageHR') or activity_info.get('averageHR') or 0)
+        max_hr = round(summary.get('maxHR') or summary.get('maxHeartRate') or activity_info.get('maxHR') or 0)
+        avg_cad = round(summary.get('averageBikeCadence') or summary.get('averageCadence') or activity_info.get('averageBikingCadenceInRevPerMinute') or 0)
+        max_cad = round(summary.get('maxBikeCadence') or summary.get('maxCadence') or activity_info.get('maxBikingCadenceInRevPerMinute') or 0)
+
+        # Weather & Wind
+        start_lat = summary.get('startLatitude') or activity_info.get('startLatitude')
+        start_lon = summary.get('startLongitude') or activity_info.get('startLongitude')
+        start_time_str = activity_info.get('startTimeLocal') or summary.get('startTimeLocal') or ""
+        avg_temp_c = summary.get('averageTemperature') or activity_info.get('averageTemperature')
+        weather_data = get_activity_weather(start_lat, start_lon, start_time_str, avg_temp_c)
+
+        # Intensity & Zone Distribution
+        power_zones, hr_zones = compute_power_and_hr_zones(activity_info, summary, charts, ftp)
+
+        telemetry = {
+            'normalized_power': norm_power,
+            'ftp': ftp,
+            'intensity_factor': if_val,
+            'training_stress_score': tss_val,
+            'total_work_kj': total_work_kj,
+            'active_calories': active_calories,
+            'cardiac_ceiling': {
+                'avg_hr': avg_hr,
+                'max_hr': max_hr,
+                'display': f"Avg: {avg_hr} bpm | Max: {max_hr} bpm" if avg_hr and max_hr else (f"{avg_hr} bpm" if avg_hr else "--")
+            },
+            'cadence': {
+                'avg_rpm': avg_cad,
+                'max_rpm': max_cad,
+                'display': f"Avg: {avg_cad} rpm | Max: {max_cad} rpm" if avg_cad and max_cad else (f"{avg_cad} rpm" if avg_cad else "--")
+            },
+            'weather': weather_data,
+            'power_zones': power_zones,
+            'hr_zones': hr_zones
+        }
+
+        # Enhanced Splits Logic (5-mile for cycling, 1-mile for running)
         split_len = 5 if is_cycling else 1
-        
-        logger.info(f"Activity {activity_id} detected as {'CYCLING' if is_cycling else 'RUNNING/OTHER'} (type_key: {type_key})")
-        
-        # Splits logic
         splits = []
         try:
             if 'sumDistance' in key_map:
@@ -4525,66 +4828,130 @@ def get_activity_details(activity_id):
                 last_dist = 0
                 start_ts = charts['timestamps'][0] if charts['timestamps'] else 0
                 
+                seg_pwr_sum, seg_pwr_cnt = 0, 0
+                seg_hr_sum, seg_hr_cnt = 0, 0
+                seg_cad_sum, seg_cad_cnt = 0, 0
+                seg_elev_gain_m = 0.0
+                last_elev = None
+
                 for m in metrics_list:
                     row = m.get('metrics')
                     if not row: continue
-                    
+
+                    pwr = get_val(row, 'directPower')
+                    if pwr is not None and pwr >= 0:
+                        seg_pwr_sum += pwr; seg_pwr_cnt += 1
+
+                    hr = get_val(row, 'directHeartRate')
+                    if hr is not None and hr > 0:
+                        seg_hr_sum += hr; seg_hr_cnt += 1
+
+                    cad = get_val(row, 'directBikeCadence')
+                    if cad is None: cad = get_val(row, 'directDoubleCadence')
+                    if cad is None: cad = get_val(row, 'directRunCadence')
+                    if cad is None: cad = get_val(row, 'directFractionalCadence')
+                    if cad is not None and cad >= 0:
+                        seg_cad_sum += cad; seg_cad_cnt += 1
+
+                    elev = get_val(row, 'directElevation')
+                    if elev is not None:
+                        if last_elev is not None and elev > last_elev:
+                            seg_elev_gain_m += (elev - last_elev)
+                        last_elev = elev
+
                     curr_dist = get_val(row, 'sumDistance')
                     if curr_dist and curr_dist >= next_split_dist:
-                        # Find duration
                         curr_dur = get_val(row, 'sumDuration')
-                        if curr_dur is None: # Fallback to timestamp
+                        if curr_dur is None:
                             ts = get_val(row, 'directTimestamp')
-                            curr_dur = (ts - start_ts) / 1000 if ts else 0
-                        
+                            curr_dur = (ts - start_ts) / 1000 if ts and start_ts else 0
+
                         split_dur = curr_dur - last_dur
                         actual_dist_m = curr_dist - last_dist
                         actual_dist_mi = actual_dist_m / mile_in_m
-                        
+
                         if split_dur > 0 and actual_dist_mi > 0:
+                            speed_mph = actual_dist_mi / (split_dur / 3600.0)
                             if is_cycling:
-                                speed = actual_dist_mi / (split_dur / 3600)
-                                pace_str = f"{speed:.1f} mph"
+                                pace_str = f"{speed_mph:.1f} mph"
                             else:
                                 pace_val = split_dur / actual_dist_mi
                                 pace_str = f"{int(pace_val//60)}:{int(pace_val%60):02d}"
 
+                            avg_pwr = round(seg_pwr_sum / seg_pwr_cnt) if seg_pwr_cnt > 0 else None
+                            avg_hr_split = round(seg_hr_sum / seg_hr_cnt) if seg_hr_cnt > 0 else None
+                            avg_cad_split = round(seg_cad_sum / seg_cad_cnt) if seg_cad_cnt > 0 else None
+                            elev_ft = round(seg_elev_gain_m * 3.28084)
+
+                            m_num = round(next_split_dist / mile_in_m, 1) if (next_split_dist / mile_in_m) % 1 != 0 else int(next_split_dist / mile_in_m)
                             splits.append({
-                                'mile': round(next_split_dist / mile_in_m, 0) if not is_cycling or (next_split_dist / mile_in_m) % 1 == 0 else round(next_split_dist / mile_in_m, 1),
+                                'mile': m_num,
+                                'split_label': f"Mile {m_num}",
                                 'duration': split_dur,
-                                'pace_str': pace_str
+                                'time_str': format_duration_sec(split_dur),
+                                'pace_str': pace_str,
+                                'speed_mph': round(speed_mph, 1),
+                                'speed_str': f"{speed_mph:.1f} mph" if is_cycling else pace_str,
+                                'avg_power': avg_pwr,
+                                'avg_power_str': f"{avg_pwr} W" if avg_pwr is not None else "--",
+                                'elev_gain_ft': elev_ft,
+                                'elev_gain_str': f"+{elev_ft} ft" if elev_ft > 0 else "0 ft",
+                                'avg_hr': avg_hr_split,
+                                'avg_hr_str': f"{avg_hr_split} bpm" if avg_hr_split is not None else "--",
+                                'avg_cadence': avg_cad_split,
+                                'avg_cadence_str': f"{avg_cad_split} rpm" if avg_cad_split is not None else "--"
                             })
+
                         last_dur = curr_dur
                         last_dist = curr_dist
-                        # Ensure we move to the next boundary even if we jumped multiple
+                        seg_pwr_sum, seg_pwr_cnt = 0, 0
+                        seg_hr_sum, seg_hr_cnt = 0, 0
+                        seg_cad_sum, seg_cad_cnt = 0, 0
+                        seg_elev_gain_m = 0.0
                         while next_split_dist <= curr_dist:
                             next_split_dist += split_len * mile_in_m
-                
+
                 # Final partial split
                 if total_dist_m and total_dist_m > last_dist:
                     remain_m = total_dist_m - last_dist
                     remain_mi = remain_m / mile_in_m
-                    if remain_mi > 0.05: # Only show if significant (>0.05mi)
+                    if remain_mi > 0.05:
                         remain_dur = total_dur_s - last_dur
                         if remain_dur > 0:
+                            speed_mph = remain_mi / (remain_dur / 3600.0)
                             if is_cycling:
-                                speed = remain_mi / (remain_dur / 3600)
-                                pace_str = f"{speed:.1f} mph"
+                                pace_str = f"{speed_mph:.1f} mph"
                             else:
                                 pace_pm = remain_dur / remain_mi
                                 pace_str = f"{int(pace_pm//60)}:{int(pace_pm%60):02d}"
-                            
+
+                            avg_pwr = round(seg_pwr_sum / seg_pwr_cnt) if seg_pwr_cnt > 0 else None
+                            avg_hr_split = round(seg_hr_sum / seg_hr_cnt) if seg_hr_cnt > 0 else None
+                            avg_cad_split = round(seg_cad_sum / seg_cad_cnt) if seg_cad_cnt > 0 else None
+                            elev_ft = round(seg_elev_gain_m * 3.28084)
+
+                            m_num = round(total_dist_m / mile_in_m, 1)
                             splits.append({
-                                'mile': round(total_dist_m / mile_in_m, 2),
+                                'mile': m_num,
+                                'split_label': f"Mile {m_num}",
                                 'duration': remain_dur,
-                                'pace_str': pace_str
+                                'time_str': format_duration_sec(remain_dur),
+                                'pace_str': pace_str,
+                                'speed_mph': round(speed_mph, 1),
+                                'speed_str': f"{speed_mph:.1f} mph" if is_cycling else pace_str,
+                                'avg_power': avg_pwr,
+                                'avg_power_str': f"{avg_pwr} W" if avg_pwr is not None else "--",
+                                'elev_gain_ft': elev_ft,
+                                'elev_gain_str': f"+{elev_ft} ft" if elev_ft > 0 else "0 ft",
+                                'avg_hr': avg_hr_split,
+                                'avg_hr_str': f"{avg_hr_split} bpm" if avg_hr_split is not None else "--",
+                                'avg_cadence': avg_cad_split,
+                                'avg_cadence_str': f"{avg_cad_split} rpm" if avg_cad_split is not None else "--"
                             })
         except Exception as split_err:
             logger.error(f"Error calculating splits: {split_err}")
 
-        logger.info(f"Activity {activity_id}: found {len(splits)} splits, dist {total_dist_m}m, dur {total_dur_s}s")
-
-        # Prepare polyline from the SAME metrics used for charts to ensure 1:1 synchronization
+        # Prepare polyline
         lat_col = [get_val(m.get('metrics', {}), 'directLatitude') for m in metrics_list]
         lon_col = [get_val(m.get('metrics', {}), 'directLongitude') for m in metrics_list]
         compact_poly = [[lat, lon] if lat is not None else None for lat, lon in zip(lat_col, lon_col)]
@@ -4596,24 +4963,19 @@ def get_activity_details(activity_id):
             try:
                 exercise_sets = client.get_activity_exercise_sets(activity_id)
                 mappings = load_muscle_mapping()
-                # Cleanup names and calculate muscle stats
                 if exercise_sets and 'exerciseSets' in exercise_sets:
                     for s in exercise_sets['exerciseSets']:
                         is_active = s.get('setType') == 'ACTIVE'
                         reps = n(s.get('repetitionCount'))
                         dur = n(s.get('duration'))
                         s['targeted_muscles'] = []
-                        
                         if 'exercises' in s:
                             for ex in s['exercises']:
                                 name = (ex.get('name') or '').upper()
                                 cat = (ex.get('category') or '').upper()
-                                
                                 if ex.get('name'):
                                     ex['name'] = ex['name'].replace('_', ' ').title()
-                                
                                 if is_active:
-                                    # Find muscle mapping
                                     for key, meta in mappings.items():
                                         if key in name or key in cat:
                                             for pm in meta['primary']:
@@ -4623,11 +4985,11 @@ def get_activity_details(activity_id):
                                                     muscle_stats[pm] = {'reps': 0, 'seconds': 0, 'priority': 'primary'}
                                                 muscle_stats[pm]['reps'] += reps
                                                 muscle_stats[pm]['seconds'] += dur
-                                            break # Found mapping for this exercise segment
+                                            break
             except Exception as ex_err:
                 logger.warning(f"Failed to fetch exercise sets for {activity_id}: {ex_err}")
-        
-        return jsonify({
+
+        response_payload = {
             'activityId': activity_id,
             'charts': charts,
             'summary': summary,
@@ -4637,12 +4999,37 @@ def get_activity_details(activity_id):
             'avg_speed': avg_speed,
             'polyline': compact_poly,
             'exercise_sets': exercise_sets,
-            'muscle_stats': muscle_stats
-        })
+            'muscle_stats': muscle_stats,
+            'is_cycling': is_cycling,
+            'telemetry': telemetry
+        }
+
+        # Cache calculated results for instant subsequent loads
+        try:
+            save_json(cache_file, response_payload)
+            # Also update month cache if available
+            if start_time_str and len(start_time_str) >= 7:
+                ym = start_time_str[:7]
+                month_acts = GarminPersistence.load_month('activities', f"{ym}-01")
+                day_key = start_time_str[:10]
+                if day_key in month_acts and isinstance(month_acts[day_key], list):
+                    for a in month_acts[day_key]:
+                        if a.get('activityId') == activity_id:
+                            a['calculated_splits'] = splits
+                            if weather_data:
+                                a['weather'] = weather_data
+                            a['telemetry'] = telemetry
+                            GarminPersistence.save_month('activities', f"{ym}-01", month_acts)
+                            break
+        except Exception as cache_save_err:
+            logger.warning(f"Could not save activity detail cache: {cache_save_err}")
+
+        return jsonify(response_payload)
     except Exception as e:
         logger.error(f"Error fetching activity details: {e}")
         logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/add_weight', methods=['POST'])
 @login_required
@@ -5887,6 +6274,10 @@ def get_heatmap_data():
                         result_points.append({
                             'id': aid,
                             'type': type_key,
+                            'name': act.get('activityName') or 'Activity',
+                            'date': act.get('startTimeLocal') or '',
+                            'distance': act.get('distance', 0),
+                            'duration': act.get('duration', 0),
                             'poly': valid_poly
                         })
             elif act.get('hasPolyline') is False:

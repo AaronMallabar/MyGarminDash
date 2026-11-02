@@ -155,6 +155,10 @@ window.openSettings = async function () {
             const yearInput = document.getElementById('setting-pb-year');
             if (yearInput) yearInput.value = settings.pb_start_year || 2025;
 
+            // Athlete FTP
+            const ftpInput = document.getElementById('setting-athlete-ftp');
+            if (ftpInput) ftpInput.value = settings.athlete_ftp || 250;
+
             window.renderModelOptions(settings);
         }
 
@@ -356,6 +360,8 @@ window.saveSettings = async function () {
         const body = { ai_model: window.selectedModel };
         const pbYear = document.getElementById('setting-pb-year');
         if (pbYear) body.pb_start_year = parseInt(pbYear.value);
+        const ftpEl = document.getElementById('setting-athlete-ftp');
+        if (ftpEl && ftpEl.value) body.athlete_ftp = parseInt(ftpEl.value);
 
         const res = await fetch('/api/settings', {
             method: 'POST',
@@ -495,4 +501,70 @@ window.downloadFile = async function (url, filename) {
         console.error('Download failed:', err);
         alert('Failed to download file');
     }
+}
+
+
+/**
+ * Quick Section Shortcuts & Scroll Spy
+ */
+window.initDashboardShortcuts = function () {
+    const bar = document.getElementById('dashboard-shortcuts');
+    if (!bar) return;
+
+    const pills = bar.querySelectorAll('.shortcut-pill[data-section]');
+    const sectionIds = Array.from(pills).map(p => p.getAttribute('data-section')).filter(Boolean);
+    const sections = sectionIds.map(id => document.getElementById(id)).filter(Boolean);
+
+    if (sections.length === 0) return;
+
+    // Smooth click handler with instant active state update
+    pills.forEach(pill => {
+        pill.addEventListener('click', (e) => {
+            const targetId = pill.getAttribute('data-section');
+            const targetEl = document.getElementById(targetId);
+            if (targetEl) {
+                e.preventDefault();
+                targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                pills.forEach(p => p.classList.remove('active'));
+                pill.classList.add('active');
+                if (history.replaceState) {
+                    history.replaceState(null, '', '#' + targetId);
+                }
+            }
+        });
+    });
+
+    // Scroll spy with IntersectionObserver
+    const observer = new IntersectionObserver((entries) => {
+        const visible = entries.filter(e => e.isIntersecting);
+        if (visible.length === 0) return;
+
+        // Pick the topmost intersecting section
+        visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        const topEntry = visible[0];
+        const activeId = topEntry.target.id;
+
+        pills.forEach(pill => {
+            if (pill.getAttribute('data-section') === activeId) {
+                pill.classList.add('active');
+                if (typeof pill.scrollIntoView === 'function') {
+                    pill.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+                }
+            } else {
+                pill.classList.remove('active');
+            }
+        });
+    }, {
+        rootMargin: '-10% 0px -65% 0px',
+        threshold: [0, 0.2, 0.5]
+    });
+
+    sections.forEach(sec => observer.observe(sec));
+};
+
+// Auto-run if DOM already loaded or on event
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(window.initDashboardShortcuts, 50);
+} else {
+    document.addEventListener('DOMContentLoaded', window.initDashboardShortcuts);
 }

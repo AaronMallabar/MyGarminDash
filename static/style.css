@@ -2614,3 +2614,218 @@ h1 {
     color: #64748b;
     margin-top: 0.15rem;
 }
+
+
+/* --- Cycling Telemetry & Enhanced UI Styles --- */
+.activity-tab-btn {
+    padding: 0.45rem 1rem;
+    border-radius: 2rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.activity-tab-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+.activity-tab-btn.active {
+    background: rgba(56, 189, 248, 0.15);
+    border-color: rgba(56, 189, 248, 0.4);
+    color: var(--accent-color);
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
+}
+
+.cycling-grid .activity-detail-card {
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cycling-grid .activity-detail-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(56, 189, 248, 0.25);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+.zone-card {
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.zone-card:hover {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.zone-row {
+    transition: transform 0.15s ease;
+}
+
+.zone-row:hover .zone-bar-fill {
+    filter: brightness(1.25);
+}
+
+
+/* --- Leaflet Dark Mode Popups & Tooltips --- */
+.dark-map-popup .leaflet-popup-content-wrapper {
+    background: rgba(15, 23, 42, 0.95) !important;
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 0.85rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
+    padding: 0.2rem;
+}
+
+.dark-map-popup .leaflet-popup-tip {
+    background: rgba(15, 23, 42, 0.95) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.dark-map-popup .leaflet-popup-close-button {
+    color: #94a3b8 !important;
+    padding: 6px !important;
+}
+
+.dark-route-tooltip {
+    background: rgba(15, 23, 42, 0.92) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(56, 189, 248, 0.3) !important;
+    border-radius: 0.5rem !important;
+    color: #fff !important;
+    font-family: var(--font-family) !important;
+    font-size: 0.78rem !important;
+    font-weight: 700 !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5) !important;
+    padding: 0.35rem 0.65rem !important;
+}
+
+.dark-route-tooltip:before {
+    border-top-color: rgba(15, 23, 42, 0.92) !important;
+}
+
+/* Custom Marker Cluster Badges */
+.custom-cluster-badge:hover {
+    transform: scale(1.12);
+}
+
+.activity-hub-pin:hover div {
+    transform: scale(1.4);
+    box-shadow: 0 0 16px currentColor !important;
+}
+
+
+/* ==========================================================================
+   Dashboard Quick Section Shortcuts Bar
+   ========================================================================== */
+html {
+    scroll-behavior: smooth;
+}
+
+#readiness-hero-section,
+#section-health,
+#section-goals,
+#pb-module,
+#section-nutrition,
+#section-heatmap,
+#section-calendar,
+#section-activities {
+    scroll-margin-top: 5rem;
+}
+
+.dashboard-shortcuts-bar {
+    position: sticky;
+    top: 0.75rem;
+    z-index: 850;
+    margin-bottom: 2rem;
+    padding: 0.45rem 0.6rem;
+    background: rgba(15, 23, 42, 0.82);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.85rem;
+    box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
+    transition: all 0.25s ease;
+}
+
+.shortcuts-track {
+    display: flex;
+    gap: 0.45rem;
+    align-items: center;
+    overflow-x: auto;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+    padding: 0.1rem;
+}
+
+.shortcuts-track::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+}
+
+.shortcut-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.42rem 0.85rem;
+    border-radius: 0.65rem;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.82rem;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid transparent;
+    cursor: pointer;
+    user-select: none;
+}
+
+.shortcut-pill:hover {
+    background: rgba(56, 189, 248, 0.12);
+    color: #f8fafc;
+    border-color: rgba(56, 189, 248, 0.3);
+    transform: translateY(-1px);
+}
+
+.shortcut-pill.active {
+    background: var(--accent-color);
+    color: #0f172a;
+    font-weight: 700;
+    box-shadow: 0 0 14px rgba(56, 189, 248, 0.4);
+    border-color: var(--accent-color);
+}
+
+.shortcut-pill-top,
+.shortcut-top-btn {
+    margin-left: auto;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #cbd5e1;
+}
+
+.shortcut-top-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.shortcut-icon {
+    font-size: 0.95rem;
+    line-height: 1;
+}
+
+@media (max-width: 768px) {
+    .dashboard-shortcuts-bar {
+        top: 0.5rem;
+        margin-bottom: 1.5rem;
+        padding: 0.35rem 0.45rem;
+        border-radius: 0.75rem;
+    }
+
+    .shortcut-pill {
+        padding: 0.38rem 0.65rem;
+        font-size: 0.78rem;
+    }
+}

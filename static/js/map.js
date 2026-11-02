@@ -1,3 +1,20 @@
+
+window.openActivityFromHeatmap = function (id) {
+    const act = (window.heatmapData || []).find(a => String(a.id) === String(id));
+    if (act) {
+        window.openActivityDetail(act.id, {
+            activityId: act.id,
+            activityName: act.name || 'Activity',
+            startTimeLocal: act.date || '',
+            distance: act.distance || 0,
+            duration: act.duration || 0,
+            activityType: { typeKey: act.type || 'unknown' }
+        });
+    } else {
+        window.openActivityDetail(id);
+    }
+};
+
 /**
  * Map & Heatmap Management (Leaflet)
  */
@@ -7,59 +24,53 @@ window.heatmapData = [];
 window.heatmapPollInterval = null;
 window.activityMap = null;
 window.currentMapStyle = localStorage.getItem('garmin_map_style') || 'dark';
+window.showActivityClusters = localStorage.getItem('garmin_show_clusters') !== 'false';
+window.heatmapVisualMode = localStorage.getItem('garmin_heatmap_mode') || 'categories'; // 'categories' | 'heat'
 window.globalBaseLayer = null;
 window.activityBaseLayer = null;
 
 function createBaseTileLayer(style) {
     const mode = style || window.currentMapStyle || 'dark';
+
     if (mode === 'satellite') {
         const imagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            maxZoom: 19,
+            maxNativeZoom: 18,
+            maxZoom: 22,
             attribution: '&copy; Esri'
         });
         const labels = L.tileLayer('https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
-            maxZoom: 19,
+            maxNativeZoom: 18,
+            maxZoom: 22,
             pane: 'overlayPane',
             opacity: 0.85
         });
         return L.layerGroup([imagery, labels]);
     }
+
     if (mode === 'road') {
         return L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            maxZoom: 19,
+            maxNativeZoom: 19,
+            maxZoom: 22,
             subdomains: 'abcd',
             attribution: '&copy; OpenStreetMap, &copy; CARTO'
         });
     }
+
     if (mode === 'topo') {
         return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
-            maxZoom: 19,
+            maxNativeZoom: 17,
+            maxZoom: 22,
             attribution: '&copy; Esri'
         });
     }
 
-    // Default: 'dark'
-    const tileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19,
-        attribution: '&copy; Esri, OpenStreetMap contributors',
-        subdomains: ['server', 'services']
+    // Default: 'dark' - CartoDB Dark Matter vector raster tiles, crisp with smooth auto-scaling up to zoom 22
+    return L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png', {
+        maxNativeZoom: 19,
+        maxZoom: 22,
+        subdomains: 'abcd',
+        attribution: '&copy; OpenStreetMap, &copy; CARTO'
     });
-    const darkLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19,
-        opacity: 0.75
-    });
-
-    tileLayer.on('tileerror', function (error, tile) {
-        if (!tile._fallbackTried) {
-            tile._fallbackTried = true;
-            const z = error.coords.z;
-            const x = error.coords.x;
-            const y = error.coords.y;
-            tile.src = `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
-        }
-    });
-
-    return L.layerGroup([tileLayer, darkLabels]);
 }
 
 function syncMapStyleButtons(style) {
@@ -70,6 +81,63 @@ function syncMapStyleButtons(style) {
         btn.style.fontWeight = isActive ? '700' : '600';
     });
 }
+
+function syncClusterButtonState() {
+    const btn = document.getElementById('heatmap-toggle-clusters-btn');
+    const label = document.getElementById('heatmap-clusters-label');
+    if (!btn || !label) return;
+    
+    if (window.showActivityClusters) {
+        btn.style.background = 'rgba(56, 189, 248, 0.15)';
+        btn.style.borderColor = 'rgba(56, 189, 248, 0.4)';
+        btn.style.color = 'var(--accent-color)';
+        label.textContent = 'Counts: ON';
+    } else {
+        btn.style.background = 'rgba(15, 23, 42, 0.88)';
+        btn.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+        btn.style.color = '#94a3b8';
+        label.textContent = 'Counts: OFF';
+    }
+}
+
+function syncHeatmapModeButton() {
+    const label = document.getElementById('heatmap-mode-label');
+    const icon = document.getElementById('heatmap-mode-icon');
+    if (!label) return;
+
+    if (window.heatmapVisualMode === 'heat') {
+        label.textContent = 'Heat Glow';
+        if (icon) icon.textContent = '🔥';
+    } else {
+        label.textContent = 'Sport Colors';
+        if (icon) icon.textContent = '🎨';
+    }
+}
+
+window.toggleHeatmapClusters = function () {
+    window.showActivityClusters = !window.showActivityClusters;
+    try { localStorage.setItem('garmin_show_clusters', window.showActivityClusters); } catch (e) {}
+    syncClusterButtonState();
+
+    if (!window.globalHeatmap || !window.clusterLayerGroup) return;
+
+    if (window.showActivityClusters) {
+        if (!window.globalHeatmap.hasLayer(window.clusterLayerGroup)) {
+            window.clusterLayerGroup.addTo(window.globalHeatmap);
+        }
+    } else {
+        if (window.globalHeatmap.hasLayer(window.clusterLayerGroup)) {
+            window.globalHeatmap.removeLayer(window.clusterLayerGroup);
+        }
+    }
+};
+
+window.toggleHeatmapMode = function () {
+    window.heatmapVisualMode = window.heatmapVisualMode === 'categories' ? 'heat' : 'categories';
+    try { localStorage.setItem('garmin_heatmap_mode', window.heatmapVisualMode); } catch (e) {}
+    syncHeatmapModeButton();
+    window.renderGlobalHeatmap(false);
+};
 
 window.setMapBaseStyle = function (style) {
     window.currentMapStyle = style || 'dark';
@@ -92,12 +160,12 @@ window.setMapBaseStyle = function (style) {
         }
         window.activityBaseLayer = createBaseTileLayer(window.currentMapStyle).addTo(window.activityMap);
     }
-}
+};
 
 window.resetGlobalHeatmapView = function () {
     if (!window.globalHeatmap || !window.heatmapData || window.heatmapData.length === 0) return;
     window.renderGlobalHeatmap(true);
-}
+};
 
 window.initMap = function () {
     if (window.globalHeatmap) return;
@@ -105,45 +173,85 @@ window.initMap = function () {
     if (!mapEl) return;
 
     syncMapStyleButtons(window.currentMapStyle);
+    syncClusterButtonState();
+    syncHeatmapModeButton();
 
     window.globalHeatmap = L.map('globalHeatmap', {
         zoomControl: true,
         attributionControl: false,
-        preferCanvas: true
+        preferCanvas: true,
+        maxZoom: 22
     }).setView([0, 0], 2);
 
     window.globalBaseLayer = createBaseTileLayer(window.currentMapStyle).addTo(window.globalHeatmap);
-
     window.globalLayerGroup = L.layerGroup().addTo(window.globalHeatmap);
 
+    // MarkerCluster configured with smart zoom behavior and custom glassmorphic styling
     window.clusterLayerGroup = L.markerClusterGroup({
         showCoverageOnHover: false,
+        maxClusterRadius: 40,
+        disableClusteringAtZoom: 15, // Automatically disband clusters at street level for unobstructed view
+        spiderfyOnMaxZoom: true,
+        animate: true,
         iconCreateFunction: function (cluster) {
+            const count = cluster.getChildCount();
+            let size = 36;
+            let glowColor = 'rgba(16, 185, 129, 0.4)';
+            let borderColor = '#10b981';
+
+            if (count >= 50) {
+                size = 46;
+                glowColor = 'rgba(168, 85, 247, 0.5)';
+                borderColor = '#a855f7';
+            } else if (count >= 15) {
+                size = 40;
+                glowColor = 'rgba(56, 189, 248, 0.5)';
+                borderColor = '#38bdf8';
+            }
+
             return L.divIcon({
-                html: '<div><span>' + cluster.getChildCount() + '</span></div>',
-                className: 'marker-cluster marker-cluster-medium',
-                iconSize: new L.Point(40, 40)
+                html: `<div class="custom-cluster-badge" style="width: ${size}px; height: ${size}px; border-radius: 50%; background: rgba(15, 23, 42, 0.92); border: 2px solid ${borderColor}; box-shadow: 0 0 14px ${glowColor}; display: flex; align-items: center; justify-content: center; color: #fff; font-family: 'Lexend', sans-serif; font-weight: 800; cursor: pointer; transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);">
+                    <span style="font-size: ${size > 40 ? '0.85rem' : '0.78rem'};">${count}</span>
+                </div>`,
+                className: 'custom-cluster-container',
+                iconSize: new L.Point(size, size)
             });
         }
-    }).addTo(window.globalHeatmap);
+    });
+
+    if (window.showActivityClusters) {
+        window.clusterLayerGroup.addTo(window.globalHeatmap);
+    }
 
     window.globalHeatmap.on('zoomend', window.handleHeatmapZoom);
-}
+};
 
 window.handleHeatmapZoom = function () {
     if (!window.globalLayerGroup || !window.globalHeatmap) return;
     const z = window.globalHeatmap.getZoom();
-    const newWeight = z < 11 ? 4 : 2;
-    const newOpacity = z < 11 ? 0.5 : 0.6;
+    
+    // Adaptive weight and opacity for vibrant, glowing heat lines
+    let newWeight = 3;
+    let newOpacity = 0.65;
+    
+    if (z <= 8) {
+        newWeight = 2.5;
+        newOpacity = 0.45;
+    } else if (z <= 12) {
+        newWeight = 3.5;
+        newOpacity = 0.65;
+    } else {
+        newWeight = 4.5;
+        newOpacity = 0.85;
+    }
 
     window.globalLayerGroup.eachLayer(l => {
-        if (l.setStyle) l.setStyle({ weight: newWeight, opacity: newOpacity });
+        if (l.setStyle) {
+            l.setStyle({ weight: newWeight, opacity: newOpacity });
+        }
     });
-}
+};
 
-/**
- * Show the loading indicator at the bottom of the heatmap
- */
 function showHeatmapLoading(message) {
     const loadingEl = document.getElementById('heatmap-loading');
     const statusEl = document.getElementById('heatmap-status');
@@ -153,9 +261,6 @@ function showHeatmapLoading(message) {
     if (dot) dot.style.display = 'block';
 }
 
-/**
- * Hide the loading indicator or show a final status
- */
 function hideHeatmapLoading(message) {
     const loadingEl = document.getElementById('heatmap-loading');
     const statusEl = document.getElementById('heatmap-status');
@@ -163,7 +268,6 @@ function hideHeatmapLoading(message) {
     if (dot) dot.style.display = 'none';
     if (message) {
         if (statusEl) statusEl.textContent = message;
-        // Fade out after 3 seconds
         setTimeout(() => {
             if (loadingEl) loadingEl.style.display = 'none';
         }, 3000);
@@ -215,7 +319,7 @@ window.updateGlobalHeatmap = async function () {
         console.error('Heatmap error:', err);
         hideHeatmapLoading('Error loading routes');
     }
-}
+};
 
 window.updateGlobalHeatmapSilent = async function () {
     const rangeEl = document.getElementById('heatmap-range');
@@ -231,7 +335,6 @@ window.updateGlobalHeatmapSilent = async function () {
 
             const prevLen = (window.heatmapData || []).length;
             const nowMs = Date.now();
-            // During active syncing, avoid re-rendering 1,000+ routes every 3s; render at most every 9s (and always on completion)
             if (routes.length !== prevLen && (missing === 0 || !window._lastHeatmapRenderMs || (nowMs - window._lastHeatmapRenderMs >= 9000))) {
                 window.heatmapData = routes;
                 window.renderGlobalHeatmap(false);
@@ -248,7 +351,6 @@ window.updateGlobalHeatmapSilent = async function () {
                     window._heatmapLastTotal = total;
                 }
 
-                // If syncing stalls for ~45 seconds with zero progress, finish gracefully
                 if (window._heatmapStallCount >= 15) {
                     if (window.heatmapPollInterval) {
                         clearInterval(window.heatmapPollInterval);
@@ -267,45 +369,34 @@ window.updateGlobalHeatmapSilent = async function () {
                     clearInterval(window.heatmapPollInterval);
                     window.heatmapPollInterval = null;
                 }
-                // Final update with all data
                 window.heatmapData = routes;
                 window.renderGlobalHeatmap(false);
                 hideHeatmapLoading(`${loaded} routes loaded`);
             }
         }
     } catch (e) { console.error(e); }
-}
+};
 
-/**
- * Classify an activity type string into a category.
- * Returns { category: 'run'|'cycle'|'walk'|'swim'|'virtual'|'other', color: string }
- */
 function classifyActivityType(typeStr) {
-    if (!typeStr) return { category: 'other', color: '#eab308' };
+    if (!typeStr) return { category: 'other', color: '#eab308', display: 'Other' };
     const t = typeStr.toLowerCase();
 
-    // Virtual / indoor first (before cycling/running check, since 'indoor_cycling' contains 'cycling')
     if (t.includes('virtual') || t.includes('indoor') || t.includes('treadmill')) {
-        return { category: 'virtual', color: '#a855f7' };
+        return { category: 'virtual', color: '#a855f7', display: 'Virtual' };
     }
-    // Swimming — open_water_swimming, lap_swimming, swimming, pool_swimming
     if (t.includes('swim')) {
-        return { category: 'swim', color: '#06b6d4' };
+        return { category: 'swim', color: '#06b6d4', display: 'Swim' };
     }
-    // Running
     if (t.includes('run')) {
-        return { category: 'run', color: '#f97316' };
+        return { category: 'run', color: '#f97316', display: 'Run' };
     }
-    // Cycling — check all Garmin variants: cycling, road_biking, mountain_biking, gravel_cycling, etc.
     if (t.includes('cycl') || t.includes('ride') || t.includes('bik')) {
-        return { category: 'cycle', color: '#3b82f6' };
+        return { category: 'cycle', color: '#38bdf8', display: 'Cycling' };
     }
-    // Walking / Hiking / Snowshoeing
     if (t.includes('walk') || t.includes('hik') || t.includes('snow_shoe') || t.includes('mountaineer')) {
-        return { category: 'walk', color: '#22c55e' };
+        return { category: 'walk', color: '#22c55e', display: 'Walk/Hike' };
     }
-    // Fallback (multi_sport / triathlon, skiing, generic 'other', etc.)
-    return { category: 'other', color: '#eab308' };
+    return { category: 'other', color: '#eab308', display: 'Other' };
 }
 
 window.renderGlobalHeatmap = function (resetView = true) {
@@ -327,14 +418,23 @@ window.renderGlobalHeatmap = function (resetView = true) {
         window.globalCanvasRenderer = L.canvas({ padding: 0.5 });
     }
     const renderer = window.globalCanvasRenderer;
-    const sharedHiddenIcon = window._sharedHiddenMarkerIcon || (window._sharedHiddenMarkerIcon = L.divIcon({ className: 'hidden-marker', html: '', iconSize: [0, 0] }));
     const markersBatch = [];
-    let routeCount = 0;
+    const isHeatGlow = window.heatmapVisualMode === 'heat';
+    const currentZoom = window.globalHeatmap.getZoom();
+
+    let baseWeight = 3;
+    let baseOpacity = 0.65;
+    if (currentZoom <= 8) {
+        baseWeight = 2.5;
+        baseOpacity = 0.45;
+    } else if (currentZoom >= 13) {
+        baseWeight = 4.5;
+        baseOpacity = 0.85;
+    }
 
     window.heatmapData.forEach(item => {
-        const { category, color } = classifyActivityType(item.type);
+        const { category, color, display } = classifyActivityType(item.type);
 
-        // Filter based on checkbox state
         let include = false;
         if (category === 'run' && showRun) include = true;
         else if (category === 'cycle' && showCycle) include = true;
@@ -355,18 +455,69 @@ window.renderGlobalHeatmap = function (resetView = true) {
                 );
                 if (latlngs.length < 2) return;
 
-                markersBatch.push(L.marker(latlngs[0], { icon: sharedHiddenIcon }));
+                const routeColor = isHeatGlow ? '#fb923c' : color;
+                const distMi = item.distance ? (item.distance / 1609.34).toFixed(1) + ' mi' : '';
+                const durMin = item.duration ? Math.round(item.duration / 60) + ' min' : '';
+                const dateStr = item.date ? new Date(item.date).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 
-                L.polyline(latlngs, {
-                    color: color,
-                    weight: 3,
-                    opacity: 0.6,
-                    smoothFactor: 1.5,
+                // Create sleek, clickable start pinpoint for clusters / unclustered markers
+                const pinIcon = L.divIcon({
+                    html: `<div style="width: 14px; height: 14px; border-radius: 50%; background: ${color}; border: 2px solid #0f172a; box-shadow: 0 0 10px ${color}; cursor: pointer; transition: transform 0.2s;"></div>`,
+                    className: 'activity-hub-pin',
+                    iconSize: [14, 14],
+                    iconAnchor: [7, 7]
+                });
+
+                const marker = L.marker(latlngs[0], { icon: pinIcon });
+                const popupContent = `
+                    <div style="font-family: var(--font-family); color: #fff; padding: 0.35rem; min-width: 190px;">
+                        <div style="font-size: 0.68rem; font-weight: 800; color: ${color}; text-transform: uppercase; letter-spacing: 0.05em;">${display}</div>
+                        <div style="font-size: 0.95rem; font-weight: 800; color: #fff; margin: 0.25rem 0;">${item.name || 'Activity'}</div>
+                        <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.75rem;">
+                            ${dateStr}${distMi ? ' • ' + distMi : ''}${durMin ? ' • ' + durMin : ''}
+                        </div>
+                        <button onclick="window.openActivityFromHeatmap(${item.id})" class="range-btn active" style="width: 100%; padding: 0.45rem 0.8rem; font-size: 0.75rem; font-weight: 700; border-radius: 0.5rem; background: var(--accent-color); color: #0f172a; border: none; cursor: pointer;">
+                            View Details ➔
+                        </button>
+                    </div>
+                `;
+                marker.bindPopup(popupContent, { className: 'dark-map-popup', maxWidth: 280 });
+                markersBatch.push(marker);
+
+                // Interactive route polyline with hover tooltips and click-to-open
+                const polyline = L.polyline(latlngs, {
+                    color: routeColor,
+                    weight: baseWeight,
+                    opacity: baseOpacity,
+                    smoothFactor: 1.2,
+                    lineCap: 'round',
+                    lineJoin: 'round',
                     renderer: renderer,
-                    interactive: false
+                    interactive: true
                 }).addTo(window.globalLayerGroup);
 
-                routeCount++;
+                const tooltipText = `${item.name || 'Activity'}${distMi ? ' (' + distMi + ')' : ''}${dateStr ? ' • ' + dateStr : ''}`;
+                polyline.bindTooltip(tooltipText, {
+                    sticky: true,
+                    className: 'dark-route-tooltip',
+                    direction: 'top',
+                    opacity: 0.95
+                });
+
+                polyline.on('mouseover', function () {
+                    polyline.setStyle({ weight: baseWeight + 2.5, opacity: 1.0 });
+                    if (polyline.bringToFront) polyline.bringToFront();
+                });
+
+                polyline.on('mouseout', function () {
+                    polyline.setStyle({ weight: baseWeight, opacity: baseOpacity });
+                });
+
+                polyline.on('click', function () {
+                    if (item.id) {
+                        window.openActivityFromHeatmap(item.id);
+                    }
+                });
 
                 if (resetView) {
                     boundsArr.push(latlngs[0]);
@@ -384,9 +535,9 @@ window.renderGlobalHeatmap = function (resetView = true) {
     }
 
     if (resetView && boundsArr.length > 0) {
-        window.globalHeatmap.fitBounds(L.latLngBounds(boundsArr), { padding: [20, 20] });
+        window.globalHeatmap.fitBounds(L.latLngBounds(boundsArr), { padding: [25, 25] });
     }
-}
+};
 
 window.renderActivityMap = function (polylineData) {
     const container = document.getElementById('activity-map-container');
@@ -404,61 +555,61 @@ window.renderActivityMap = function (polylineData) {
     }
 
     container.style.display = 'block';
-    
-    // Save the FULL points for highlighting (including gaps) to stay in sync with charts
+
     window.currentActivityPoints = polylineData.map(p => (p && p[0] != null) ? [p[0], p[1]] : null);
-    
-    // Filtered points for display (only valid lat/lng)
     const displayPoints = window.currentActivityPoints.filter(p => p !== null);
 
     syncMapStyleButtons(window.currentMapStyle);
 
+    // Activity modal map configured with maxZoom 22 for deep street-level zooming
     window.activityMap = L.map('activityMap', {
         zoomControl: false,
-        attributionControl: false
+        attributionControl: false,
+        maxZoom: 22
     });
 
     window.activityBaseLayer = createBaseTileLayer(window.currentMapStyle).addTo(window.activityMap);
 
     if (displayPoints.length > 1) {
         const path = L.polyline(displayPoints, {
-            color: '#38bdf8', weight: 4, opacity: 0.8, lineJoin: 'round'
+            color: '#38bdf8', weight: 4.5, opacity: 0.85, lineJoin: 'round', lineCap: 'round'
         }).addTo(window.activityMap);
 
-        window.activityMap.fitBounds(path.getBounds(), { padding: [20, 20] });
+        window.activityMap.fitBounds(path.getBounds(), { padding: [25, 25] });
     }
-    
-    setTimeout(() => { if (window.activityMap) window.activityMap.invalidateSize(); }, 200);
-}
 
-window.highlightActivitySegment = function(startIdx, endIdx) {
+    setTimeout(() => { if (window.activityMap) window.activityMap.invalidateSize(); }, 200);
+};
+
+window.highlightActivitySegment = function (startIdx, endIdx) {
     if (!window.activityMap || !window.currentActivityPoints) return;
-    
-    // Clear existing highlight
+
     if (window.activityHighlightLayer) {
         window.activityMap.removeLayer(window.activityHighlightLayer);
     }
-    
-    // Extraction from the original index-aligned list
+
     const rawSegment = window.currentActivityPoints.slice(startIdx, endIdx + 1);
     const segment = rawSegment.filter(p => p !== null);
-    
-    if (segment.length < 2) return;
-    
-    window.activityHighlightLayer = L.polyline(segment, {
-        color: '#f59e0b', weight: 8, opacity: 0.9, lineJoin: 'round', lineCap: 'round', className: 'pulse-segment'
-    }).addTo(window.activityMap);
-}
 
-window.zoomActivityMap = function(factor) {
+    if (segment.length < 2) return;
+
+    window.activityHighlightLayer = L.polyline(segment, {
+        color: '#f59e0b', weight: 8, opacity: 0.95, lineJoin: 'round', lineCap: 'round', className: 'pulse-segment'
+    }).addTo(window.activityMap);
+};
+
+window.zoomActivityMap = function (factor) {
     if (!window.activityMap) return;
     const currentZoom = window.activityMap.getZoom();
-    window.activityMap.setZoom(currentZoom + factor);
-}
+    const nextZoom = currentZoom + factor;
+    if (nextZoom >= 1 && nextZoom <= 22) {
+        window.activityMap.setZoom(nextZoom);
+    }
+};
 
-window.clearActivityHighlight = function() {
+window.clearActivityHighlight = function () {
     if (window.activityMap && window.activityHighlightLayer) {
         window.activityMap.removeLayer(window.activityHighlightLayer);
         window.activityHighlightLayer = null;
     }
-}
+};
