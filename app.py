@@ -4377,9 +4377,11 @@ def format_duration_sec(sec):
         return f"{h}:{m:02d}:{s:02d}"
     return f"{m}:{s:02d}"
 
-def get_activity_weather(lat, lon, start_time_str, fallback_temp_c=None):
+def get_activity_weather(lat, lon, start_time_str, fallback_temp_c=None, duration_s=None):
     """
-    Fetch weather and wind conditions for an activity using Open-Meteo archive API.
+    Fetch weather and wind conditions for an activity using Open-Meteo API.
+    Uses timezone=auto so hourly timestamps match the activity's local timezone (e.g. America/New_York)
+    rather than default UTC. Samples the midpoint of the activity window for accurate representative conditions.
     Caches result to garmin_cache/weather_cache.json for instant snappiness.
     """
     if not lat or not lon or not start_time_str:
@@ -4397,22 +4399,33 @@ def get_activity_weather(lat, lon, start_time_str, fallback_temp_c=None):
     weather_cache = load_json(cache_path, {})
     
     date_part = start_time_str[:10]
-    hour_part = "00"
+    time_part = "12:00:00"
     if 'T' in start_time_str:
-        hour_part = start_time_str.split('T')[1][:2]
+        time_part = start_time_str.split('T')[1][:8]
     elif ' ' in start_time_str:
-        hour_part = start_time_str.split(' ')[1][:2]
+        time_part = start_time_str.split(' ')[1][:8]
 
-    cache_key = f"{round(float(lat), 2)}_{round(float(lon), 2)}_{date_part}T{hour_part}"
+    try:
+        start_hour = int(time_part[:2])
+        start_min = int(time_part[3:5]) if len(time_part) >= 5 else 0
+        midpoint_offset_sec = (float(duration_s) / 2.0) if duration_s and float(duration_s) > 0 else 0
+        total_sec = start_hour * 3600 + start_min * 60 + midpoint_offset_sec
+        target_h = int(round(total_sec / 3600.0)) % 24
+    except Exception:
+        target_h = 12
+
+    hour_part = f"{target_h:02d}"
+    cache_key = f"{round(float(lat), 2)}_{round(float(lon), 2)}_{date_part}T{hour_part}_v3"
     if cache_key in weather_cache:
         return weather_cache[cache_key]
 
     try:
+        # Pass timezone=auto to get hourly weather indexed in the location's local time
         url = (
             f"https://archive-api.open-meteo.com/v1/archive?latitude={lat}&longitude={lon}"
             f"&start_date={date_part}&end_date={date_part}"
             f"&hourly=temperature_2m,wind_speed_10m,wind_direction_10m"
-            f"&temperature_unit=fahrenheit&wind_speed_unit=mph"
+            f"&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto"
         )
         req = urllib.request.Request(url, headers={'User-Agent': 'MyGarminDash/1.0'})
         payload = None
@@ -4420,12 +4433,12 @@ def get_activity_weather(lat, lon, start_time_str, fallback_temp_c=None):
             with urllib.request.urlopen(req, timeout=3.5) as response:
                 payload = json.loads(response.read().decode())
         except Exception:
-            # Fallback to forecast past_days API if archive doesn't have it yet
+            # Fallback to forecast API for current / very recent activities
             url_fb = (
                 f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
                 f"&start_date={date_part}&end_date={date_part}"
                 f"&hourly=temperature_2m,wind_speed_10m,wind_direction_10m"
-                f"&temperature_unit=fahrenheit&wind_speed_unit=mph"
+                f"&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto"
             )
             req_fb = urllib.request.Request(url_fb, headers={'User-Agent': 'MyGarminDash/1.0'})
             with urllib.request.urlopen(req_fb, timeout=3.5) as response:
@@ -4446,7 +4459,6 @@ def get_activity_weather(lat, lon, start_time_str, fallback_temp_c=None):
             idx = times.index(target_str)
         elif times:
             try:
-                target_h = int(hour_part)
                 idx = min(range(len(times)), key=lambda i: abs(int(times[i][11:13]) - target_h))
             except Exception:
                 idx = 0
@@ -4807,7 +4819,7 @@ def get_activity_details(activity_id):
         start_lon = summary.get('startLongitude') or activity_info.get('startLongitude')
         start_time_str = activity_info.get('startTimeLocal') or summary.get('startTimeLocal') or ""
         avg_temp_c = summary.get('averageTemperature') or activity_info.get('averageTemperature')
-        weather_data = get_activity_weather(start_lat, start_lon, start_time_str, avg_temp_c)
+        weather_data = get_activity_weather(start_lat, start_lon, start_time_str, avg_temp_c, duration_s=total_dur_s)
 
         # Intensity & Zone Distribution
         power_zones, hr_zones = compute_power_and_hr_zones(activity_info, summary, charts, ftp)
