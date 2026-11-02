@@ -36,6 +36,9 @@ if [ "$LOCAL" != "$REMOTE" ] || [ "$1" == "--force" ]; then
         "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt" --quiet
     fi
 
+    echo "Clearing legacy activity and weather caches..."
+    rm -rf "$APP_DIR/garmin_cache/activity_details" 2>/dev/null || true
+    rm -f "$APP_DIR/garmin_cache/weather_cache.json" 2>/dev/null || true
     echo "Restarting service..."
     sleep 2
 

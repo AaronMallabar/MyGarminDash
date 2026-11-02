@@ -38,7 +38,7 @@ window.openActivityDetail = async function (id, basic = {}) {
 
     try {
         const ids = basic.is_grouped ? (basic.grouped_ids || [id]) : [id];
-        const results = await Promise.all(ids.map(sid => fetch(`/api/activity/${sid}`).then(r => r.json())));
+        const results = await Promise.all(ids.map(sid => fetch(`/api/activity/${sid}?_t=${Date.now()}`).then(r => r.json())));
 
         if (dynamicBody) dynamicBody.innerHTML = '';
         let polylines = [];

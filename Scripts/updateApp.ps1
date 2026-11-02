@@ -17,6 +17,8 @@ if ($LOCAL -ne $REMOTE) {
     Write-Host "Update found! Pulling new code..." -ForegroundColor Green
     git pull
     
+    Remove-Item -Path "garmin_cache\activity_details\*.json" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "garmin_cache\weather_cache.json" -Force -ErrorAction SilentlyContinue
     Write-Host "Update complete. Please restart your python app.py to see changes." -ForegroundColor Yellow
     
     # Optional: we could try to kill and restart, but that's risky remotely.

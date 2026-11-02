@@ -163,6 +163,7 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "super-secret-dev-key")
 APP_PASSWORD = os.getenv("APP_PASSWORD", "admin") # Default for dev, set in Render
 logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 @app.context_processor
@@ -568,6 +569,30 @@ class PolylineCache:
 # ==============================================================================
 # PERSISTENT SYNC SYSTEM
 # ==============================================================================
+
+
+def cleanup_stale_activity_caches():
+    """Wipe legacy activity detail files and weather cache created prior to the timezone fix."""
+    try:
+        detail_dir = os.path.join("garmin_cache", "activity_details")
+        if os.path.exists(detail_dir):
+            for f in glob.glob(os.path.join(detail_dir, "*.json")):
+                try:
+                    data = load_json(f, {})
+                    w = (data.get('telemetry') or {}).get('weather') or {}
+                    if w.get('v') != 2:
+                        os.remove(f)
+                except Exception:
+                    pass
+        wfile = os.path.join("garmin_cache", "weather_cache.json")
+        if os.path.exists(wfile):
+            wc = load_json(wfile, {})
+            cleaned = {k: v for k, v in wc.items() if isinstance(v, dict) and v.get('v') == 2}
+            save_json(wfile, cleaned)
+    except Exception:
+        pass
+
+cleanup_stale_activity_caches()
 
 class GarminPersistence:
     """Handles structured JSON storage for Garmin metrics by month with fast in-memory caching."""
@@ -1720,6 +1745,19 @@ def refresh_cache():
                     t = threading.Thread(target=background_polyline_fetcher, args=(mgr.client, missing_poly, current_gen))
                     t.daemon = True
                     t.start()
+
+            # Clear activity detail caches and weather cache so fresh weather & metrics apply immediately
+            try:
+                weather_file = os.path.join(GarminPersistence.BASE_DIR, 'weather_cache.json')
+                if os.path.exists(weather_file):
+                    os.remove(weather_file)
+                detail_dir = os.path.join(GarminPersistence.BASE_DIR, 'activity_details')
+                if os.path.exists(detail_dir):
+                    for df in glob.glob(os.path.join(detail_dir, '*.json')):
+                        try: os.remove(df)
+                        except Exception: pass
+            except Exception as cle:
+                logger.warning(f"Could not clear activity details during refresh: {cle}")
 
             route_msg = f" Syncing {len(missing_poly)} GPS routes in background." if missing_poly else " All GPS routes cached."
             return jsonify({
@@ -4417,7 +4455,9 @@ def get_activity_weather(lat, lon, start_time_str, fallback_temp_c=None, duratio
     hour_part = f"{target_h:02d}"
     cache_key = f"{round(float(lat), 2)}_{round(float(lon), 2)}_{date_part}T{hour_part}_v3"
     if cache_key in weather_cache:
-        return weather_cache[cache_key]
+        cached_entry = weather_cache[cache_key]
+        if isinstance(cached_entry, dict) and cached_entry.get('v') == 2:
+            return cached_entry
 
     try:
         # Pass timezone=auto to get hourly weather indexed in the location's local time
@@ -4476,6 +4516,7 @@ def get_activity_weather(lat, lon, start_time_str, fallback_temp_c=None, duratio
             display_str = "--"
 
         res = {
+            'v': 2,
             'temperature': temp_f,
             'wind_speed': wind_spd,
             'wind_direction': wind_compass,
@@ -4617,8 +4658,17 @@ def get_activity_details(activity_id):
                 cached_data = load_json(cache_file, {})
                 c_summary = cached_data.get('summary') or {}
                 c_telem = cached_data.get('telemetry') or {}
-                if cached_data and not cached_data.get('error') and c_summary.get('distance') and c_telem.get('speed'):
-                    return jsonify(cached_data)
+                c_weather = c_telem.get('weather') or {}
+                # Invalidate if weather was cached prior to timezone fix (v2)
+                weather_valid = (c_weather.get('v') == 2)
+                if (cached_data and not cached_data.get('error') 
+                    and c_summary.get('distance') 
+                    and c_telem.get('speed') 
+                    and weather_valid 
+                    and not request.args.get('refresh')):
+                    resp = jsonify(cached_data)
+                    resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                    return resp
             except Exception as ce:
                 logger.warning(f"Error reading activity cache: {ce}")
 
@@ -5071,7 +5121,9 @@ def get_activity_details(activity_id):
         except Exception as cache_save_err:
             logger.warning(f"Could not save activity detail cache: {cache_save_err}")
 
-        return jsonify(response_payload)
+        resp = jsonify(response_payload)
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return resp
     except Exception as e:
         logger.error(f"Error fetching activity details: {e}")
         logger.error(traceback.format_exc())
