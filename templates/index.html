@@ -60,6 +60,7 @@
     <script src="{{ url_for('static', filename='js/activity_detail.js') }}?v={{ app_version }}"></script>
     <script src="{{ url_for('static', filename='js/health.js') }}?v={{ app_version }}"></script>
     <script src="{{ url_for('static', filename='js/pbs.js') }}?v={{ app_version }}"></script>
+    <script src="{{ url_for('static', filename='js/comparison_studio.js') }}?v={{ app_version }}"></script>
 
     <style>
         /* Custom Cluster Styles for Dark Mode */
@@ -628,6 +629,10 @@
                 <a href="#section-goals" class="shortcut-pill" data-section="section-goals">
                     <span class="shortcut-icon">🎯</span>
                     <span class="shortcut-label">Goals &amp; Trends</span>
+                </a>
+                <a href="#section-compare" class="shortcut-pill" data-section="section-compare">
+                    <span class="shortcut-icon">📊</span>
+                    <span class="shortcut-label">Compare</span>
                 </a>
                 <a href="#pb-module" class="shortcut-pill" data-section="pb-module">
                     <span class="shortcut-icon">🏆</span>
@@ -1659,6 +1664,78 @@
 
         </div>
 
+        </div>
+
+        <!-- Comparison Studio Module -->
+        <div id="section-compare">
+            <h2 style="margin-top: 2rem; margin-bottom: 1.5rem; font-size: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+                <div>Comparison Studio <span style="font-size: 0.8rem; font-weight:normal; background: rgba(56, 189, 248, 0.1); padding: 0.2rem 0.5rem; border-radius: 1rem; color: var(--accent-color);">ANALYTICS</span></div>
+            </h2>
+
+            <div class="comparison-card">
+                <!-- Top Toolbar: Presets & Visualization Toggle -->
+                <div class="compare-header-row">
+                    <div class="range-btn-group" id="compare-preset-group">
+                        <button class="range-btn active" data-preset="this_vs_last_month" onclick="setComparePreset('this_vs_last_month')">This Month vs Last Month</button>
+                        <button class="range-btn" data-preset="this_vs_last_year_month" onclick="setComparePreset('this_vs_last_year_month')">vs Same Month Last Year</button>
+                        <button class="range-btn" data-preset="this_vs_last_year" onclick="setComparePreset('this_vs_last_year')">Year vs Year</button>
+                        <button class="range-btn" data-preset="custom" onclick="setComparePreset('custom')">Custom Periods</button>
+                    </div>
+
+                    <div class="toggle-group" id="compare-chart-type-toggle">
+                        <button class="toggle-btn active" data-chart="bar" onclick="setCompareChartType('bar')">📊 Bars</button>
+                        <button class="toggle-btn" data-chart="scatter" onclick="setCompareChartType('scatter')">📍 Workouts</button>
+                        <button class="toggle-btn" data-chart="cumulative" onclick="setCompareChartType('cumulative')">📈 Cumulative</button>
+                    </div>
+                </div>
+
+                <!-- Secondary Filter Controls: Sport, Metric, & Custom Pickers -->
+                <div class="compare-controls-bar">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <label for="compare-sport-select" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">SPORT</label>
+                        <select id="compare-sport-select" class="compare-select" onchange="runComparisonQuery()">
+                            <option value="cycling" selected>🚲 Cycling</option>
+                            <option value="running">🏃 Running</option>
+                            <option value="walking">🚶 Walking &amp; Hiking</option>
+                            <option value="swimming">🏊 Swimming</option>
+                            <option value="all">🌐 All Sports</option>
+                        </select>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <label for="compare-metric-select" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">METRIC</label>
+                        <select id="compare-metric-select" class="compare-select" onchange="runComparisonQuery()">
+                            <option value="distance" selected>📏 Total Distance</option>
+                            <option value="speed">⚡ Average Speed</option>
+                            <option value="count">🔢 Activity Count</option>
+                            <option value="duration">⏱️ Time / Duration</option>
+                            <option value="elevation">⛰️ Elevation Gain</option>
+                            <option value="power">🔋 Average Power</option>
+                            <option value="hr">❤️ Average HR</option>
+                            <option value="calories">🔥 Active Calories</option>
+                        </select>
+                    </div>
+
+                    <!-- Custom Dropdown Row (toggled when Custom preset is selected) -->
+                    <div id="compare-custom-pickers" style="display: none; align-items: center; gap: 0.5rem; margin-left: auto;">
+                        <select id="compare-custom-a" class="compare-select"></select>
+                        <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 700;">VS</span>
+                        <select id="compare-custom-b" class="compare-select"></select>
+                        <button class="btn btn-sm" onclick="runComparisonQuery()" style="background: var(--accent-color); color: #0f172a; font-weight: 700; border: none; padding: 0.4rem 0.8rem; border-radius: 0.4rem; cursor: pointer;">Apply</button>
+                    </div>
+                </div>
+
+                <!-- KPI Head-to-Head Scorecards -->
+                <div id="compare-scorecards-grid" class="compare-scorecards-grid"></div>
+
+                <!-- Interactive Comparison Chart -->
+                <div class="chart-container" style="position: relative; height: 380px;">
+                    <div id="compare-chart-loading" style="display: none; position: absolute; inset: 0; background: rgba(15, 23, 42, 0.7); align-items: center; justify-content: center; z-index: 5; border-radius: 0.5rem;">
+                        <div class="spinner"></div>
+                    </div>
+                    <canvas id="comparisonStudioChart"></canvas>
+                </div>
+            </div>
         </div>
 
         <!-- Personal Bests Module -->

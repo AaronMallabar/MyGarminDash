@@ -1,5 +1,5 @@
 // Service Worker for GarminDash PWA
-const CACHE_NAME = 'garmindash-v12';
+const CACHE_NAME = 'garmindash-v13';
 const STATIC_ASSETS = [
   '/',
   '/static/style.css',
@@ -14,7 +14,8 @@ const STATIC_ASSETS = [
   '/static/js/dashboard.js',
   '/static/js/activity_detail.js',
   '/static/js/health.js',
-  '/static/js/pbs.js'
+  '/static/js/pbs.js',
+  '/static/js/comparison_studio.js'
 ];
 
 self.addEventListener('install', (event) => {

@@ -2946,6 +2946,291 @@ def get_ytd_mileage_comparison():
         logger.error(f"Error fetching YTD mileage comparison: {e}")
         return jsonify({'error': str(e)}), 500
 
+def compare_analytics_core(period_a, period_b, sport, metric):
+    def load_period_acts(period_str):
+        acts = []
+        if len(period_str) == 7: # YYYY-MM
+            p = os.path.join('garmin_cache', 'activities', f"{period_str}.json")
+            if os.path.exists(p):
+                try:
+                    with open(p, 'r', encoding='utf-8') as f:
+                        d = json.load(f)
+                    if isinstance(d, dict):
+                        for day, day_acts in d.items():
+                            if isinstance(day_acts, list):
+                                for a in day_acts:
+                                    if isinstance(a, dict):
+                                        a['_date'] = day
+                                        acts.append(a)
+                    elif isinstance(d, list):
+                        for a in d:
+                            if isinstance(a, dict):
+                                acts.append(a)
+                except Exception as ex:
+                    logger.warning(f"Error reading {p}: {ex}")
+        elif len(period_str) == 4: # YYYY
+            for p in glob.glob(os.path.join('garmin_cache', 'activities', f"{period_str}-*.json")):
+                try:
+                    with open(p, 'r', encoding='utf-8') as f:
+                        d = json.load(f)
+                    if isinstance(d, dict):
+                        for day, day_acts in d.items():
+                            if isinstance(day_acts, list):
+                                for a in day_acts:
+                                    if isinstance(a, dict):
+                                        a['_date'] = day
+                                        acts.append(a)
+                    elif isinstance(d, list):
+                        for a in d:
+                            if isinstance(a, dict):
+                                acts.append(a)
+                except Exception as ex:
+                    logger.warning(f"Error reading {p}: {ex}")
+        return acts
+
+    def filter_sport(acts, sp):
+        if not sp or sp == 'all':
+            return acts
+        res = []
+        for a in acts:
+            if sp == 'cycling' and is_cycling_activity(a):
+                res.append(a)
+            elif sp == 'running' and is_running_activity(a):
+                res.append(a)
+            elif sp == 'walking':
+                tkey = (a.get('activityType') or {}).get('typeKey', '') if isinstance(a.get('activityType'), dict) else str(a.get('activityType') or '')
+                an = str(a.get('activityName') or '').lower()
+                if any(w in tkey.lower() for w in ['walk', 'hike']) or any(w in an for w in ['walk', 'hike']):
+                    res.append(a)
+            elif sp == 'swimming':
+                tkey = (a.get('activityType') or {}).get('typeKey', '') if isinstance(a.get('activityType'), dict) else str(a.get('activityType') or '')
+                an = str(a.get('activityName') or '').lower()
+                if 'swim' in tkey.lower() or 'swim' in an:
+                    res.append(a)
+        return res
+
+    def extract_val(a, m):
+        if m == 'distance':
+            return round((a.get('distance') or 0) / 1609.34, 2)
+        elif m == 'speed':
+            s = a.get('averageSpeed')
+            return round(s * 2.23694, 1) if s and s > 0 else 0.0
+        elif m == 'duration':
+            d = a.get('duration') or a.get('movingDuration') or a.get('elapsedDuration') or 0
+            return round(d / 3600.0, 2)
+        elif m == 'elevation':
+            e = a.get('elevationGain') or 0
+            return round(e * 3.28084, 0)
+        elif m == 'power':
+            p = a.get('avgPower') or a.get('normPower')
+            return round(p) if p and p > 0 else 0
+        elif m == 'hr':
+            hr = a.get('averageHR')
+            return round(hr) if hr and hr > 0 else 0
+        elif m == 'calories':
+            return round(a.get('calories') or 0)
+        elif m == 'count':
+            return 1
+        return 0
+
+    is_month = len(period_a) == 7 and len(period_b) == 7
+    acts_a = filter_sport(load_period_acts(period_a), sport)
+    acts_b = filter_sport(load_period_acts(period_b), sport)
+
+    if is_month:
+        try:
+            dt_a = datetime.strptime(period_a, '%Y-%m')
+            label_a = dt_a.strftime('%B %Y')
+        except Exception:
+            label_a = period_a
+        try:
+            dt_b = datetime.strptime(period_b, '%Y-%m')
+            label_b = dt_b.strftime('%B %Y')
+        except Exception:
+            label_b = period_b
+        num_intervals = 31
+        labels = [f"Day {i}" for i in range(1, 32)]
+    else:
+        label_a = f"{period_a} Full Year"
+        label_b = f"{period_b} Full Year"
+        num_intervals = 12
+        labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+    bars_a = [0.0] * num_intervals
+    bars_b = [0.0] * num_intervals
+    counts_a = [0] * num_intervals
+    counts_b = [0] * num_intervals
+
+    scatter_a = []
+    scatter_b = []
+
+    def populate(act_list, bars, counts, sc):
+        for a in act_list:
+            d_str = a.get('_date') or (a.get('startTimeLocal') or '')[:10] or (a.get('startTimeGMT') or '')[:10]
+            if not d_str:
+                continue
+            try:
+                dt = datetime.strptime(d_str, '%Y-%m-%d')
+                idx = (dt.day - 1) if is_month else (dt.month - 1)
+            except Exception:
+                continue
+
+            if 0 <= idx < num_intervals:
+                v = extract_val(a, metric)
+                dist_mi = extract_val(a, 'distance')
+                spd_mph = extract_val(a, 'speed')
+
+                bars[idx] += v
+                counts[idx] += 1
+
+                sc.append({
+                    'id': a.get('activityId'),
+                    'name': a.get('activityName') or 'Activity',
+                    'date': d_str,
+                    'x': dt.day if is_month else dt.month,
+                    'y': v,
+                    'dist': dist_mi,
+                    'spd': spd_mph,
+                    'dur': round((a.get('duration') or a.get('movingDuration') or 0) / 60.0)
+                })
+
+    populate(acts_a, bars_a, counts_a, scatter_a)
+    populate(acts_b, bars_b, counts_b, scatter_b)
+
+    if metric in ['speed', 'hr', 'power']:
+        bars_a = [round(b / c, 1) if c > 0 else 0.0 for b, c in zip(bars_a, counts_a)]
+        bars_b = [round(b / c, 1) if c > 0 else 0.0 for b, c in zip(bars_b, counts_b)]
+    else:
+        bars_a = [round(b, 2) for b in bars_a]
+        bars_b = [round(b, 2) for b in bars_b]
+
+    cum_a = []
+    cum_b = []
+    ta, tb = 0.0, 0.0
+    for ba, bb in zip(bars_a, bars_b):
+        ta += ba
+        tb += bb
+        cum_a.append(round(ta, 2))
+        cum_b.append(round(tb, 2))
+
+    vals_a = [extract_val(a, metric) for a in acts_a]
+    vals_b = [extract_val(a, metric) for a in acts_b]
+
+    unit_map = {
+        'distance': 'mi',
+        'speed': 'mph',
+        'count': 'acts',
+        'duration': 'hrs',
+        'elevation': 'ft',
+        'power': 'W',
+        'hr': 'bpm',
+        'calories': 'kcal'
+    }
+    unit = unit_map.get(metric, '')
+
+    if metric in ['speed', 'hr']:
+        sa = round(sum(vals_a) / len(vals_a), 1) if vals_a else 0.0
+        sb = round(sum(vals_b) / len(vals_b), 1) if vals_b else 0.0
+    elif metric == 'power':
+        sa = round(sum(vals_a) / len(vals_a)) if vals_a else 0
+        sb = round(sum(vals_b) / len(vals_b)) if vals_b else 0
+    elif metric in ['elevation', 'calories', 'count']:
+        sa = round(sum(vals_a))
+        sb = round(sum(vals_b))
+    else:
+        sa = round(sum(vals_a), 1)
+        sb = round(sum(vals_b), 1)
+
+    delta = round(sa - sb, 1)
+    delta_pct = round(((delta / sb) * 100), 1) if sb > 0 else 0.0
+
+    return {
+        'period_a': {'key': period_a, 'label': label_a, 'summary': sa, 'acts_count': len(acts_a)},
+        'period_b': {'key': period_b, 'label': label_b, 'summary': sb, 'acts_count': len(acts_b)},
+        'metric': metric,
+        'unit': unit,
+        'delta': delta,
+        'delta_pct': delta_pct,
+        'labels': labels,
+        'bars_a': bars_a,
+        'bars_b': bars_b,
+        'cum_a': cum_a,
+        'cum_b': cum_b,
+        'scatter_a': scatter_a,
+        'scatter_b': scatter_b
+    }
+
+@app.route('/api/analytics/compare')
+@login_required
+def api_analytics_compare():
+    try:
+        preset = request.args.get('preset', 'this_vs_last_month')
+        period_a = request.args.get('period_a', '').strip()
+        period_b = request.args.get('period_b', '').strip()
+        sport = request.args.get('sport', 'cycling').strip().lower()
+        metric = request.args.get('metric', 'distance').strip().lower()
+
+        # Discover all available monthly activity cache files
+        cache_pattern = os.path.join('garmin_cache', 'activities', '*.json')
+        files = glob.glob(cache_pattern)
+        available_months = []
+        for f in files:
+            bn = os.path.basename(f)
+            if bn.endswith('.json') and len(bn) == 12 and bn[:4].isdigit() and bn[5:7].isdigit():
+                available_months.append(bn[:-5])
+        available_months.sort(reverse=True)
+
+        available_years = sorted(list(set(m[:4] for m in available_months)), reverse=True)
+
+        if not available_months:
+            return jsonify({
+                'available_months': [],
+                'available_years': [],
+                'data': {
+                    'period_a': {'key': '', 'label': 'N/A', 'summary': 0, 'acts_count': 0},
+                    'period_b': {'key': '', 'label': 'N/A', 'summary': 0, 'acts_count': 0},
+                    'metric': metric,
+                    'unit': '',
+                    'delta': 0,
+                    'delta_pct': 0,
+                    'labels': [],
+                    'bars_a': [],
+                    'bars_b': [],
+                    'cum_a': [],
+                    'cum_b': [],
+                    'scatter_a': [],
+                    'scatter_b': []
+                }
+            })
+
+        # Resolve period_a and period_b if not specified or preset is used
+        if not period_a or not period_b:
+            if preset == 'this_vs_last_year_month':
+                period_a = available_months[0]
+                target_prev = f"{int(period_a[:4]) - 1}{period_a[4:]}"
+                if target_prev in available_months:
+                    period_b = target_prev
+                elif len(available_months) > 12:
+                    period_b = available_months[12]
+                else:
+                    period_b = available_months[1] if len(available_months) > 1 else available_months[0]
+            elif preset == 'this_vs_last_year':
+                period_a = available_years[0]
+                period_b = available_years[1] if len(available_years) > 1 else available_years[0]
+            else: # this_vs_last_month
+                period_a = available_months[0]
+                period_b = available_months[1] if len(available_months) > 1 else available_months[0]
+
+        data = compare_analytics_core(period_a, period_b, sport, metric)
+        return jsonify({
+            'available_months': available_months,
+            'available_years': available_years,
+            'data': data
+        })
+    except Exception as e:
+        logger.error(f"Error in /api/analytics/compare: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
 def hour_to_time_str(h_val):
     if h_val is None:
         return '--'
