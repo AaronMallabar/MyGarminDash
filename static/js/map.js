@@ -48,11 +48,10 @@ function createBaseTileLayer(style) {
     }
 
     if (mode === 'road') {
-        return L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        return L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxNativeZoom: 19,
             maxZoom: 22,
-            subdomains: 'abcd',
-            attribution: '&copy; OpenStreetMap, &copy; CARTO'
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
         });
     }
 
@@ -64,13 +63,19 @@ function createBaseTileLayer(style) {
         });
     }
 
-    // Default: 'dark' - CartoDB Dark Matter vector raster tiles, crisp with smooth auto-scaling up to zoom 22
-    return L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png', {
-        maxNativeZoom: 19,
+    // Default: 'dark' - Esri World Dark Gray Base + Reference (Zero API key required, with maxNativeZoom: 16 preventing "Map data not available" when zoomed up to 22)
+    const darkBase = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+        maxNativeZoom: 16,
         maxZoom: 22,
-        subdomains: 'abcd',
-        attribution: '&copy; OpenStreetMap, &copy; CARTO'
+        attribution: '&copy; Esri, OpenStreetMap contributors'
     });
+    const darkLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+        maxNativeZoom: 16,
+        maxZoom: 22,
+        opacity: 0.85
+    });
+
+    return L.layerGroup([darkBase, darkLabels]);
 }
 
 function syncMapStyleButtons(style) {
