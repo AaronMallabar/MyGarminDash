@@ -96,16 +96,32 @@ window.renderStage = function (data, basic, num) {
 
     // Context-aware labels & Base metrics
     const distLabel = isStrength ? 'Calories' : 'Distance';
-    const distValue = isStrength ? (summary.calories || '--') + ' kcal' : (summary.distance / 1609.34).toFixed(2) + ' mi';
+    const rawDist = summary.distance != null ? summary.distance : (basic.distance != null ? basic.distance : (data.distance != null ? data.distance : null));
+    const distValue = isStrength 
+        ? ((summary.calories || basic.calories || '--') + ' kcal') 
+        : (rawDist != null && !isNaN(rawDist) ? (Number(rawDist) / 1609.34).toFixed(2) + ' mi' : '-- mi');
 
     const durLabel = 'Duration';
-    const durValue = Math.round(summary.duration / 60) + ' min';
+    const rawDur = summary.duration != null ? summary.duration : (basic.duration != null ? basic.duration : (data.duration != null ? data.duration : (summary.movingDuration || basic.movingDuration || null)));
+    const durValue = rawDur != null && !isNaN(rawDur) ? Math.round(Number(rawDur) / 60) + ' min' : '-- min';
 
     const paceLabel = isStrength ? 'Work Time' : (isCycle ? 'Speed' : 'Pace');
-    const workTimeS = summary.movingDuration || summary.activeTime || (data.exercise_sets?.exerciseSets?.filter(s => s.setType === 'ACTIVE').reduce((sum, s) => sum + (s.duration || 0), 0)) || 0;
+    const workTimeS = summary.movingDuration || basic.movingDuration || summary.activeTime || (data.exercise_sets?.exerciseSets?.filter(s => s.setType === 'ACTIVE').reduce((sum, s) => sum + (s.duration || 0), 0)) || 0;
+    
+    // Speed: support Avg & Max speed
+    const rawAvgSpeed = summary.averageSpeed != null ? summary.averageSpeed : (basic.averageSpeed != null ? basic.averageSpeed : (data.avg_speed != null ? data.avg_speed : null));
+    const rawMaxSpeed = summary.maxSpeed != null ? summary.maxSpeed : (basic.maxSpeed != null ? basic.maxSpeed : (data.max_speed != null ? data.max_speed : null));
+    
+    const avgSpeedMph = (telem.speed && telem.speed.avg_mph) != null 
+        ? telem.speed.avg_mph 
+        : (rawAvgSpeed != null && !isNaN(rawAvgSpeed) ? (Number(rawAvgSpeed) * 2.23694).toFixed(1) : null);
+    const maxSpeedMph = (telem.speed && telem.speed.max_mph) != null 
+        ? telem.speed.max_mph 
+        : (rawMaxSpeed != null && !isNaN(rawMaxSpeed) ? (Number(rawMaxSpeed) * 2.23694).toFixed(1) : null);
+
     const paceValue = isStrength
         ? (workTimeS ? Math.round(workTimeS / 60) + ' min' : '--')
-        : (isCycle ? (summary.averageSpeed * 2.23694).toFixed(1) + ' mph' : (data.avg_pace_str || '--'));
+        : (avgSpeedMph ? `${avgSpeedMph} mph` : (data.avg_pace_str || '--'));
 
     // Telemetry and load metrics
     const normPower = summary.normalizedPower || summary.normPower || telem.normalized_power;
@@ -140,9 +156,11 @@ window.renderStage = function (data, basic, num) {
                     <div class="activity-detail-label" style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700;">Duration</div>
                     <div class="activity-detail-value" style="font-size: 1.25rem; font-weight: 800; color: #fff; margin-top: 0.2rem;">${durValue}</div>
                 </div>
-                <div class="activity-detail-card" style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255,255,255,0.05); padding: 0.85rem; border-radius: 0.85rem; text-align: center;">
-                    <div class="activity-detail-label" style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700;">Avg Speed</div>
-                    <div class="activity-detail-value" style="font-size: 1.25rem; font-weight: 800; color: var(--accent-color); margin-top: 0.2rem;">${paceValue}</div>
+                <div class="activity-detail-card" style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255,255,255,0.05); padding: 0.85rem; border-radius: 0.85rem; text-align: center;" title="Speed (Average & Peak MPH)">
+                    <div class="activity-detail-label" style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700;">Speed</div>
+                    <div class="activity-detail-value" style="font-size: ${maxSpeedMph && avgSpeedMph ? '0.95rem' : '1.25rem'}; font-weight: 800; color: var(--accent-color); margin-top: ${maxSpeedMph && avgSpeedMph ? '0.35rem' : '0.2rem'}; line-height: 1.3;">
+                        ${maxSpeedMph && avgSpeedMph ? `Avg: ${avgSpeedMph} | Max: ${maxSpeedMph} <span style="font-size: 0.7rem; opacity: 0.8;">mph</span>` : (avgSpeedMph ? `${avgSpeedMph} <span style="font-size: 0.7rem; opacity: 0.8;">mph</span>` : '--')}
+                    </div>
                 </div>
                 <div class="activity-detail-card" style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255,255,255,0.05); padding: 0.85rem; border-radius: 0.85rem; text-align: center;" title="Cardiac Ceiling (Average & Peak HR)">
                     <div class="activity-detail-label" style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700;">Cardiac Ceiling</div>

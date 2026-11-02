@@ -4603,7 +4603,9 @@ def get_activity_details(activity_id):
         if os.path.exists(cache_file):
             try:
                 cached_data = load_json(cache_file, {})
-                if cached_data and not cached_data.get('error') and cached_data.get('telemetry'):
+                c_summary = cached_data.get('summary') or {}
+                c_telem = cached_data.get('telemetry') or {}
+                if cached_data and not cached_data.get('error') and c_summary.get('distance') and c_telem.get('speed'):
                     return jsonify(cached_data)
             except Exception as ce:
                 logger.warning(f"Error reading activity cache: {ce}")
@@ -4715,11 +4717,11 @@ def get_activity_details(activity_id):
                 charts['cadence'].append(cad)
 
         # Merge activity summary
-        summary = {}
+        summary = dict(activity_info)
         info_summary = activity_info.get('summaryDTO')
-        if info_summary: summary.update(info_summary)
+        if isinstance(info_summary, dict): summary.update(info_summary)
         details_summary = details.get('summaryDTO')
-        if details_summary: summary.update(details_summary)
+        if isinstance(details_summary, dict): summary.update(details_summary)
         
         # Calculate missing summary fields from charts
         total_dist_m = summary.get('distance')
@@ -4728,10 +4730,15 @@ def get_activity_details(activity_id):
                 if d is not None:
                     total_dist_m = d
                     break
+        if total_dist_m is not None:
+            summary['distance'] = total_dist_m
         
         total_dur_s = summary.get('duration') or summary.get('movingDuration')
         if not total_dur_s and len(charts['timestamps']) > 1:
             total_dur_s = (charts['timestamps'][-1] - charts['timestamps'][0]) / 1000
+        if total_dur_s is not None:
+            summary['duration'] = total_dur_s
+            summary['movingDuration'] = summary.get('movingDuration') or total_dur_s
 
         avg_speed = summary.get('averageSpeed')
         if not avg_speed and total_dur_s and total_dur_s > 0:
@@ -4739,6 +4746,16 @@ def get_activity_details(activity_id):
                 avg_speed = total_dist_m / total_dur_s
             else:
                 avg_speed = 0
+        if avg_speed is not None:
+            summary['averageSpeed'] = avg_speed
+
+        max_speed = summary.get('maxSpeed')
+        if not max_speed and charts['speed']:
+            valid_speeds = [s for s in charts['speed'] if s is not None and s > 0]
+            if valid_speeds:
+                max_speed = max(valid_speeds)
+        if max_speed is not None:
+            summary['maxSpeed'] = max_speed
 
         avg_pace_str = "--"
         if avg_speed and avg_speed > 0.1:
@@ -4795,7 +4812,20 @@ def get_activity_details(activity_id):
         # Intensity & Zone Distribution
         power_zones, hr_zones = compute_power_and_hr_zones(activity_info, summary, charts, ftp)
 
+        avg_speed_mph = round(avg_speed * 2.23694, 1) if avg_speed else None
+        max_speed_mph = round(max_speed * 2.23694, 1) if max_speed else None
+        speed_display = ""
+        if avg_speed_mph and max_speed_mph:
+            speed_display = f"Avg: {avg_speed_mph} | Max: {max_speed_mph} mph"
+        elif avg_speed_mph:
+            speed_display = f"{avg_speed_mph} mph"
+
         telemetry = {
+            'speed': {
+                'avg_mph': avg_speed_mph,
+                'max_mph': max_speed_mph,
+                'display': speed_display
+            },
             'normalized_power': norm_power,
             'ftp': ftp,
             'intensity_factor': if_val,
@@ -4993,6 +5023,11 @@ def get_activity_details(activity_id):
             'activityId': activity_id,
             'charts': charts,
             'summary': summary,
+            'distance': summary.get('distance'),
+            'duration': summary.get('duration'),
+            'averageSpeed': summary.get('averageSpeed'),
+            'maxSpeed': summary.get('maxSpeed'),
+            'max_speed': max_speed,
             'bests': activity_info.get('activity_bests', {}),
             'splits': splits,
             'avg_pace_str': avg_pace_str,
