@@ -1046,16 +1046,29 @@ class GarminSyncManager:
         logger.info(f"Batch syncing weight from {start_date} to {end_date}...")
         try:
             self._throttle_api()
-            weigh_ins = self.client.get_weigh_ins(start_date.isoformat(), end_date.isoformat())
-            summaries = weigh_ins.get('dailyWeightSummaries', [])
-            for s in summaries:
-                d_str = s.get('calendarDate')
-                if d_str:
-                    data = s.get('totalAverage', {})
+            bc = self.client.get_body_composition(start_date.isoformat(), end_date.isoformat())
+            weight_list = bc.get('dateWeightList', []) if bc else []
+            if not weight_list:
+                weigh_ins = self.client.get_weigh_ins(start_date.isoformat(), end_date.isoformat())
+                for s in (weigh_ins.get('dailyWeightSummaries', []) if weigh_ins else []):
+                    latest = s.get('latestWeight') or {}
+                    d = s.get('summaryDate') or latest.get('calendarDate')
+                    if d and latest.get('weight') is not None:
+                        weight_list.append(latest)
+
+            by_month = {}
+            for s in weight_list:
+                d_str = s.get('calendarDate') or s.get('summaryDate')
+                if d_str and s.get('weight') is not None:
+                    ym = d_str[:7]
+                    if ym not in by_month:
+                        by_month[ym] = GarminPersistence.load_month('weight', d_str)
+                    data = dict(s)
                     data['timestamp'] = time.time()
-                    month_data = GarminPersistence.load_month('weight', d_str)
-                    month_data[d_str] = data
-                    GarminPersistence.save_month('weight', d_str, month_data)
+                    by_month[ym][d_str] = data
+
+            for ym, m_data in by_month.items():
+                GarminPersistence.save_month('weight', f"{ym}-01", m_data)
         except Exception as e:
             logger.error(f"Batch sync weight failed: {e}")
 
@@ -1691,6 +1704,8 @@ def refresh_cache():
         scope = data.get('scope', 'all')
         if scope == 'activities':
             metrics = ['activities']
+        elif scope == 'weight':
+            metrics = ['weight']
         else:
             metrics = data.get('metrics') or ['stats', 'activities', 'steps', 'sleep', 'weight', 'hr', 'hrv', 'stress', 'intensity_minutes', 'hydration']
         
@@ -1704,12 +1719,30 @@ def refresh_cache():
             return jsonify({'error': 'start_date must be before end_date'}), 400
             
         is_activities_only = (metrics == ['activities'])
+        is_weight_only = (metrics == ['weight'])
         # Limit range for per-day health metrics to avoid timing out or hitting rate limits
-        if not is_activities_only and (end_date - start_date).days > 31:
-            return jsonify({'error': 'All Daily Metrics is limited to 31 days at once. Select "Activities & Heatmap Routes" to refresh longer historical ranges.'}), 400
+        if not is_activities_only and not is_weight_only and (end_date - start_date).days > 31:
+            return jsonify({'error': 'All Daily Metrics is limited to 31 days at once. Select "Activities & Heatmap Routes" or "Weight History" to refresh longer historical ranges.'}), 400
 
         mgr = get_sync_manager()
         global activity_heatmap_cache, heatmap_cache, ai_insights_cache, fetch_generation, active_fetch_range, is_fetching
+
+        if is_weight_only:
+            # Batch-sync weight in 1-year chunks
+            curr_start = start_date
+            while curr_start <= end_date:
+                curr_end = min(end_date, curr_start + timedelta(days=364))
+                logger.info(f"Manual weight refresh: {curr_start} to {curr_end}")
+                mgr._sync_weight_range(curr_start, curr_end)
+                curr_start = curr_end + timedelta(days=1)
+
+            activity_heatmap_cache = {'data': None, 'timestamp': 0}
+            ai_insights_cache = {'data': None, 'timestamp': 0}
+
+            return jsonify({
+                'success': True,
+                'message': f'Synced weight data from {start_str} to {end_str}.'
+            })
 
         if is_activities_only:
             # Batch-sync activities in 1-year chunks so multi-year ranges never time out

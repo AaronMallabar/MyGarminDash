@@ -320,34 +320,64 @@ window.renderWeightChart = function (data, range) {
         return;
     }
 
+    const currentRange = range || window.currentWeightRange || '1m';
+    const targetEndDate = window.currentWeightEndDate || new Date();
+    const endDt = new Date(targetEndDate);
+    endDt.setHours(23, 59, 59, 999);
+
+    let daysBack = 31;
+    if (currentRange === '1w') daysBack = 7;
+    else if (currentRange === '3m') daysBack = 90;
+    else if (currentRange === '6m') daysBack = 180;
+    else if (currentRange === '1y') daysBack = 365;
+    else if (currentRange === '5y') daysBack = 1825;
+
+    const startDt = new Date(endDt.getTime() - daysBack * 86400000);
+    startDt.setHours(0, 0, 0, 0);
+
     const weights = weightData.map(d => d.weight_lbs);
     const min = Math.floor(Math.min(...weights) - 3);
     const max = Math.ceil(Math.max(...weights) + 3);
 
-    const isLongRange = weightData.length > 90;
-    const pointRadius = isLongRange ? 0 : 4;
+    const isLongRange = daysBack > 90 || weightData.length > 90;
+    const pointRadius = isLongRange ? (daysBack > 365 ? 0 : 2) : 4;
     const borderWidth = isLongRange ? 2 : 3;
+
+    // Convert data to { x: timestamp, y: lbs } for real-time temporal spacing
+    const points = weightData.map(d => {
+        const dt = window.parseLocalDate ? window.parseLocalDate(d.date) : new Date(d.date);
+        dt.setHours(12, 0, 0, 0);
+        return {
+            x: dt.getTime(),
+            y: d.weight_lbs
+        };
+    });
+
+    const minTime = Math.min(startDt.getTime(), points.length ? points[0].x : startDt.getTime());
+    const maxTime = Math.max(endDt.getTime(), points.length ? points[points.length - 1].x : endDt.getTime());
 
     chartInstances[canvasId] = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: weightData.map(d => d.date),
             datasets: [{
                 label: 'Weight (lbs)',
-                data: weightData.map(d => d.weight_lbs),
+                data: points,
                 borderColor: '#818cf8',
                 backgroundColor: 'rgba(129, 140, 248, 0.1)',
                 borderWidth: borderWidth,
                 pointRadius: pointRadius,
+                pointHoverRadius: 6,
                 pointBackgroundColor: '#818cf8',
                 pointBorderColor: '#fff',
                 pointBorderWidth: 1,
-                tension: 0.3,
+                tension: 0.25,
+                cubicInterpolationMode: 'monotone',
                 fill: true
             }]
         },
         options: {
-            responsive: true, maintainAspectRatio: false,
+            responsive: true,
+            maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
                 tooltip: {
@@ -357,27 +387,40 @@ window.renderWeightChart = function (data, range) {
                     padding: 10,
                     callbacks: {
                         title: (items) => {
-                            const d = parseLocalDate(items[0].label);
+                            if (!items || !items.length) return '';
+                            const item = items[0];
+                            const val = item.parsed?.x ?? item.raw?.x ?? item.label;
+                            const d = (typeof val === 'number') ? new Date(val) : (window.parseLocalDate ? window.parseLocalDate(val) : new Date(val));
                             return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
                         },
                         label: (ctx) => `Weight: ${ctx.parsed.y.toFixed(1)} lbs`
                     }
                 },
-                zoom: { pan: { enabled: true, mode: 'x' }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' } }
+                zoom: {
+                    pan: { enabled: true, mode: 'x' },
+                    zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
+                }
             },
             scales: {
                 x: {
-                    type: 'category',
+                    type: 'time',
+                    time: {
+                        tooltipFormat: 'MMM d, yyyy',
+                        displayFormats: {
+                            day: 'M/d',
+                            week: 'M/d',
+                            month: 'MMM yyyy',
+                            quarter: 'MMM yyyy',
+                            year: 'yyyy'
+                        }
+                    },
+                    min: minTime,
+                    max: maxTime,
                     grid: { display: false },
                     ticks: {
                         color: '#94a3b8',
                         maxTicksLimit: isLongRange ? 8 : 7,
-                        callback: function (val, index) {
-                            const label = this.getLabelForValue(val);
-                            const p = label.split('-');
-                            if (!p[1]) return label;
-                            return p[1] + '/' + p[2];
-                        }
+                        autoSkip: true
                     }
                 },
                 y: {

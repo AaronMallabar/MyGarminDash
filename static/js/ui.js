@@ -224,12 +224,12 @@ window.refreshCacheRange = async function () {
     btn.textContent = 'Syncing...';
     progressBar.style.display = 'block';
     progressBarFill.style.width = '25%';
-    setInlineStatus(
-        scope === 'activities'
-            ? `Fetching activities & routes from ${start} to ${end}...`
-            : `Refreshing all metrics from ${start} to ${end}...`,
-        'info'
-    );
+    const statusMsg = scope === 'activities'
+        ? `Fetching activities & routes from ${start} to ${end}...`
+        : (scope === 'weight'
+            ? `Fetching weight history from ${start} to ${end}...`
+            : `Refreshing all metrics from ${start} to ${end}...`);
+    setInlineStatus(statusMsg, 'info');
 
     try {
         const res = await fetch('/api/cache/refresh', {
@@ -239,7 +239,7 @@ window.refreshCacheRange = async function () {
                 start_date: start,
                 end_date: end,
                 scope: scope,
-                metrics: scope === 'activities' ? ['activities'] : undefined
+                metrics: scope === 'activities' ? ['activities'] : (scope === 'weight' ? ['weight'] : undefined)
             })
         });
 
