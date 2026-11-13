@@ -574,6 +574,39 @@
             font-weight: 700;
             margin-bottom: 0.25rem;
         }
+
+        /* Suite Navigation Bar (Fitness | The Daily Dispatch) */
+        .suite-nav-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.9rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            flex-wrap: wrap;
+        }
+        .suite-nav-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.45rem 1rem;
+            border-radius: 9999px;
+            text-decoration: none;
+            color: var(--text-secondary);
+            font-size: 0.88rem;
+            font-weight: 600;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+        .suite-nav-pill:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.06);
+        }
+        .suite-nav-pill.active {
+            color: #0f172a;
+            background: linear-gradient(135deg, #38bdf8, #818cf8);
+            box-shadow: 0 2px 12px rgba(56, 189, 248, 0.28);
+        }
     </style>
 </head>
 
@@ -591,6 +624,17 @@
     </svg>
 
     <div class="container">
+
+        <nav class="suite-nav-bar" aria-label="Dashboard Suite Navigation">
+            <a href="/" class="suite-nav-pill active">
+                <span>🚴</span>
+                <span>Fitness &amp; Health</span>
+            </a>
+            <a href="/newspaper/" class="suite-nav-pill">
+                <span>🗞️</span>
+                <span>The Daily Dispatch</span>
+            </a>
+        </nav>
 
         <header>
 

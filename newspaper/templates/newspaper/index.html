@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0b1120">
+    <title>{{ masthead_title }} — Personal Broadsheet</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;0,800;0,900;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="{{ url_for('newspaper.static', filename='css/newspaper.css') }}">
+</head>
+<body>
+    <!-- Top-Level Suite Navigation Bar -->
+    <nav class="suite-nav" aria-label="Dashboard Suite Navigation">
+        <div class="suite-nav-inner">
+            <div class="suite-tabs">
+                <a href="/" class="suite-tab">
+                    <span>🚴</span>
+                    <span>Fitness &amp; Health</span>
+                </a>
+                <a href="/newspaper/" class="suite-tab active">
+                    <span>🗞️</span>
+                    <span>The Daily Dispatch</span>
+                </a>
+            </div>
+            <div class="suite-actions">
+                <select id="past-edition-select" class="suite-select" title="Jump to a cached past edition" onchange="onSelectPastEdition(this.value)">
+                    <option value="">Today's Edition</option>
+                </select>
+                <button type="button" id="archive-edition-btn" class="suite-btn" onclick="toggleArchiveCurrentEdition()" title="Star &amp; save this edition in Archive Vault">
+                    <span>☆</span> <span class="hide-sm">Save Edition</span>
+                </button>
+                <button type="button" id="refresh-edition-btn" class="suite-btn suite-btn-accent" onclick="loadEdition(true)" title="Fetch fresh RSS feeds and print a new edition">
+                    <span>↻</span> <span class="hide-sm">Print Special Edition</span>
+                </button>
+                <button type="button" class="suite-btn" onclick="switchSection('archive')" title="Open Archive &amp; Clipping Vault">
+                    <span>📚</span> <span class="hide-sm">Archive</span> <span id="clip-count-badge" class="count-pill">0</span>
+                </button>
+                <button type="button" class="suite-btn" onclick="openEditorialDesk()" title="Configure Editorial Desk &amp; Interests">
+                    <span>⚙️</span> <span class="hide-sm">Editorial Desk</span>
+                </button>
+                <a href="{{ url_for('logout') }}" class="suite-btn suite-btn-danger">Logout</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Past Edition Banner -->
+    <div id="past-edition-banner" class="past-edition-banner" style="display: none;">
+        <span>📜 Viewing Past Edition: <strong id="past-edition-date-label"></strong></span>
+        <button type="button" class="suite-btn suite-btn-accent" onclick="returnToToday()">Return to Today's Edition</button>
+    </div>
+
+    <!-- Main Broadsheet Page Container -->
+    <div class="broadsheet-shell">
+        <!-- Broadsheet Masthead -->
+        <header class="masthead">
+            <div class="masthead-top-strip">
+                <div class="strip-left" id="masthead-weather">
+                    <span class="weather-icon">🗞️</span>
+                    <span>Loading local forecast...</span>
+                </div>
+                <div class="strip-center" id="masthead-issue">
+                    VOL. I • NO. 1 • PERSONAL EDITION
+                </div>
+                <div class="strip-right" id="masthead-garmin">
+                    <span>⚡ Athlete's Desk</span>
+                </div>
+            </div>
+
+            <div class="masthead-banner">
+                <div class="masthead-rule-double"></div>
+                <h1 class="masthead-title" id="masthead-title">{{ masthead_title }}</h1>
+                <p class="masthead-subtitle" id="masthead-subtitle">{{ masthead_subtitle }}</p>
+                <div class="masthead-rule-double"></div>
+            </div>
+
+            <div class="masthead-dateline">
+                <span id="dateline-date">Loading date...</span>
+                <span class="dateline-dot">•</span>
+                <span id="dateline-location">Personal Broadsheet</span>
+                <span class="dateline-dot">•</span>
+                <span id="dateline-meta">Preparing morning press...</span>
+            </div>
+        </header>
+
+        <!-- Section Navigation Ribbon -->
+        <nav class="section-ribbon" id="section-ribbon" aria-label="Newspaper Sections">
+            <button type="button" class="section-tab active" data-section="front" onclick="switchSection('front')">Front Page</button>
+            <button type="button" class="section-tab" data-section="global" onclick="switchSection('global')">Global</button>
+            <button type="button" class="section-tab" data-section="national" onclick="switchSection('national')">National</button>
+            <button type="button" class="section-tab" data-section="politics" onclick="switchSection('politics')">Politics</button>
+            <button type="button" class="section-tab" data-section="local" onclick="switchSection('local')">Local</button>
+            <button type="button" class="section-tab" data-section="sports" onclick="switchSection('sports')">Sports</button>
+            <button type="button" class="section-tab" data-section="scitech" onclick="switchSection('scitech')">Science &amp; Tech</button>
+            <button type="button" class="section-tab" data-section="opinions" onclick="switchSection('opinions')">Opinions</button>
+            <button type="button" class="section-tab section-tab-special" data-section="curiosity" onclick="switchSection('curiosity')">💡 Curiosity &amp; Learn</button>
+            <button type="button" class="section-tab" data-section="comics" onclick="switchSection('comics')">🎨 Comics &amp; Puzzles</button>
+            <button type="button" class="section-tab" data-section="archive" onclick="switchSection('archive')">📚 Archive Vault</button>
+        </nav>
+
+        <!-- Status / Loading / Error Bar -->
+        <div id="press-loading" class="press-loading" style="display: none;">
+            <div class="press-spinner"></div>
+            <div>
+                <div class="press-loading-title">Setting the Morning Type...</div>
+                <div class="press-loading-sub">Gathering global wires, encyclopedia rabbit holes, comics, and AI editorial synthesis.</div>
+            </div>
+        </div>
+
+        <div id="press-error" class="press-error" style="display: none;"></div>
+
+        <!-- Main Content Canvas -->
+        <main id="newspaper-canvas">
+            <!-- Populated dynamically by newspaper.js -->
+        </main>
+    </div>
+
+    <!-- Clipping Modal -->
+    <div id="clipModal" class="np-modal" style="display: none;">
+        <div class="np-modal-backdrop" onclick="closeModal('clipModal')"></div>
+        <div class="np-modal-card">
+            <div class="np-modal-header">
+                <h3>✂️ Clip to Archive Vault</h3>
+                <button type="button" class="np-modal-close" onclick="closeModal('clipModal')">✕</button>
+            </div>
+            <div class="np-modal-body">
+                <div class="clip-preview-box">
+                    <div id="clip-preview-meta" class="clip-preview-meta"></div>
+                    <div id="clip-preview-title" class="clip-preview-title"></div>
+                    <p id="clip-preview-summary" class="clip-preview-summary"></p>
+                </div>
+                <label class="np-field-label" for="clip-notes-input">Personal Notes / Margin Thoughts</label>
+                <textarea id="clip-notes-input" class="np-textarea" rows="3" placeholder="Why is this worth remembering or researching later?"></textarea>
+
+                <label class="np-field-label" for="clip-tags-input">Tags (comma-separated)</label>
+                <input type="text" id="clip-tags-input" class="np-input" placeholder="e.g. history, cycling, mental-model, read-later">
+            </div>
+            <div class="np-modal-footer">
+                <button type="button" class="suite-btn" onclick="closeModal('clipModal')">Cancel</button>
+                <button type="button" class="suite-btn suite-btn-accent" onclick="confirmSaveClip()">Save Clipping</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Editorial Desk Settings Modal -->
+    <div id="editorialModal" class="np-modal" style="display: none;">
+        <div class="np-modal-backdrop" onclick="closeModal('editorialModal')"></div>
+        <div class="np-modal-card np-modal-wide">
+            <div class="np-modal-header">
+                <h3>⚙️ Editorial Desk — Customize Your Paper</h3>
+                <button type="button" class="np-modal-close" onclick="closeModal('editorialModal')">✕</button>
+            </div>
+            <div class="np-modal-body editorial-form-grid">
+                <div class="np-form-group">
+                    <label class="np-field-label" for="ed-masthead-title">Masthead Title</label>
+                    <input type="text" id="ed-masthead-title" class="np-input" placeholder="The Daily Dispatch">
+                </div>
+                <div class="np-form-group">
+                    <label class="np-field-label" for="ed-masthead-subtitle">Masthead Motto / Subtitle</label>
+                    <input type="text" id="ed-masthead-subtitle" class="np-input">
+                </div>
+
+                <div class="np-form-group">
+                    <label class="np-field-label" for="ed-location">Local City / Region (for Local News &amp; Weather)</label>
+                    <input type="text" id="ed-location" class="np-input" placeholder="e.g. Boulder, Colorado (leave blank to auto-detect from Garmin GPS)">
+                </div>
+                <div class="np-form-group np-coords-row">
+                    <div>
+                        <label class="np-field-label" for="ed-lat">Weather Latitude (Optional)</label>
+                        <input type="text" id="ed-lat" class="np-input" placeholder="Auto">
+                    </div>
+                    <div>
+                        <label class="np-field-label" for="ed-lon">Weather Longitude (Optional)</label>
+                        <input type="text" id="ed-lon" class="np-input" placeholder="Auto">
+                    </div>
+                </div>
+
+                <div class="np-form-group">
+                    <label class="np-field-label" for="ed-sports">Sports &amp; Teams (comma-separated)</label>
+                    <input type="text" id="ed-sports" class="np-input" placeholder="Cycling, Tour de France, NFL, NBA">
+                </div>
+                <div class="np-form-group">
+                    <label class="np-field-label" for="ed-curiosity">Curiosity &amp; Learning Topics (comma-separated)</label>
+                    <input type="text" id="ed-curiosity" class="np-input" placeholder="How Things Work, Hidden History, Mental Models">
+                </div>
+
+                <div class="np-form-group np-span-2">
+                    <label class="np-field-label" for="ed-custom-prompt">Special Instructions for the AI Editor</label>
+                    <textarea id="ed-custom-prompt" class="np-textarea" rows="2" placeholder="e.g. Prioritize deep engineering explanations, European cycling races, and avoid celebrity gossip."></textarea>
+                </div>
+
+                <div class="np-form-group np-span-2">
+                    <label class="np-field-label">Daily Comics Enabled</label>
+                    <div class="comics-checkboxes">
+                        <label><input type="checkbox" value="xkcd" class="ed-comic-cb"> XKCD</label>
+                        <label><input type="checkbox" value="calvinandhobbes" class="ed-comic-cb"> Calvin &amp; Hobbes</label>
+                        <label><input type="checkbox" value="peanuts" class="ed-comic-cb"> Peanuts</label>
+                        <label><input type="checkbox" value="garfield" class="ed-comic-cb"> Garfield</label>
+                    </div>
+                </div>
+
+                <div class="np-form-group np-span-2">
+                    <label class="np-field-label">Custom RSS Feeds</label>
+                    <div id="ed-custom-feeds-list" class="custom-feeds-list"></div>
+                    <div class="add-feed-row">
+                        <input type="text" id="new-feed-name" class="np-input" placeholder="Source Name">
+                        <input type="url" id="new-feed-url" class="np-input" placeholder="https://example.com/rss.xml">
+                        <select id="new-feed-section" class="np-input">
+                            <option value="global">Global</option>
+                            <option value="national">National</option>
+                            <option value="politics">Politics</option>
+                            <option value="local">Local</option>
+                            <option value="sports">Sports</option>
+                            <option value="scitech">Science &amp; Tech</option>
+                            <option value="opinions">Opinions</option>
+                        </select>
+                        <button type="button" class="suite-btn" onclick="addCustomFeedRow()">+ Add Feed</button>
+                    </div>
+                </div>
+
+                <div class="np-form-group np-span-2">
+                    <label class="np-field-label">Adaptive Topic Taste (from your 👍 / 👎 ratings)</label>
+                    <div class="taste-chips-grid">
+                        <div>
+                            <div class="taste-subhead">Liked Themes</div>
+                            <div id="ed-liked-chips" class="taste-chips"></div>
+                        </div>
+                        <div>
+                            <div class="taste-subhead">Muted Themes</div>
+                            <div id="ed-disliked-chips" class="taste-chips"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="np-modal-footer">
+                <button type="button" class="suite-btn" onclick="closeModal('editorialModal')">Cancel</button>
+                <button type="button" class="suite-btn" onclick="saveEditorialDesk(false)">Save Settings</button>
+                <button type="button" class="suite-btn suite-btn-accent" onclick="saveEditorialDesk(true)">Save &amp; Reprint Today's Paper</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="np-toast" class="np-toast" style="display: none;"></div>
+
+    <script src="{{ url_for('newspaper.static', filename='js/newspaper.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,1118 @@
+import glob
+import html
+import json
+import logging
+import os
+import re
+import time
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+from google import genai
+from google.genai import types
+
+from . import storage
+
+logger = logging.getLogger(__name__)
+
+try:
+    EST = ZoneInfo("America/New_York")
+except Exception:
+    EST = timezone(timedelta(hours=-5))
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
+SECTION_META = {
+    "global": {"title": "Global News", "kicker": "WORLD DESK", "description": "International affairs, diplomacy, and dispatches from abroad."},
+    "national": {"title": "National News", "kicker": "NATIONAL DESK", "description": "Major domestic developments, economy, and society."},
+    "politics": {"title": "Politics & Policy", "kicker": "CAPITOL BUREAU", "description": "Legislation, governance, elections, and public policy."},
+    "local": {"title": "Local Dispatch", "kicker": "METRO & REGIONAL", "description": "News and happenings close to home."},
+    "sports": {"title": "Sports Pages", "kicker": "ATHLETICS & ARENA", "description": "Endurance, cycling, pro leagues, and scoreboards."},
+    "scitech": {"title": "Science & Tech", "kicker": "DISCOVERY & SILICON", "description": "Research breakthroughs, engineering, space, and computing."},
+    "opinions": {"title": "Opinions & Essays", "kicker": "EDITORIAL & IDEAS", "description": "Longform commentary, philosophy, and cultural criticism."},
+}
+
+DEFAULT_FEEDS = {
+    "global": [
+        ("BBC World", "http://feeds.bbci.co.uk/news/world/rss.xml"),
+        ("NPR World", "https://feeds.npr.org/1004/rss.xml"),
+        ("The Guardian World", "https://www.theguardian.com/world/rss"),
+    ],
+    "national": [
+        ("NPR National", "https://feeds.npr.org/1003/rss.xml"),
+        ("PBS NewsHour", "https://www.pbs.org/newshour/feeds/rss/headlines"),
+    ],
+    "politics": [
+        ("NPR Politics", "https://feeds.npr.org/1014/rss.xml"),
+        ("The Hill", "https://thehill.com/homenews/feed/"),
+    ],
+    "sports": [
+        ("ESPN Top News", "https://www.espn.com/espn/rss/news"),
+    ],
+    "scitech": [
+        ("Ars Technica", "https://feeds.arstechnica.com/arstechnica/index"),
+        ("ScienceDaily", "https://www.sciencedaily.com/rss/top/science.xml"),
+        ("Hacker News", "https://hnrss.org/frontpage?count=8"),
+    ],
+    "opinions": [
+        ("Aeon Magazine", "https://aeon.co/feed.rss"),
+        ("The Guardian Opinion", "https://www.theguardian.com/uk/commentisfree/rss"),
+        ("Astral Codex Ten", "https://www.astralcodexten.com/feed"),
+    ],
+}
+
+COMIC_META = {
+    "xkcd": {"name": "XKCD", "creator": "Randall Munroe", "home": "https://xkcd.com/"},
+    "calvinandhobbes": {"name": "Calvin and Hobbes", "creator": "Bill Watterson", "home": "https://www.gocomics.com/calvinandhobbes"},
+    "peanuts": {"name": "Peanuts", "creator": "Charles M. Schulz", "home": "https://www.gocomics.com/peanuts"},
+    "garfield": {"name": "Garfield", "creator": "Jim Davis", "home": "https://www.gocomics.com/garfield"},
+}
+
+WMO_WEATHER_CODES = {
+    0: ("Clear Sky", "☀️"),
+    1: ("Mainly Clear", "🌤️"),
+    2: ("Partly Cloudy", "⛅"),
+    3: ("Overcast", "☁️"),
+    45: ("Foggy", "🌫️"),
+    48: ("Rime Fog", "🌫️"),
+    51: ("Light Drizzle", "🌦️"),
+    53: ("Drizzle", "🌦️"),
+    55: ("Dense Drizzle", "🌧️"),
+    61: ("Light Rain", "🌧️"),
+    63: ("Moderate Rain", "🌧️"),
+    65: ("Heavy Rain", "🌧️"),
+    71: ("Light Snow", "🌨️"),
+    73: ("Snow", "❄️"),
+    75: ("Heavy Snow", "❄️"),
+    80: ("Rain Showers", "🌦️"),
+    81: ("Showers", "🌧️"),
+    82: ("Heavy Showers", "⛈️"),
+    95: ("Thunderstorm", "⛈️"),
+    96: ("Thunderstorm & Hail", "⛈️"),
+    99: ("Severe Thunderstorm", "⛈️"),
+}
+
+
+try:
+    from curl_cffi import requests as cffi_requests
+except ImportError:
+    cffi_requests = None
+
+
+def _http_get(url, timeout=8, extra_headers=None):
+    if cffi_requests is not None:
+        try:
+            resp = cffi_requests.get(
+                url,
+                impersonate="chrome",
+                timeout=timeout,
+                headers=extra_headers or None,
+                allow_redirects=True,
+            )
+            if resp.status_code < 400:
+                return resp.content
+        except Exception as e:
+            logger.debug(f"curl_cffi request failed for {url}, falling back to urllib: {e}")
+
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "application/json, application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.9, */*;q=0.8",
+    }
+    if extra_headers:
+        headers.update(extra_headers)
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+
+def _http_get_json(url, timeout=8, extra_headers=None):
+    raw = _http_get(url, timeout=timeout, extra_headers=extra_headers)
+    return json.loads(raw.decode("utf-8", errors="replace"))
+
+
+def _clean_html(raw_text, max_len=350):
+    if not raw_text:
+        return ""
+    text = html.unescape(str(raw_text))
+    text = re.sub(r"<script[^>]*>.*?</script>", " ", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<style[^>]*>.*?</style>", " ", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if max_len and len(text) > max_len:
+        cut = text[:max_len].rsplit(" ", 1)[0]
+        return f"{cut}..."
+    return text
+
+
+def _local_tag(tag_name):
+    if "}" in tag_name:
+        return tag_name.split("}", 1)[1].lower()
+    return tag_name.lower()
+
+
+def _child_text(elem, candidate_names):
+    names = {n.lower() for n in candidate_names}
+    for child in elem:
+        if _local_tag(child.tag) in names and child.text:
+            return child.text.strip()
+    return ""
+
+
+def _extract_media_image(elem):
+    for child in elem.iter():
+        lt = _local_tag(child.tag)
+        if lt in ("content", "thumbnail"):
+            url = child.attrib.get("url")
+            if url and url.startswith("http"):
+                return url
+        if lt == "enclosure":
+            mtype = child.attrib.get("type", "")
+            url = child.attrib.get("url", "")
+            if url.startswith("http") and ("image" in mtype or any(url.lower().endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp"))):
+                return url
+    return ""
+
+
+def fetch_rss_feed(url, source_name, max_items=8):
+    """Fetch and parse an RSS 2.0 or Atom feed into normalized article dicts."""
+    articles = []
+    try:
+        raw = _http_get(url, timeout=8)
+        root = ET.fromstring(raw)
+        root_tag = _local_tag(root.tag)
+
+        items = []
+        if root_tag == "feed":
+            items = [c for c in root if _local_tag(c.tag) == "entry"]
+        else:
+            channel = next((c for c in root if _local_tag(c.tag) == "channel"), None)
+            if channel is not None:
+                items = [c for c in channel if _local_tag(c.tag) == "item"]
+            else:
+                items = [c for c in root.iter() if _local_tag(c.tag) == "item"]
+
+        for idx, item in enumerate(items[:max_items]):
+            title = _clean_html(_child_text(item, ["title"]), max_len=200)
+            if not title:
+                continue
+
+            link = _child_text(item, ["link"])
+            if not link:
+                for child in item:
+                    if _local_tag(child.tag) == "link":
+                        rel = child.attrib.get("rel", "alternate")
+                        href = child.attrib.get("href")
+                        if href and rel in ("alternate", ""):
+                            link = href.strip()
+                            break
+                if not link:
+                    for child in item:
+                        if _local_tag(child.tag) == "link" and child.attrib.get("href"):
+                            link = child.attrib["href"].strip()
+                            break
+
+            summary_raw = _child_text(item, ["description", "summary", "content", "encoded"])
+            summary = _clean_html(summary_raw, max_len=350)
+            pub_date = _child_text(item, ["pubDate", "published", "updated", "date"])
+            image = _extract_media_image(item)
+
+            # Extract Google News embedded source if present
+            item_source = source_name
+            for child in item:
+                if _local_tag(child.tag) == "source" and child.text:
+                    item_source = child.text.strip()
+                    break
+
+            articles.append({
+                "id": f"{re.sub(r'[^a-z0-9]', '', source_name.lower())[:8]}-{idx}-{abs(hash(link or title)) % 100000}",
+                "title": title,
+                "link": link,
+                "summary": summary or "Click through to read the full report.",
+                "pub_date": pub_date,
+                "source": item_source,
+                "image": image,
+            })
+    except Exception as e:
+        logger.warning(f"Newspaper RSS fetch failed for {source_name} ({url}): {e}")
+    return articles
+
+
+def _google_news_rss(query):
+    encoded = urllib.parse.quote_plus(query)
+    return f"https://news.google.com/rss/search?q={encoded}&hl=en-US&gl=US&ceid=US:en"
+
+
+def _dedupe_articles(articles, limit=12):
+    seen_keys = set()
+    unique = []
+    for art in articles:
+        title_key = re.sub(r"[^a-z0-9]", "", art.get("title", "").lower())[:60]
+        if not title_key or title_key in seen_keys:
+            continue
+        seen_keys.add(title_key)
+        unique.append(art)
+        if len(unique) >= limit:
+            break
+    return unique
+
+
+def _load_latest_garmin_snapshot():
+    """Read cached Garmin readiness/AI insights and latest activity from garmin_cache/."""
+    snapshot = {
+        "readiness_score": None,
+        "readiness_category": None,
+        "headline": None,
+        "recommended_workout": None,
+        "latest_activity": None,
+        "lat": None,
+        "lon": None,
+    }
+
+    insights_path = os.path.join("garmin_cache", "ai_insights.json")
+    if os.path.exists(insights_path):
+        try:
+            with open(insights_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            data = raw.get("data") if isinstance(raw, dict) and isinstance(raw.get("data"), dict) else raw
+            if isinstance(data, dict):
+                snapshot["readiness_score"] = data.get("readiness_score") or data.get("score")
+                snapshot["readiness_category"] = data.get("readiness_category") or data.get("category")
+                snapshot["headline"] = data.get("headline") or data.get("summary")
+                snapshot["recommended_workout"] = data.get("recommended_workout") or data.get("prescription")
+        except Exception as e:
+            logger.debug(f"Could not read garmin_cache/ai_insights.json: {e}")
+
+    act_files = sorted(glob.glob(os.path.join("garmin_cache", "activities", "*.json")), reverse=True)
+    latest_act = None
+    latest_date = ""
+    for fpath in act_files[:3]:
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                month_data = json.load(f)
+            if isinstance(month_data, dict):
+                for day_key, day_list in month_data.items():
+                    if isinstance(day_list, list):
+                        for act in day_list:
+                            if not isinstance(act, dict):
+                                continue
+                            st = str(act.get("startTimeLocal") or day_key or "")
+                            if st >= latest_date:
+                                latest_date = st
+                                latest_act = act
+        except Exception:
+            continue
+
+    if latest_act:
+        dist_m = latest_act.get("distance") or 0
+        dur_s = latest_act.get("duration") or 0
+        dist_mi = round(float(dist_m) * 0.000621371, 2) if dist_m else None
+        mins = int(round(float(dur_s) / 60)) if dur_s else None
+        at = latest_act.get("activityType")
+        act_type = at.get("typeKey") if isinstance(at, dict) else (at or "workout")
+        snapshot["latest_activity"] = {
+            "name": latest_act.get("activityName") or "Recent Activity",
+            "type": str(act_type).replace("_", " ").title(),
+            "date": str(latest_act.get("startTimeLocal") or "")[:10],
+            "distance_mi": dist_mi,
+            "duration_min": mins,
+        }
+        lat = latest_act.get("startLatitude")
+        lon = latest_act.get("startLongitude")
+        if lat and lon:
+            snapshot["lat"] = float(lat)
+            snapshot["lon"] = float(lon)
+
+    return snapshot
+
+
+def _reverse_geocode(lat, lon):
+    try:
+        url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=10"
+        data = _http_get_json(url, timeout=6, extra_headers={"User-Agent": "MyGarminDash-DailyDispatch/1.0"})
+        addr = data.get("address") or {}
+        city = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("county") or ""
+        state = addr.get("state") or ""
+        if city and state:
+            return f"{city}, {state}"
+        return city or state or ""
+    except Exception as e:
+        logger.debug(f"Reverse geocode failed: {e}")
+        return ""
+
+
+def fetch_garmin_and_weather(settings):
+    """Load Garmin Athlete's Corner, resolve location, and fetch today's Open-Meteo forecast."""
+    garmin = _load_latest_garmin_snapshot()
+
+    lat = settings.get("weather_lat") or garmin.get("lat")
+    lon = settings.get("weather_lon") or garmin.get("lon")
+    local_location = (settings.get("local_location") or "").strip()
+
+    # Auto-infer city from Garmin GPS if user left local_location blank
+    if not local_location and garmin.get("lat") and garmin.get("lon"):
+        inferred = _reverse_geocode(garmin["lat"], garmin["lon"])
+        if inferred:
+            local_location = inferred
+            storage.save_editorial_settings({
+                "local_location": inferred,
+                "weather_lat": garmin["lat"],
+                "weather_lon": garmin["lon"],
+            })
+
+    if not lat or not lon:
+        lat, lon = 40.7128, -74.0060
+
+    weather = {
+        "location": local_location or "Your Desk",
+        "temp_f": None,
+        "high_f": None,
+        "low_f": None,
+        "wind_mph": None,
+        "condition": "Forecast Unavailable",
+        "icon": "🗞️",
+    }
+
+    try:
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
+            f"&current=temperature_2m,weather_code,wind_speed_10m"
+            f"&daily=temperature_2m_max,temperature_2m_min"
+            f"&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1"
+        )
+        wdata = _http_get_json(url, timeout=6)
+        current = wdata.get("current") or {}
+        daily = wdata.get("daily") or {}
+        code = int(current.get("weather_code")) if current.get("weather_code") is not None else 0
+        cond, icon = WMO_WEATHER_CODES.get(code, ("Clear", "🌤️"))
+        weather["temp_f"] = round(current["temperature_2m"]) if current.get("temperature_2m") is not None else None
+        weather["wind_mph"] = round(current["wind_speed_10m"]) if current.get("wind_speed_10m") is not None else None
+        highs = daily.get("temperature_2m_max") or []
+        lows = daily.get("temperature_2m_min") or []
+        weather["high_f"] = round(highs[0]) if highs and highs[0] is not None else None
+        weather["low_f"] = round(lows[0]) if lows and lows[0] is not None else None
+        weather["condition"] = cond
+        weather["icon"] = icon
+    except Exception as e:
+        logger.warning(f"Newspaper weather fetch failed: {e}")
+
+    return garmin, weather, local_location
+
+
+def fetch_random_wikipedia_articles(count=3):
+    """Fetch random Wikipedia article summaries in parallel."""
+    articles = []
+
+    def _fetch_one(_):
+        data = _http_get_json(
+            "https://en.wikipedia.org/api/rest_v1/page/random/summary",
+            timeout=6,
+            extra_headers={"User-Agent": "MyGarminDash-DailyDispatch/1.0"},
+        )
+        title = data.get("title") or ""
+        extract = data.get("extract") or ""
+        url = ((data.get("content_urls") or {}).get("desktop") or {}).get("page") or ""
+        thumb = (data.get("thumbnail") or {}).get("source") or ""
+        if title and extract:
+            return {
+                "title": title,
+                "description": data.get("description") or "Encyclopedia Entry",
+                "extract": extract,
+                "url": url or f"https://en.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}",
+                "image": thumb,
+            }
+        return None
+
+    with ThreadPoolExecutor(max_workers=count) as pool:
+        futures = [pool.submit(_fetch_one, i) for i in range(count)]
+        for fut in as_completed(futures):
+            try:
+                res = fut.result()
+                if res:
+                    articles.append(res)
+            except Exception as e:
+                logger.debug(f"Random Wikipedia fetch failed: {e}")
+    return articles
+
+
+def fetch_wikipedia_curiosity(today_date):
+    """Fetch Wikipedia Featured Article, On This Day, Most Read, and Random Rabbit Holes."""
+    result = {
+        "featured_article": None,
+        "on_this_day": [],
+        "most_read": [],
+        "random_articles": [],
+    }
+
+    yyyy = today_date.strftime("%Y")
+    mm = today_date.strftime("%m")
+    dd = today_date.strftime("%d")
+
+    def _fetch_featured():
+        url = f"https://en.wikipedia.org/api/rest_v1/feed/featured/{yyyy}/{mm}/{dd}"
+        data = _http_get_json(url, timeout=8, extra_headers={"User-Agent": "MyGarminDash-DailyDispatch/1.0"})
+        tfa = data.get("tfa")
+        if isinstance(tfa, dict) and tfa.get("title"):
+            result["featured_article"] = {
+                "title": tfa.get("normalizedtitle") or tfa.get("title"),
+                "description": tfa.get("description") or "Today's Wikipedia Featured Article",
+                "extract": tfa.get("extract") or "",
+                "url": ((tfa.get("content_urls") or {}).get("desktop") or {}).get("page") or "",
+                "image": (tfa.get("thumbnail") or {}).get("source") or "",
+            }
+
+        otd_raw = data.get("onthisday") or []
+        otd_list = []
+        for ev in otd_raw[:5]:
+            pages = ev.get("pages") or []
+            primary = pages[0] if pages else {}
+            page_url = ((primary.get("content_urls") or {}).get("desktop") or {}).get("page") or ""
+            otd_list.append({
+                "year": ev.get("year"),
+                "text": ev.get("text") or "",
+                "url": page_url,
+                "page_title": primary.get("normalizedtitle") or primary.get("title") or "",
+            })
+        result["on_this_day"] = otd_list
+
+        mostread = (data.get("mostread") or {}).get("articles") or []
+        mr_list = []
+        for art in mostread:
+            title = art.get("normalizedtitle") or art.get("title") or ""
+            if not title or title.lower() in ("main page", "special:search") or title.startswith("Wikipedia:"):
+                continue
+            mr_list.append({
+                "title": title,
+                "description": art.get("description") or "",
+                "extract": _clean_html(art.get("extract") or "", max_len=240),
+                "views": art.get("views") or 0,
+                "url": ((art.get("content_urls") or {}).get("desktop") or {}).get("page") or "",
+            })
+            if len(mr_list) >= 4:
+                break
+        result["most_read"] = mr_list
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f_feat = pool.submit(_fetch_featured)
+        f_rand = pool.submit(fetch_random_wikipedia_articles, 3)
+        try:
+            f_feat.result()
+        except Exception as e:
+            logger.warning(f"Wikipedia featured feed failed: {e}")
+        try:
+            result["random_articles"] = f_rand.result()
+        except Exception as e:
+            logger.warning(f"Wikipedia random articles failed: {e}")
+
+    return result
+
+
+def _fetch_xkcd():
+    data = _http_get_json("https://xkcd.com/info.0.json", timeout=6)
+    num = data.get("num")
+    return {
+        "id": "xkcd",
+        "name": COMIC_META["xkcd"]["name"],
+        "creator": COMIC_META["xkcd"]["creator"],
+        "title": data.get("safe_title") or data.get("title") or "XKCD",
+        "image": data.get("img") or "",
+        "alt": data.get("alt") or "",
+        "url": f"https://xkcd.com/{num}/" if num else "https://xkcd.com/",
+        "available": bool(data.get("img")),
+    }
+
+
+def _fetch_gocomics(strip_id, today_date):
+    meta = COMIC_META.get(strip_id, {"name": strip_id.title(), "creator": "", "home": f"https://www.gocomics.com/{strip_id}"})
+    date_path = today_date.strftime("%Y/%m/%d")
+    page_url = f"https://www.gocomics.com/{strip_id}/{date_path}"
+    try:
+        raw = _http_get(page_url, timeout=8)
+        html_str = raw.decode("utf-8", errors="replace")
+        match = re.search(
+            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+            html_str,
+            flags=re.IGNORECASE,
+        ) or re.search(
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+        img_url = html.unescape(match.group(1)) if match else ""
+        if img_url and "gocomics" in img_url.lower() and not img_url.endswith("avatar.png"):
+            return {
+                "id": strip_id,
+                "name": meta["name"],
+                "creator": meta["creator"],
+                "title": f"{meta['name']} — {today_date.strftime('%b %d, %Y')}",
+                "image": img_url,
+                "alt": "",
+                "url": page_url,
+                "available": True,
+            }
+    except Exception as e:
+        logger.warning(f"GoComics fetch failed for {strip_id}: {e}")
+
+    return {
+        "id": strip_id,
+        "name": meta["name"],
+        "creator": meta["creator"],
+        "title": f"{meta['name']} — {today_date.strftime('%b %d, %Y')}",
+        "image": "",
+        "alt": "",
+        "url": page_url,
+        "available": False,
+        "fallback_message": f"Today's {meta['name']} strip is ready on GoComics.",
+    }
+
+
+def fetch_daily_comics(today_date, enabled_comics):
+    """Fetch XKCD and GoComics daily strips in parallel."""
+    if not enabled_comics:
+        enabled_comics = ["xkcd", "calvinandhobbes", "peanuts", "garfield"]
+
+    comics_map = {}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {}
+        for cid in enabled_comics:
+            if cid == "xkcd":
+                futures[pool.submit(_fetch_xkcd)] = cid
+            else:
+                futures[pool.submit(_fetch_gocomics, cid, today_date)] = cid
+
+        for fut, cid in futures.items():
+            try:
+                comics_map[cid] = fut.result()
+            except Exception as e:
+                logger.warning(f"Comic {cid} failed: {e}")
+                meta = COMIC_META.get(cid, {"name": cid.title(), "creator": "", "home": "#"})
+                comics_map[cid] = {
+                    "id": cid,
+                    "name": meta["name"],
+                    "creator": meta["creator"],
+                    "title": meta["name"],
+                    "image": "",
+                    "alt": "",
+                    "url": meta["home"],
+                    "available": False,
+                    "fallback_message": "Strip preview unavailable right now — open on publisher site.",
+                }
+
+    return [comics_map[cid] for cid in enabled_comics if cid in comics_map]
+
+
+def fetch_all_section_feeds(settings, local_location):
+    """Fetch RSS feeds for all 7 newspaper sections in parallel."""
+    feed_tasks = []
+
+    for sec, feeds in DEFAULT_FEEDS.items():
+        for src_name, url in feeds:
+            feed_tasks.append((sec, src_name, url))
+
+    # Local section feed
+    if local_location:
+        feed_tasks.append(("local", f"Local ({local_location})", _google_news_rss(f"{local_location} news")))
+    else:
+        feed_tasks.append(("local", "Local & Regional US", _google_news_rss("local community news United States")))
+
+    # Personalized sports query
+    sports_terms = settings.get("sports_interests") or ["Cycling", "NFL", "NBA"]
+    sports_query = " OR ".join(sports_terms[:5])
+    feed_tasks.append(("sports", "Personalized Sports", _google_news_rss(sports_query)))
+
+    # Custom user RSS feeds
+    for cf in settings.get("custom_rss_feeds") or []:
+        sec = cf.get("section") if cf.get("section") in SECTION_META else "global"
+        feed_tasks.append((sec, cf.get("name") or "Custom Feed", cf.get("url")))
+
+    raw_by_section = {sec: [] for sec in SECTION_META}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        future_map = {
+            pool.submit(fetch_rss_feed, url, src_name, 8): (sec, src_name)
+            for sec, src_name, url in feed_tasks
+        }
+        for fut in as_completed(future_map):
+            sec, _ = future_map[fut]
+            try:
+                items = fut.result()
+                for item in items:
+                    item["section"] = sec
+                raw_by_section[sec].extend(items)
+            except Exception as e:
+                logger.warning(f"Section feed error ({sec}): {e}")
+
+    cleaned = {}
+    for sec, arts in raw_by_section.items():
+        cleaned[sec] = _dedupe_articles(arts, limit=10)
+    return cleaned
+
+
+def _call_gemini_json(prompt, model_name="gemini-3.5-flash"):
+    """Call Gemini API with model fallback chain and parse JSON response."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is not configured")
+
+    client = genai.Client(api_key=api_key)
+    candidates = [model_name, "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    models_to_try = []
+    for m in candidates:
+        if m and m not in models_to_try:
+            models_to_try.append(m)
+
+    last_err = None
+    for m in models_to_try:
+        for attempt in range(2):
+            try:
+                resp = client.models.generate_content(
+                    model=m,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.5,
+                    ),
+                )
+                text = (resp.text or "").strip()
+                text = re.sub(r"^```(?:json)?\s*", "", text)
+                text = re.sub(r"\s*```$", "", text)
+                return json.loads(text), m
+            except Exception as e:
+                last_err = e
+                err_str = str(e)
+                if ("503" in err_str or "429" in err_str) and attempt == 0:
+                    time.sleep(1.5)
+                    continue
+                logger.warning(f"Newspaper Gemini model {m} failed: {e}")
+                break
+    raise last_err or RuntimeError("All Gemini models failed")
+
+
+def _build_fallback_synthesis(today_date, sections_raw, wikipedia, settings, local_location):
+    """Deterministic fallback edition synthesis when Gemini is unavailable."""
+    lead_art = None
+    for sec in ("global", "national", "scitech", "politics"):
+        if sections_raw.get(sec):
+            lead_art = sections_raw[sec][0]
+            lead_sec = SECTION_META[sec]["title"]
+            break
+    if not lead_art:
+        lead_sec = "Front Page"
+        lead_art = {
+            "title": "Morning Edition Ready",
+            "summary": "Today's curated headlines and encyclopedia discoveries have been gathered for your morning briefing.",
+            "link": "https://en.wikipedia.org/wiki/Main_Page",
+            "source": "The Daily Dispatch",
+        }
+
+    lead_story = {
+        "headline": lead_art["title"],
+        "subheadline": f"Top dispatch from {lead_art.get('source', 'wire services')} leading today's edition.",
+        "byline": f"By {lead_art.get('source', 'Wire Services')}",
+        "section": lead_sec,
+        "dateline": local_location.upper() if local_location else "MORNING EDITION",
+        "body_paragraphs": [
+            lead_art.get("summary") or "Read the full report via the link below.",
+            "Browse the section tabs above to explore headlines across Global, National, Politics, Local, Sports, Science & Tech, and Opinions.",
+        ],
+        "why_it_matters": "Selected as today's lead story from the morning wire.",
+        "related_links": [
+            {
+                "title": lead_art.get("title", "Read Full Story"),
+                "url": lead_art.get("link", "#"),
+                "source": lead_art.get("source", "Source"),
+            }
+        ],
+    }
+
+    morning_briefing = []
+    for sec in ("global", "national", "politics", "scitech"):
+        arts = sections_raw.get(sec) or []
+        if arts:
+            morning_briefing.append(f"[{SECTION_META[sec]['title']}] {arts[0]['title']} ({arts[0]['source']})")
+    if not morning_briefing:
+        morning_briefing = ["Today's newspaper edition is ready to explore across all sections."]
+
+    deep_dives = []
+    tfa = wikipedia.get("featured_article")
+    if tfa:
+        deep_dives.append({
+            "id": "dive-tfa",
+            "title": tfa["title"],
+            "subtitle": tfa.get("description") or "Featured Encyclopedia Deep Dive",
+            "category": "Encyclopedia Feature",
+            "reading_time": "3 min read",
+            "body_paragraphs": [tfa.get("extract") or "Explore today's featured encyclopedia subject."],
+            "key_takeaways": [
+                "Featured on Wikipedia's front page today.",
+                "Click the Wikipedia link below to dive deeper into primary sources and history.",
+            ],
+            "learn_more_links": [{"title": f"{tfa['title']} — Wikipedia", "url": tfa["url"], "source": "Wikipedia"}],
+            "topic_tag": "Featured Knowledge",
+        })
+
+    for idx, r_art in enumerate(wikipedia.get("random_articles") or []):
+        if len(deep_dives) >= 3:
+            break
+        deep_dives.append({
+            "id": f"dive-rand-{idx}",
+            "title": r_art["title"],
+            "subtitle": r_art.get("description") or "Serendipitous Rabbit Hole",
+            "category": "Curiosity",
+            "reading_time": "2 min read",
+            "body_paragraphs": [r_art.get("extract") or "An unexpected topic worth learning about today."],
+            "key_takeaways": [f"Topic: {r_art.get('description') or 'General Knowledge'}"],
+            "learn_more_links": [{"title": f"{r_art['title']} — Wikipedia", "url": r_art["url"], "source": "Wikipedia"}],
+            "topic_tag": r_art.get("description") or "Curiosity",
+        })
+
+    section_highlights = {}
+    for sec, meta in SECTION_META.items():
+        arts = sections_raw.get(sec) or []
+        if arts:
+            section_highlights[sec] = f"Top story: {arts[0]['title']} — plus {max(0, len(arts) - 1)} more dispatches."
+        else:
+            section_highlights[sec] = meta["description"]
+
+    return {
+        "lead_story": lead_story,
+        "morning_briefing": morning_briefing,
+        "editorial_column": {
+            "title": "From the Editor's Desk",
+            "body": "Good morning. Even on days when the automated AI synthesis desk is offline, the printing press still rolls with fresh dispatches from trusted wires and encyclopedia rabbit holes.",
+        },
+        "deep_dives": deep_dives,
+        "section_highlights": section_highlights,
+        "daily_extras": {
+            "word_of_the_day": {
+                "word": "Serendipity",
+                "pronunciation": "ser-uh n-DIP-i-tee",
+                "part_of_speech": "noun",
+                "definition": "The occurrence and development of events by chance in a happy or beneficial way.",
+                "example": "Browsing the Curiosity section led to a moment of serendipity when an obscure engineering story sparked a new idea.",
+                "etymology": "Coined by Horace Walpole in 1754 from the Persian fairy tale 'The Three Princes of Serendip'.",
+            },
+            "brain_teaser": {
+                "question": "I speak without a mouth and hear without ears. I have no body, but I come alive with wind. What am I?",
+                "hint": "Think about acoustics in mountains or canyons.",
+                "answer": "An echo.",
+            },
+            "quote_of_the_day": {
+                "quote": "Live as if you were to die tomorrow. Learn as if you were to live forever.",
+                "author": "Mahatma Gandhi",
+                "context": "A timeless reminder on lifelong curiosity.",
+            },
+        },
+        "ai_model_used": "Wire Fallback (No AI Key/Quota)",
+    }
+
+
+def synthesize_newspaper_edition(today_date, sections_raw, wikipedia, settings, local_location):
+    """Use Gemini to synthesize the front page, section highlights, deep dives, and daily extras."""
+    history = storage.load_topic_history()
+    covered = history.get("covered_deep_dives") or []
+
+    # Compact headlines payload for Gemini prompt
+    headlines_digest = {}
+    for sec, arts in sections_raw.items():
+        headlines_digest[sec] = [
+            {
+                "id": a["id"],
+                "title": a["title"],
+                "source": a["source"],
+                "summary": a["summary"][:200],
+                "link": a["link"],
+            }
+            for a in arts[:6]
+        ]
+
+    tfa = wikipedia.get("featured_article")
+    otd = wikipedia.get("on_this_day") or []
+
+    prompt = f"""
+You are the Editor-in-Chief of "{settings.get('masthead_title', 'The Daily Dispatch')}", a distinguished classic broadsheet newspaper & daily intellectual briefing.
+Today's date: {today_date.strftime('%A, %B %d, %Y')}.
+Reader's location: {local_location or 'United States'}.
+Reader's sports interests: {', '.join(settings.get('sports_interests') or [])}.
+Reader's curiosity/learning interests: {', '.join(settings.get('curiosity_topics') or [])}.
+Topics the reader recently LIKED (lean into similar themes): {', '.join(settings.get('liked_topics') or ['None yet'])}.
+Topics the reader DISLIKED (avoid in deep dives): {', '.join(settings.get('disliked_topics') or ['None yet'])}.
+Custom reader instructions: {settings.get('custom_prompt') or 'None'}.
+Recently covered deep-dive titles (DO NOT repeat these): {', '.join(covered[-20:]) or 'None'}.
+
+Today's raw news headlines by section:
+{json.dumps(headlines_digest, ensure_ascii=False)}
+
+Wikipedia Featured Article today: {json.dumps(tfa, ensure_ascii=False) if tfa else 'None'}
+On This Day highlights: {json.dumps(otd[:3], ensure_ascii=False)}
+
+Return ONLY valid JSON with this exact schema:
+{{
+  "lead_story": {{
+    "headline": "Compelling newspaper headline synthesizing the biggest story of the day",
+    "subheadline": "Concise broadsheet deck/subheadline",
+    "byline": "By The Daily Dispatch Editorial Desk",
+    "section": "Global News / National News / Science & Tech",
+    "dateline": "CITY OR REGION IN CAPS",
+    "body_paragraphs": ["Paragraph 1 (3-4 sentences)", "Paragraph 2 (3-4 sentences)", "Paragraph 3 (2-3 sentences)"],
+    "why_it_matters": "1-2 sentences on the broader significance",
+    "related_links": [{{"title": "Source Article Title", "url": "exact URL from input headlines", "source": "Source Name"}}]
+  }},
+  "morning_briefing": [
+    "Bullet 1: concise morning summary covering a major story",
+    "Bullet 2: ...",
+    "Bullet 3: ...",
+    "Bullet 4: ..."
+  ],
+  "editorial_column": {{
+    "title": "Short thoughtful column title",
+    "body": "A crisp 2-paragraph (~120 word) Editor's Note connecting today's news or a big idea worth reflecting on."
+  }},
+  "deep_dives": [
+    {{
+      "id": "dive-1",
+      "title": "Fascinating non-news topic title the reader should learn about",
+      "subtitle": "Intriguing deck explaining why it's worth knowing",
+      "category": "One of the reader's curiosity categories (e.g. How Things Work, Hidden History, Mental Models, Science)",
+      "reading_time": "3 min read",
+      "body_paragraphs": ["Rich, concrete paragraph 1", "Paragraph 2 with real facts/mechanisms", "Paragraph 3 connecting to everyday life or bigger picture"],
+      "key_takeaways": ["Takeaway 1", "Takeaway 2", "Takeaway 3"],
+      "learn_more_links": [
+        {{"title": "Wikipedia: Topic Name", "url": "https://en.wikipedia.org/wiki/Exact_Underscored_Topic", "source": "Wikipedia"}},
+        {{"title": "Explore further on Google", "url": "https://www.google.com/search?q=Exact+Topic+Explained", "source": "Web Search"}}
+      ],
+      "topic_tag": "Short 2-3 word topic tag"
+    }}
+  ],
+  "section_highlights": {{
+    "global": "1-2 sentence editorial overview of today's global news",
+    "national": "1-2 sentence editorial overview of today's national news",
+    "politics": "1-2 sentence editorial overview of today's politics",
+    "local": "1-2 sentence editorial overview of today's local news",
+    "sports": "1-2 sentence editorial overview of today's sports",
+    "scitech": "1-2 sentence editorial overview of today's science & tech",
+    "opinions": "1-2 sentence editorial overview of today's opinion essays"
+  }},
+  "article_takeaways": {{
+    "article_id_from_input": "One punchy sentence explaining why this specific story matters"
+  }},
+  "daily_extras": {{
+    "word_of_the_day": {{
+      "word": "Sophisticated but useful English word",
+      "pronunciation": "phonetic guide",
+      "part_of_speech": "noun/verb/adj",
+      "definition": "Clear definition",
+      "example": "Natural example sentence",
+      "etymology": "Brief origin"
+    }},
+    "brain_teaser": {{
+      "question": "Clever lateral-thinking, math, or trivia riddle",
+      "hint": "Helpful clue",
+      "answer": "Clear answer & brief explanation"
+    }},
+    "quote_of_the_day": {{
+      "quote": "Memorable real quote",
+      "author": "Author Name",
+      "context": "Brief context"
+    }}
+  }}
+}}
+
+Provide exactly 3 distinct, deeply interesting items in "deep_dives" (do NOT make them breaking news — make them timeless things worth learning: engineering marvels, hidden history, psychology/mental models, physics/biology, economics, etc.). Ensure all URLs in related_links come directly from the provided input headlines.
+"""
+
+    try:
+        model_pref = settings.get("ai_model") or "gemini-3.5-flash"
+        ai_data, used_model = _call_gemini_json(prompt, model_name=model_pref)
+        ai_data["ai_model_used"] = used_model
+        return ai_data
+    except Exception as e:
+        logger.warning(f"Gemini edition synthesis failed, using wire fallback: {e}")
+        return _build_fallback_synthesis(today_date, sections_raw, wikipedia, settings, local_location)
+
+
+def generate_custom_deep_dive(topic_query, settings, date_str=None):
+    """Generate an on-demand 'Things to Learn About' newspaper feature article."""
+    topic_clean = (topic_query or "").strip()
+    history = storage.load_topic_history()
+    covered = history.get("covered_deep_dives") or []
+
+    if topic_clean:
+        topic_instruction = f'Write a rich newspaper feature deep-dive specifically about: "{topic_clean}".'
+    else:
+        topics = ", ".join(settings.get("curiosity_topics") or ["How Things Work", "Hidden History", "Science"])
+        topic_instruction = (
+            f"Surprise the reader with an extraordinary, lesser-known topic from these interests: {topics}. "
+            f"Do NOT repeat any of these already-covered topics: {', '.join(covered[-25:]) or 'None'}."
+        )
+
+    prompt = f"""
+You are a master feature writer for "The Daily Dispatch".
+{topic_instruction}
+
+Return ONLY valid JSON with this exact schema:
+{{
+  "title": "Engaging newspaper feature title",
+  "subtitle": "Compelling deck summarizing the hook",
+  "category": "Category name (e.g. Science, History, Engineering, Psychology)",
+  "reading_time": "3 min read",
+  "body_paragraphs": [
+    "Paragraph 1: compelling hook and core concept",
+    "Paragraph 2: how it works / historical story / concrete mechanisms",
+    "Paragraph 3: surprising twist, nuance, or broader impact"
+  ],
+  "key_takeaways": ["Key takeaway 1", "Key takeaway 2", "Key takeaway 3"],
+  "learn_more_links": [
+    {{"title": "Wikipedia: Exact Subject", "url": "https://en.wikipedia.org/wiki/Exact_Subject", "source": "Wikipedia"}},
+    {{"title": "Search & Further Reading", "url": "https://www.google.com/search?q=Exact+Subject", "source": "Web Search"}}
+  ],
+  "topic_tag": "Short 2-3 word tag"
+}}
+"""
+    model_pref = settings.get("ai_model") or "gemini-3.5-flash"
+    try:
+        dive, used_model = _call_gemini_json(prompt, model_name=model_pref)
+    except Exception as e:
+        logger.warning(f"Custom deep dive Gemini call failed, trying Wikipedia fallback: {e}")
+        # Fallback using Wikipedia search/random summary
+        if topic_clean:
+            slug = urllib.parse.quote(topic_clean.replace(" ", "_"))
+            try:
+                w = _http_get_json(
+                    f"https://en.wikipedia.org/api/rest_v1/page/summary/{slug}",
+                    timeout=6,
+                    extra_headers={"User-Agent": "MyGarminDash-DailyDispatch/1.0"},
+                )
+                dive = {
+                    "title": w.get("title") or topic_clean.title(),
+                    "subtitle": w.get("description") or "Encyclopedia Feature",
+                    "category": "Encyclopedia",
+                    "reading_time": "2 min read",
+                    "body_paragraphs": [w.get("extract") or f"Explore {topic_clean} on Wikipedia."],
+                    "key_takeaways": ["Retrieved from Wikipedia reference desk."],
+                    "learn_more_links": [{
+                        "title": f"{w.get('title', topic_clean)} — Wikipedia",
+                        "url": ((w.get("content_urls") or {}).get("desktop") or {}).get("page") or f"https://en.wikipedia.org/wiki/{slug}",
+                        "source": "Wikipedia",
+                    }],
+                    "topic_tag": topic_clean[:25],
+                }
+            except Exception:
+                raise RuntimeError("Could not generate deep dive (Gemini unavailable and Wikipedia lookup failed)")
+        else:
+            rands = fetch_random_wikipedia_articles(1)
+            if not rands:
+                raise RuntimeError("Could not generate deep dive")
+            r = rands[0]
+            dive = {
+                "title": r["title"],
+                "subtitle": r.get("description") or "Serendipitous Encyclopedia Dispatch",
+                "category": "Curiosity",
+                "reading_time": "2 min read",
+                "body_paragraphs": [r["extract"]],
+                "key_takeaways": ["Discovered via Wikipedia Random Feature."],
+                "learn_more_links": [{"title": f"{r['title']} — Wikipedia", "url": r["url"], "source": "Wikipedia"}],
+                "topic_tag": r.get("description") or "Curiosity",
+            }
+        used_model = "Wikipedia Fallback"
+
+    dive["id"] = f"dive-custom-{int(time.time())}"
+    dive["generated_by"] = used_model
+    storage.record_covered_deep_dives([dive.get("title")])
+
+    target_date = date_str or storage.get_today_str()
+    edition = storage.get_edition(target_date)
+    if edition:
+        dives = list(edition.get("deep_dives") or [])
+        dives.insert(0, dive)
+        edition["deep_dives"] = dives
+        storage.save_edition(target_date, edition)
+
+    return dive
+
+
+def build_daily_edition(force_refresh=False):
+    """Build (or load cached) today's full newspaper edition."""
+    now_est = datetime.now(EST)
+    today_date = now_est.date()
+    today_str = today_date.isoformat()
+
+    if not force_refresh:
+        cached = storage.get_edition(today_str)
+        if cached:
+            return cached
+
+    settings = storage.load_editorial_settings()
+
+    # Step 1: Garmin + Weather + Location resolution
+    garmin_corner, weather, local_location = fetch_garmin_and_weather(settings)
+    # Reload settings in case local_location was inferred & saved
+    settings = storage.load_editorial_settings()
+
+    # Step 2: Parallel fetch of RSS feeds, Wikipedia Curiosity, and Comics
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_feeds = pool.submit(fetch_all_section_feeds, settings, local_location)
+        f_wiki = pool.submit(fetch_wikipedia_curiosity, today_date)
+        f_comics = pool.submit(fetch_daily_comics, today_date, settings.get("enabled_comics"))
+
+        sections_raw = f_feeds.result()
+        wikipedia = f_wiki.result()
+        comics = f_comics.result()
+
+    # Step 3: Gemini editorial synthesis
+    ai_edition = synthesize_newspaper_edition(today_date, sections_raw, wikipedia, settings, local_location)
+
+    # Record deep-dive titles to avoid repeats in future editions
+    dive_titles = [d.get("title") for d in (ai_edition.get("deep_dives") or []) if isinstance(d, dict) and d.get("title")]
+    if dive_titles:
+        storage.record_covered_deep_dives(dive_titles)
+
+    # Step 4: Merge section highlights & article takeaways into structured sections
+    highlights = ai_edition.get("section_highlights") or {}
+    takeaways = ai_edition.get("article_takeaways") or {}
+    sections = {}
+    for sec, meta in SECTION_META.items():
+        arts = sections_raw.get(sec) or []
+        for art in arts:
+            if art["id"] in takeaways:
+                art["why_it_matters"] = takeaways[art["id"]]
+        sections[sec] = {
+            "key": sec,
+            "title": meta["title"],
+            "kicker": meta["kicker"],
+            "description": meta["description"],
+            "highlight": highlights.get(sec) or meta["description"],
+            "articles": arts,
+        }
+
+    # Issue number: days since Jan 1, 2026 + 1
+    issue_num = max(1, (today_date - datetime(2026, 1, 1).date()).days + 1)
+
+    edition = {
+        "date": today_str,
+        "date_display": today_date.strftime("%A, %B %d, %Y"),
+        "issue_number": f"Vol. I • No. {issue_num}",
+        "masthead_title": settings.get("masthead_title") or "The Daily Dispatch",
+        "masthead_subtitle": settings.get("masthead_subtitle") or "All the News & Curiosity Fit to Print — Personal Edition",
+        "generated_at": now_est.isoformat(),
+        "generated_display": now_est.strftime("%I:%M %p %Z"),
+        "ai_model_used": ai_edition.get("ai_model_used", "gemini-3.5-flash"),
+        "archived": False,
+        "weather": weather,
+        "garmin_corner": garmin_corner,
+        "lead_story": ai_edition.get("lead_story") or {},
+        "morning_briefing": ai_edition.get("morning_briefing") or [],
+        "editorial_column": ai_edition.get("editorial_column") or {},
+        "deep_dives": ai_edition.get("deep_dives") or [],
+        "sections": sections,
+        "wikipedia": wikipedia,
+        "comics": comics,
+        "daily_extras": ai_edition.get("daily_extras") or {},
+    }
+
+    storage.save_edition(today_str, edition)
+    return edition

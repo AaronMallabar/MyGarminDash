@@ -6991,6 +6991,9 @@ def pb_sync_status():
     global pb_sync_active
     return jsonify({'active': pb_sync_active})
 
+from newspaper import newspaper_bp
+app.register_blueprint(newspaper_bp)
+
 if __name__ == '__main__':
 
     app.run(debug=True, host='0.0.0.0', port=5000)
