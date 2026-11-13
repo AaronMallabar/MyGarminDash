@@ -1,9 +1,11 @@
+import base64
 import glob
 import html
 import json
 import logging
 import os
 import re
+import ssl
 import time
 import urllib.parse
 import urllib.request
@@ -690,51 +692,262 @@ def fetch_wikipedia_curiosity(today_date):
     return result
 
 
+BSKY_COMIC_ACTORS = {
+    "calvinandhobbes": [
+        "calvin-and-hobbes.bsky.social",
+        "calvin.cowtools.org",
+        "calvinethobbes.bsky.social",
+    ],
+    "peanuts": [
+        "esnupi.me",
+        "peanutscomics.bsky.social",
+        "peanuts60yrsago.bsky.social",
+    ],
+    "garfield": [
+        "garfield.cowtools.org",
+        "garfieldthecat.bsky.social",
+    ],
+}
+
+ARAMAX_COMIC_SLUGS = {
+    "peanuts": "peanuts",
+    "garfield": "garfield",
+}
+
+
+def _download_image_as_data_uri(img_url, timeout=8):
+    """Download a comic strip image and encode it as an inline data:image URI."""
+    if not img_url:
+        return ""
+    if str(img_url).startswith("data:image/"):
+        return img_url
+
+    def _detect_mime(payload):
+        if not payload or len(payload) <= 500:
+            return ""
+        if payload.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if payload.startswith((b"GIF87a", b"GIF89a")):
+            return "image/gif"
+        if payload.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if payload.startswith(b"RIFF") and payload[8:12] == b"WEBP":
+            return "image/webp"
+        return ""
+
+    raw = None
+    mime = ""
+    try:
+        raw = _http_get(img_url, timeout=timeout)
+        mime = _detect_mime(raw)
+    except Exception:
+        raw = None
+        mime = ""
+
+    if not mime:
+        try:
+            req = urllib.request.Request(
+                img_url,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                },
+            )
+            ctx = ssl._create_unverified_context()
+            with urllib.request.urlopen(req, context=ctx, timeout=timeout) as resp:
+                raw = resp.read()
+            mime = _detect_mime(raw)
+        except Exception as e:
+            logger.debug(f"Fallback image download failed for {img_url}: {e}")
+            return ""
+
+    if not mime or not raw:
+        return ""
+
+    return f"data:{mime};base64," + base64.b64encode(raw).decode("ascii")
+
+
 def _fetch_xkcd():
     data = _http_get_json("https://xkcd.com/info.0.json", timeout=6)
     num = data.get("num")
+    raw_img = data.get("img") or ""
+    data_uri = _download_image_as_data_uri(raw_img) if raw_img else ""
+    image = data_uri or raw_img
     return {
         "id": "xkcd",
         "name": COMIC_META["xkcd"]["name"],
         "creator": COMIC_META["xkcd"]["creator"],
         "title": data.get("safe_title") or data.get("title") or "XKCD",
-        "image": data.get("img") or "",
+        "image": image,
         "alt": data.get("alt") or "",
         "url": f"https://xkcd.com/{num}/" if num else "https://xkcd.com/",
-        "available": bool(data.get("img")),
+        "available": bool(image),
     }
+
+
+def _extract_gocomics_image_url(html_str):
+    for pattern in (
+        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+    ):
+        match = re.search(pattern, html_str, flags=re.IGNORECASE)
+        if match:
+            candidate = html.unescape(match.group(1))
+            if (
+                candidate
+                and ("featureassets.gocomics.com/assets/" in candidate.lower() or "assets.amuniversal.com/" in candidate.lower())
+                and not candidate.endswith("avatar.png")
+            ):
+                return candidate
+
+    for match in re.findall(r'https://featureassets\.gocomics\.com/assets/[a-zA-Z0-9]+', html_str):
+        if match:
+            return match
+    return ""
+
+
+def _fetch_arcamax_strip(strip_id, today_date):
+    slug = ARAMAX_COMIC_SLUGS.get(strip_id)
+    if not slug:
+        return None
+    meta = COMIC_META.get(strip_id, {"name": strip_id.title(), "creator": "", "home": f"https://www.arcamax.com/thefunnies/{slug}/"})
+    page_url = f"https://www.arcamax.com/thefunnies/{slug}/"
+    try:
+        raw = None
+        try:
+            raw = _http_get(page_url, timeout=8)
+        except Exception:
+            req = urllib.request.Request(page_url, headers={"User-Agent": USER_AGENT})
+            ctx = ssl._create_unverified_context()
+            with urllib.request.urlopen(req, context=ctx, timeout=8) as resp:
+                raw = resp.read()
+        html_str = raw.decode("utf-8", errors="replace") if raw else ""
+        match = re.search(
+            r'<img[^>]+src=["\'](https://resources\.arcamax\.com/newspics/[^"\']+)["\']',
+            html_str,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            return None
+        img_url = html.unescape(match.group(1))
+        data_uri = _download_image_as_data_uri(img_url)
+        if data_uri:
+            return {
+                "id": strip_id,
+                "name": meta["name"],
+                "creator": meta["creator"],
+                "title": f"{meta['name']} — {today_date.strftime('%b %d, %Y')}",
+                "image": data_uri,
+                "alt": "",
+                "url": page_url,
+                "available": True,
+            }
+    except Exception as e:
+        logger.debug(f"ArcaMax strip fetch failed for {strip_id}: {e}")
+    return None
+
+
+def _fetch_bluesky_comic_strip(strip_id, today_date):
+    actors = BSKY_COMIC_ACTORS.get(strip_id) or []
+    if not actors:
+        return None
+    meta = COMIC_META.get(strip_id, {"name": strip_id.title(), "creator": "", "home": f"https://www.gocomics.com/{strip_id}"})
+    today_iso = today_date.isoformat()
+
+    for actor in actors:
+        try:
+            api_url = (
+                "https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed"
+                f"?actor={urllib.parse.quote(actor)}&limit=25&filter=posts_with_media"
+            )
+            data = _http_get_json(api_url, timeout=8)
+            feed = data.get("feed") or []
+            candidates = []
+            today_matches = []
+            for item in feed:
+                post = item.get("post") or {}
+                embed = post.get("embed") or {}
+                images = embed.get("images") or (embed.get("media") or {}).get("images") or []
+                if not images:
+                    continue
+                img_obj = images[0] or {}
+                fullsize = img_obj.get("fullsize") or img_obj.get("thumb") or ""
+                if not fullsize:
+                    continue
+                record = post.get("record") or {}
+                created_at = str(record.get("createdAt") or "")
+                alt_text = str(img_obj.get("alt") or "").strip()
+                entry = (fullsize, alt_text, created_at)
+                candidates.append(entry)
+                if created_at.startswith(today_iso):
+                    today_matches.append(entry)
+
+            if not candidates:
+                continue
+
+            ordered = []
+            if today_matches:
+                ordered.extend(today_matches)
+            start_idx = today_date.toordinal() % len(candidates)
+            for offset in range(len(candidates)):
+                cand = candidates[(start_idx + offset) % len(candidates)]
+                if cand not in ordered:
+                    ordered.append(cand)
+
+            for img_url, alt_text, _ in ordered[:4]:
+                data_uri = _download_image_as_data_uri(img_url)
+                if data_uri:
+                    return {
+                        "id": strip_id,
+                        "name": meta["name"],
+                        "creator": meta["creator"],
+                        "title": f"{meta['name']} — {today_date.strftime('%b %d, %Y')}",
+                        "image": data_uri,
+                        "alt": alt_text[:260] if alt_text else "",
+                        "url": f"https://www.gocomics.com/{strip_id}/{today_date.strftime('%Y/%m/%d')}",
+                        "available": True,
+                    }
+        except Exception as e:
+            logger.debug(f"Bluesky comic fetch failed for {strip_id} ({actor}): {e}")
+    return None
 
 
 def _fetch_gocomics(strip_id, today_date):
     meta = COMIC_META.get(strip_id, {"name": strip_id.title(), "creator": "", "home": f"https://www.gocomics.com/{strip_id}"})
     date_path = today_date.strftime("%Y/%m/%d")
     page_url = f"https://www.gocomics.com/{strip_id}/{date_path}"
-    try:
-        raw = _http_get(page_url, timeout=8)
-        html_str = raw.decode("utf-8", errors="replace")
-        match = re.search(
-            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
-            html_str,
-            flags=re.IGNORECASE,
-        ) or re.search(
-            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
-            html_str,
-            flags=re.IGNORECASE,
-        )
-        img_url = html.unescape(match.group(1)) if match else ""
-        if img_url and "gocomics" in img_url.lower() and not img_url.endswith("avatar.png"):
-            return {
-                "id": strip_id,
-                "name": meta["name"],
-                "creator": meta["creator"],
-                "title": f"{meta['name']} — {today_date.strftime('%b %d, %Y')}",
-                "image": img_url,
-                "alt": "",
-                "url": page_url,
-                "available": True,
-            }
-    except Exception as e:
-        logger.warning(f"GoComics fetch failed for {strip_id}: {e}")
+
+    # Tier 1: GoComics direct (works when curl_cffi bypasses Cloudflare)
+    for target_url in (page_url, f"https://www.gocomics.com/{strip_id}"):
+        try:
+            raw = _http_get(target_url, timeout=8)
+            html_str = raw.decode("utf-8", errors="replace")
+            img_url = _extract_gocomics_image_url(html_str)
+            if img_url:
+                data_uri = _download_image_as_data_uri(img_url)
+                if data_uri:
+                    return {
+                        "id": strip_id,
+                        "name": meta["name"],
+                        "creator": meta["creator"],
+                        "title": f"{meta['name']} — {today_date.strftime('%b %d, %Y')}",
+                        "image": data_uri,
+                        "alt": "",
+                        "url": page_url,
+                        "available": True,
+                    }
+        except Exception as e:
+            logger.debug(f"GoComics direct fetch failed for {strip_id} ({target_url}): {e}")
+
+    # Tier 2: ArcaMax syndication (works reliably from datacenter IPs without Cloudflare 403)
+    arcamax_result = _fetch_arcamax_strip(strip_id, today_date)
+    if arcamax_result:
+        return arcamax_result
+
+    # Tier 3: Bluesky Public API (AWS CloudFront, zero auth, zero datacenter blocks)
+    bsky_result = _fetch_bluesky_comic_strip(strip_id, today_date)
+    if bsky_result:
+        return bsky_result
 
     return {
         "id": strip_id,
@@ -1243,6 +1456,16 @@ IMPORTANT: NEVER link to paywalled/subscription sites (no nytimes.com, wsj.com, 
     return dive
 
 
+def _comics_need_embed(comics_list):
+    if not comics_list:
+        return True
+    return any(
+        (not c.get("available")) or (not str(c.get("image", "")).startswith("data:image/"))
+        for c in comics_list
+        if isinstance(c, dict)
+    )
+
+
 def build_daily_edition(force_refresh=False):
     """Build (or load cached) today's full newspaper edition."""
     now_est = datetime.now(EST)
@@ -1252,6 +1475,13 @@ def build_daily_edition(force_refresh=False):
     if not force_refresh:
         cached = storage.get_edition(today_str)
         if cached:
+            if _comics_need_embed(cached.get("comics")):
+                try:
+                    settings = storage.load_editorial_settings()
+                    cached["comics"] = fetch_daily_comics(today_date, settings.get("enabled_comics"))
+                    storage.save_edition(today_str, cached)
+                except Exception as e:
+                    logger.warning(f"Failed to auto-heal cached comics for {today_str}: {e}")
             return cached
 
     settings = storage.load_editorial_settings()

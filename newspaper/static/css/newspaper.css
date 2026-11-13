@@ -817,7 +817,7 @@ body {
 /* Comics & Puzzles */
 .comics-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
     gap: 1.5rem;
     margin-bottom: 2rem;
 }
@@ -839,7 +839,56 @@ body {
 }
 
 .comic-img-wrap img {
+    width: 100%;
+    height: auto;
+    display: inline-block;
+    cursor: zoom-in;
+    border-radius: 0.2rem;
+}
+
+.comic-lightbox-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 6, 23, 0.85);
+    backdrop-filter: blur(4px);
+    z-index: 1200;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+}
+
+.comic-lightbox-dialog {
+    background: var(--np-bg-panel, #0f172a);
+    border: 1px solid var(--np-rule-strong);
+    border-radius: 0.75rem;
+    padding: 1.1rem 1.25rem;
+    max-width: 1100px;
+    width: 100%;
+    max-height: 92vh;
+    overflow-y: auto;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+}
+
+.comic-lightbox-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.85rem;
+}
+
+.comic-lightbox-img-wrap {
+    background: #ffffff;
+    border-radius: 0.45rem;
+    padding: 0.85rem;
+    text-align: center;
+}
+
+.comic-lightbox-img {
     max-width: 100%;
+    width: auto;
+    max-height: 74vh;
     height: auto;
     display: inline-block;
 }

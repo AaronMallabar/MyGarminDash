@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 import os
 from functools import wraps
@@ -65,6 +66,18 @@ def get_edition():
             edition = storage.get_edition(date_param)
             if not edition:
                 return jsonify({"error": f"No cached edition found for {date_param}"}), 404
+            if engine._comics_need_embed(edition.get("comics")):
+                try:
+                    target_date = datetime.strptime(date_param, "%Y-%m-%d").date()
+                    existing_ids = [
+                        c.get("id") for c in (edition.get("comics") or [])
+                        if isinstance(c, dict) and c.get("id")
+                    ]
+                    enabled_ids = existing_ids or storage.load_editorial_settings().get("enabled_comics")
+                    edition["comics"] = engine.fetch_daily_comics(target_date, enabled_ids)
+                    storage.save_edition(date_param, edition)
+                except Exception as heal_err:
+                    logger.warning(f"Failed to auto-heal comics for past edition {date_param}: {heal_err}")
             edition["is_past_edition"] = True
             return jsonify(edition)
 

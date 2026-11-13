@@ -700,6 +700,7 @@ function renderComicsPage(canvas, ed) {
                 edition_date: ed.date,
                 image: c.image || "",
             });
+            const hasImage = Boolean(c.image);
             return `
                 <div class="comic-card">
                     <div class="article-meta-row">
@@ -707,18 +708,18 @@ function renderComicsPage(canvas, ed) {
                         <span>${escapeHtml(c.creator || "")}</span>
                     </div>
                     <h3 class="col-heading">${escapeHtml(c.title || c.name)}</h3>
-                    ${c.available && c.image ? `
+                    ${hasImage ? `
                         <div class="comic-img-wrap">
-                            <img src="${escapeHtml(c.image)}" alt="${escapeHtml(c.title || c.name)}" loading="lazy">
+                            <img src="${escapeHtml(c.image)}" alt="${escapeHtml(c.title || c.name)}" loading="lazy" onclick="openComicLightbox(${idx})" title="Click to enlarge comic strip">
                         </div>
                     ` : `
                         <div class="sidebar-box" style="margin: 0.75rem 0;">
-                            <p style="font-size: 0.9rem; color: var(--np-ink-muted);">${escapeHtml(c.fallback_message || "View today's strip on the publisher's site.")}</p>
+                            <p style="font-size: 0.9rem; color: var(--np-ink-muted);">${escapeHtml(c.fallback_message || "Strip preview unavailable right now — try ↻ Reprint to retry.")}</p>
                         </div>
                     `}
                     ${c.alt ? `<div class="comic-alt-box"><strong>Hover Text:</strong> ${escapeHtml(c.alt)}</div>` : ""}
                     <div class="article-actions">
-                        <a href="${escapeHtml(c.url)}" target="_blank" rel="noopener noreferrer" class="np-action-btn primary-link">Open Comic Page ↗</a>
+                        ${hasImage ? `<button type="button" class="np-action-btn primary-link" onclick="openComicLightbox(${idx})">🔍 Enlarge Strip</button>` : ""}
                         <button type="button" class="np-action-btn" onclick="openClipModal('${k}')">✂️ Clip</button>
                     </div>
                 </div>
@@ -772,6 +773,52 @@ function renderComicsPage(canvas, ed) {
             </div>` : ""}
         </div>
     `;
+}
+
+function openComicLightbox(idx) {
+    const comics = (NP_STATE.edition && NP_STATE.edition.comics) || [];
+    const c = comics[idx];
+    if (!c || !c.image) return;
+
+    let backdrop = document.getElementById("comic-lightbox-backdrop");
+    if (!backdrop) {
+        backdrop = document.createElement("div");
+        backdrop.id = "comic-lightbox-backdrop";
+        backdrop.className = "comic-lightbox-backdrop";
+        backdrop.addEventListener("click", (e) => {
+            if (e.target === backdrop) closeComicLightbox();
+        });
+        document.body.appendChild(backdrop);
+    }
+
+    backdrop.innerHTML = `
+        <div class="comic-lightbox-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(c.title || c.name)}">
+            <div class="comic-lightbox-header">
+                <div>
+                    <span class="source-badge">${escapeHtml(c.name || "")}</span>
+                    <span style="margin-left: 0.5rem; font-weight: 700; color: var(--np-ink-primary);">${escapeHtml(c.title || c.name)}</span>
+                </div>
+                <button type="button" class="np-modal-close" onclick="closeComicLightbox()" aria-label="Close">✕</button>
+            </div>
+            <div class="comic-lightbox-img-wrap">
+                <img src="${escapeHtml(c.image)}" alt="${escapeHtml(c.title || c.name)}" class="comic-lightbox-img">
+            </div>
+            ${c.alt ? `<div class="comic-alt-box" style="margin-top: 0.75rem; margin-bottom: 0;"><strong>Hover Text:</strong> ${escapeHtml(c.alt)}</div>` : ""}
+        </div>
+    `;
+    backdrop.style.display = "flex";
+
+    if (!window._npComicEscBound) {
+        window._npComicEscBound = true;
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") closeComicLightbox();
+        });
+    }
+}
+
+function closeComicLightbox() {
+    const backdrop = document.getElementById("comic-lightbox-backdrop");
+    if (backdrop) backdrop.style.display = "none";
 }
 
 async function loadArchive(quiet = false) {
