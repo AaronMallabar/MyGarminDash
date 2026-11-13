@@ -106,7 +106,8 @@ def get_git_command():
             fallback_paths = [
                 r"C:\Program Files\Git\cmd\git.exe",
                 r"C:\Program Files\Git\bin\git.exe",
-                r"C:\Users\User\AppData\Local\Programs\Git\cmd\git.exe"
+                r"C:\Users\User\AppData\Local\Programs\Git\cmd\git.exe",
+                os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\Git.MinGit_Microsoft.Winget.Source_8wekyb3d8bbwe\cmd\git.exe"),
             ]
         else:
             # Linux/macOS: services often run with minimal PATH that excludes /usr/bin
@@ -141,18 +142,26 @@ def get_bash_command():
     return None
 
 def get_app_version():
-    """Calculate app version based on git commit count."""
+    """Calculate app version from the v2* release tag series."""
     try:
         git_cmd = get_git_command()
         if not git_cmd:
-            return "0.000"
-        # Use subprocess to get the commit count from git
-        count = subprocess.check_output([git_cmd, 'rev-list', '--count', 'HEAD'], 
-                                       stderr=subprocess.DEVNULL,
-                                       text=True).strip()
-        return f"0.{count.zfill(3)}"
+            return "v2.0.0"
+        repo_dir = os.path.dirname(os.path.abspath(__file__))
+        desc = subprocess.check_output(
+            [git_cmd, 'describe', '--tags', '--match', 'v2*'],
+            cwd=repo_dir,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        if re.match(r'^v2\.\d+(?:\.\d+)?$', desc):
+            return desc
+        match = re.match(r'^(v2\.\d+)\.\d+-(\d+)-g[0-9a-f]+$', desc)
+        if match:
+            return f"{match.group(1)}.{match.group(2)}"
+        return "v2.0.0"
     except Exception:
-        return "0.000"
+        return "v2.0.0"
 
 # Application global version
 APP_VERSION = get_app_version()
@@ -1928,18 +1937,16 @@ def check_update():
         if not git_cmd:
             return jsonify({'error': 'Git is not detected. Please install Git and restart the application.'}), 400
 
-        # Fetch current state from remote
-        subprocess.run([git_cmd, 'fetch'], check=True, capture_output=True, text=True)
+        # Fetch current state and tags from remote
+        subprocess.run([git_cmd, 'fetch', '--all', '--tags'], check=True, capture_output=True, text=True)
         
-        # Get head of local and remote
+        # Get head of local and remote (always prefer origin/main)
         local_res = subprocess.run([git_cmd, 'rev-parse', 'HEAD'], check=True, capture_output=True, text=True)
-        # Handle cases where upstream might not be set
         try:
-            remote_res = subprocess.run([git_cmd, 'rev-parse', '@{u}'], check=True, capture_output=True, text=True)
+            remote_res = subprocess.run([git_cmd, 'rev-parse', 'origin/main'], check=True, capture_output=True, text=True)
             remote_sha = remote_res.stdout.strip()
         except subprocess.CalledProcessError:
-            # Fallback: check origin/main if @{u} fails
-            remote_res = subprocess.run([git_cmd, 'rev-parse', 'origin/main'], check=True, capture_output=True, text=True)
+            remote_res = subprocess.run([git_cmd, 'rev-parse', '@{u}'], check=True, capture_output=True, text=True)
             remote_sha = remote_res.stdout.strip()
         
         local_sha = local_res.stdout.strip()

@@ -15,8 +15,8 @@ echo "=========================================="
 echo "Update check started at $(date)"
 echo "App directory: $APP_DIR"
 
-# Fetch latest commits from remote
-git fetch origin main 2>/dev/null || git fetch
+# Fetch latest commits and tags from remote
+git fetch origin main --tags 2>/dev/null || git fetch --tags
 
 LOCAL=$(git rev-parse HEAD 2>/dev/null)
 REMOTE=$(git rev-parse origin/main 2>/dev/null || git rev-parse @{u} 2>/dev/null)
