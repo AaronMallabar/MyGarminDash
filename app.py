@@ -176,7 +176,7 @@ garmin_client = None
 # Settings management
 SETTINGS_FILE = 'settings.json'
 DEFAULT_SETTINGS = {
-    'ai_model': 'gemini-3.5-flash',
+    'ai_model': 'gemini-4-hydrogen',
     'pb_start_year': 2025,
     'athlete_ftp': 250
 }
@@ -268,7 +268,7 @@ def generate_gemini_content(client, model, contents, config=None, fallback_model
     model hits 503 (high demand) or 429 (quota exhausted).
     """
     if fallback_models is None:
-        candidates = ['gemini-3-flash-preview', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']
+        candidates = ['gemini-4-hydrogen', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']
         fallback_models = [m for m in candidates if m != model]
     
     models_to_try = [model] + [m for m in fallback_models if m != model]
@@ -1655,6 +1655,72 @@ def get_home_summary():
         logger.error(f"Error building home summary: {e}")
         return jsonify({'error': str(e)}), 500
 
+_LIVE_MODELS_CACHE = {'timestamp': 0, 'models': None}
+
+BASE_AVAILABLE_MODELS = [
+    {'id': 'gemini-4-hydrogen', 'name': 'Gemini 4 Hydrogen (Recommended)', 'description': 'Newest Gemini 4 high-efficiency model (free-tier supported) with auto-fallback'},
+    {'id': 'gemini-3.6-flash', 'name': 'Gemini 3.6 Flash', 'description': 'Fast Gemini 3.6 intelligence (free-tier supported) with auto-fallback'},
+    {'id': 'gemini-3.5-flash', 'name': 'Gemini 3.5 Flash', 'description': 'Next-gen fast intelligence and analysis with auto-fallback to 2.5 Flash'},
+    {'id': 'gemini-3-flash-preview', 'name': 'Gemini 3 Flash Preview', 'description': 'Gemini 3 Flash preview endpoint with auto-fallback'},
+    {'id': 'gemini-2.5-flash', 'name': 'Gemini 2.5 Flash', 'description': 'Reliable balanced performance and high daily free quota'},
+    {'id': 'gemini-2.5-flash-lite', 'name': 'Gemini 2.5 Flash Lite', 'description': 'Lowest cost & lightweight summaries (highest free-tier quota)'},
+    {'id': 'gemini-3.7-flash', 'name': 'Gemini 3.7 Flash', 'description': 'Advanced reasoning (limited daily quota on free tier)'},
+    {'id': 'gemini-2.5-pro', 'name': 'Gemini 2.5 Pro', 'description': 'Deep reasoning for comprehensive training plans'},
+    {'id': 'gemma-3-27b-it', 'name': 'Gemma 3 27B', 'description': 'High quota, great open-model performance'},
+]
+
+
+def _discover_live_gemini_models(base_models):
+    """Merge live generative Gemini/Gemma models from the API key into base_models (1h TTL cache)."""
+    api_key = os.getenv('GEMINI_API_KEY')
+    if not api_key:
+        return [dict(item) for item in base_models]
+
+    now_ts = time.time()
+    cached = _LIVE_MODELS_CACHE.get('models')
+    if cached is not None and (now_ts - _LIVE_MODELS_CACHE.get('timestamp', 0)) < 3600:
+        return [dict(item) for item in cached]
+
+    merged = [dict(item) for item in base_models]
+    seen_ids = {item['id'] for item in merged}
+
+    try:
+        client = genai.Client(api_key=api_key)
+        excluded_tokens = (
+            'embedding', 'imagen', 'veo', 'tts', 'native-audio',
+            'audio', 'aqa', 'robotics', 'computer-use', 'lyria', 'bisheng',
+        )
+        for m in client.models.list():
+            raw_name = getattr(m, 'name', '') or ''
+            model_id = raw_name.split('/')[-1].strip()
+            lower_id = model_id.lower()
+            if not model_id or model_id in seen_ids:
+                continue
+            if not (lower_id.startswith('gemini-') or lower_id.startswith('gemma-')):
+                continue
+            if any(tok in lower_id for tok in excluded_tokens):
+                continue
+            actions = getattr(m, 'supported_actions', None) or getattr(m, 'supported_generation_methods', None)
+            if actions and 'generateContent' not in actions:
+                continue
+            display_name = (getattr(m, 'display_name', '') or model_id).strip()
+            desc = (getattr(m, 'description', '') or 'Live model discovered from your Gemini API key').strip()
+            if len(desc) > 120:
+                desc = desc[:117] + '...'
+            merged.append({
+                'id': model_id,
+                'name': f"{display_name} (Live API)" if display_name != model_id else model_id,
+                'description': desc,
+            })
+            seen_ids.add(model_id)
+    except Exception as e:
+        logger.debug(f"Live Gemini model discovery skipped/failed: {e}")
+
+    _LIVE_MODELS_CACHE['timestamp'] = now_ts
+    _LIVE_MODELS_CACHE['models'] = [dict(item) for item in merged]
+    return merged
+
+
 @app.route('/api/settings', methods=['GET'])
 @login_required
 def get_settings():
@@ -1663,16 +1729,8 @@ def get_settings():
         settings = load_settings()
         # Add app version
         settings['app_version'] = APP_VERSION
-        # Add available models list
-        settings['available_models'] = [
-            {'id': 'gemini-3-flash-preview', 'name': 'Gemini 3 Flash Preview', 'description': 'Latest Gemini 3 Flash with auto-fallback to 2.5 Flash'},
-            {'id': 'gemini-3.5-flash', 'name': 'Gemini 3.5 Flash (Recommended)', 'description': 'Next-gen fast intelligence and analysis with auto-fallback to 2.5 Flash'},
-            {'id': 'gemini-2.5-flash', 'name': 'Gemini 2.5 Flash', 'description': 'Reliable balanced performance and higher daily free quota'},
-            {'id': 'gemini-2.5-flash-lite', 'name': 'Gemini 2.5 Flash Lite', 'description': 'Lowest cost & lightweight summaries'},
-            {'id': 'gemini-3.7-flash', 'name': 'Gemini 3.7 Flash', 'description': 'Advanced reasoning (limited daily quota on free tier)'},
-            {'id': 'gemini-2.5-pro', 'name': 'Gemini 2.5 Pro', 'description': 'Deep reasoning for comprehensive training plans'},
-            {'id': 'gemma-3-27b-it', 'name': 'Gemma 3 27B', 'description': 'High quota, great open-model performance'}
-        ]
+        # Add available models list (base list + live API key discovery)
+        settings['available_models'] = _discover_live_gemini_models(BASE_AVAILABLE_MODELS)
         return jsonify(settings)
     except Exception as e:
         logger.error(f"Error getting settings: {e}")

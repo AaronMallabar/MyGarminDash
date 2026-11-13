@@ -1043,14 +1043,37 @@ def fetch_all_section_feeds(settings, local_location):
     return cleaned
 
 
-def _call_gemini_json(prompt, model_name="gemini-3.5-flash"):
+def _get_preferred_ai_model(settings=None):
+    """Read global ai_model from settings.json first, falling back to editorial settings or gemini-4-hydrogen."""
+    try:
+        if os.path.exists("settings.json"):
+            with open("settings.json", "r", encoding="utf-8") as f:
+                global_settings = json.load(f)
+            if isinstance(global_settings, dict) and global_settings.get("ai_model"):
+                return str(global_settings["ai_model"]).strip()
+    except Exception as e:
+        logger.debug(f"Could not read settings.json for ai_model: {e}")
+    if isinstance(settings, dict) and settings.get("ai_model"):
+        return str(settings["ai_model"]).strip()
+    return "gemini-4-hydrogen"
+
+
+def _call_gemini_json(prompt, model_name="gemini-4-hydrogen"):
     """Call Gemini API with model fallback chain and parse JSON response."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
 
     client = genai.Client(api_key=api_key)
-    candidates = [model_name, "gemini-3-flash-preview", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    candidates = [
+        model_name,
+        "gemini-4-hydrogen",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3-flash-preview",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+    ]
     models_to_try = []
     for m in candidates:
         if m and m not in models_to_try:
@@ -1326,7 +1349,7 @@ Strict Editorial Rules:
 """
 
     try:
-        model_pref = settings.get("ai_model") or "gemini-3.5-flash"
+        model_pref = _get_preferred_ai_model(settings)
         ai_data, used_model = _call_gemini_json(prompt, model_name=model_pref)
         ai_data["ai_model_used"] = used_model
 
@@ -1389,7 +1412,7 @@ Return ONLY valid JSON with this exact schema:
 
 IMPORTANT: NEVER link to paywalled/subscription sites (no nytimes.com, wsj.com, washingtonpost.com, bloomberg.com, ft.com, economist.com, newyorker.com, theatlantic.com, wired.com, etc.). Only link to free, open-access sources like Wikipedia, NASA, .gov/.edu, or open web search.
 """
-    model_pref = settings.get("ai_model") or "gemini-3.5-flash"
+    model_pref = _get_preferred_ai_model(settings)
     try:
         dive, used_model = _call_gemini_json(prompt, model_name=model_pref)
     except Exception as e:
@@ -1546,7 +1569,7 @@ def build_daily_edition(force_refresh=False):
         "masthead_subtitle": settings.get("masthead_subtitle") or "All the News & Curiosity Fit to Print — Personal Edition",
         "generated_at": now_est.isoformat(),
         "generated_display": now_est.strftime("%I:%M %p %Z"),
-        "ai_model_used": ai_edition.get("ai_model_used", "gemini-3.5-flash"),
+        "ai_model_used": ai_edition.get("ai_model_used", _get_preferred_ai_model(settings)),
         "archived": False,
         "weather": weather,
         "garmin_corner": garmin_corner,
