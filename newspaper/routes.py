@@ -206,6 +206,12 @@ def editorial_settings():
     try:
         data = request.get_json() or {}
         saved = storage.save_editorial_settings(data)
+        today_path = os.path.join(storage.EDITIONS_DIR, f"{storage.get_today_str()}.json")
+        if os.path.exists(today_path):
+            try:
+                os.remove(today_path)
+            except Exception as ce:
+                logger.warning(f"Could not clear cached edition after settings save: {ce}")
         return jsonify({"success": True, "settings": saved})
     except Exception as e:
         logger.error(f"Error saving editorial settings: {e}")

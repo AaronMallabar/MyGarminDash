@@ -31,13 +31,10 @@
                     <option value="">Today's Edition</option>
                 </select>
                 <button type="button" id="archive-edition-btn" class="suite-btn" onclick="toggleArchiveCurrentEdition()" title="Star &amp; save this edition in Archive Vault">
-                    <span>☆</span> <span class="hide-sm">Save Edition</span>
+                    <span>☆</span> <span class="hide-sm">Save</span>
                 </button>
                 <button type="button" id="refresh-edition-btn" class="suite-btn suite-btn-accent" onclick="loadEdition(true)" title="Fetch fresh RSS feeds and print a new edition">
-                    <span>↻</span> <span class="hide-sm">Print Special Edition</span>
-                </button>
-                <button type="button" class="suite-btn" onclick="switchSection('archive')" title="Open Archive &amp; Clipping Vault">
-                    <span>📚</span> <span class="hide-sm">Archive</span> <span id="clip-count-badge" class="count-pill">0</span>
+                    <span>↻</span> <span class="hide-sm">Reprint</span>
                 </button>
                 <button type="button" class="suite-btn" onclick="openEditorialDesk()" title="Configure Editorial Desk &amp; Interests">
                     <span>⚙️</span> <span class="hide-sm">Editorial Desk</span>
@@ -94,11 +91,11 @@
             <button type="button" class="section-tab" data-section="politics" onclick="switchSection('politics')">Politics</button>
             <button type="button" class="section-tab" data-section="local" onclick="switchSection('local')">Local</button>
             <button type="button" class="section-tab" data-section="sports" onclick="switchSection('sports')">Sports</button>
-            <button type="button" class="section-tab" data-section="scitech" onclick="switchSection('scitech')">Science &amp; Tech</button>
-            <button type="button" class="section-tab" data-section="opinions" onclick="switchSection('opinions')">Opinions</button>
-            <button type="button" class="section-tab section-tab-special" data-section="curiosity" onclick="switchSection('curiosity')">💡 Curiosity &amp; Learn</button>
-            <button type="button" class="section-tab" data-section="comics" onclick="switchSection('comics')">🎨 Comics &amp; Puzzles</button>
-            <button type="button" class="section-tab" data-section="archive" onclick="switchSection('archive')">📚 Archive Vault</button>
+            <button type="button" class="section-tab" data-section="scitech" onclick="switchSection('scitech')">Sci &amp; Tech</button>
+            <button type="button" class="section-tab" data-section="opinions" onclick="switchSection('opinions')">Opinion</button>
+            <button type="button" class="section-tab section-tab-special" data-section="curiosity" onclick="switchSection('curiosity')">💡 Learn</button>
+            <button type="button" class="section-tab" data-section="comics" onclick="switchSection('comics')">🎨 Comics</button>
+            <button type="button" class="section-tab" data-section="archive" onclick="switchSection('archive')">📚 Archive <span id="clip-count-badge" class="count-pill">0</span></button>
         </nav>
 
         <!-- Status / Loading / Error Bar -->
@@ -237,8 +234,8 @@
             </div>
             <div class="np-modal-footer">
                 <button type="button" class="suite-btn" onclick="closeModal('editorialModal')">Cancel</button>
-                <button type="button" class="suite-btn" onclick="saveEditorialDesk(false)">Save Settings</button>
-                <button type="button" class="suite-btn suite-btn-accent" onclick="saveEditorialDesk(true)">Save &amp; Reprint Today's Paper</button>
+                <button type="button" class="suite-btn" onclick="saveEditorialDesk(false)">Save Only</button>
+                <button type="button" class="suite-btn suite-btn-accent" onclick="saveEditorialDesk(true)">Save &amp; Apply to Paper</button>
             </div>
         </div>
     </div>

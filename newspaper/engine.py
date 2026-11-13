@@ -10,6 +10,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 
 from google import genai
@@ -104,6 +105,144 @@ try:
 except ImportError:
     cffi_requests = None
 
+PAYWALLED_DOMAINS = {
+    "nytimes.com",
+    "wsj.com",
+    "washingtonpost.com",
+    "bloomberg.com",
+    "ft.com",
+    "economist.com",
+    "newyorker.com",
+    "theathletic.com",
+    "theatlantic.com",
+    "wired.com",
+    "businessinsider.com",
+    "insider.com",
+    "barrons.com",
+    "telegraph.co.uk",
+    "thetimes.co.uk",
+    "latimes.com",
+    "bostonglobe.com",
+    "chicagotribune.com",
+    "sfchronicle.com",
+    "houstonchronicle.com",
+    "dallasnews.com",
+    "seattletimes.com",
+    "miamiherald.com",
+    "star-telegram.com",
+    "sacbee.com",
+    "charlotteobserver.com",
+    "kansascity.com",
+    "indystar.com",
+    "azcentral.com",
+    "freep.com",
+    "jsonline.com",
+    "baltimoresun.com",
+    "courant.com",
+    "nydailynews.com",
+    "newsday.com",
+    "theinformation.com",
+    "foreignaffairs.com",
+    "foreignpolicy.com",
+    "scientificamerican.com",
+    "technologyreview.com",
+    "hbr.org",
+    "seekingalpha.com",
+    "statnews.com",
+    "marketwatch.com",
+    "fortune.com",
+    "forbes.com",
+}
+
+PAYWALLED_SOURCES = {
+    "new york times",
+    "the new york times",
+    "wall street journal",
+    "the wall street journal",
+    "washington post",
+    "the washington post",
+    "bloomberg",
+    "financial times",
+    "the economist",
+    "the new yorker",
+    "new yorker",
+    "the athletic",
+    "the atlantic",
+    "wired",
+    "business insider",
+    "barron's",
+    "the telegraph",
+    "the times",
+    "los angeles times",
+    "boston globe",
+    "the boston globe",
+    "chicago tribune",
+    "san francisco chronicle",
+    "houston chronicle",
+    "dallas morning news",
+    "the dallas morning news",
+    "seattle times",
+    "the seattle times",
+    "miami herald",
+    "scientific american",
+    "mit technology review",
+    "harvard business review",
+    "stat",
+    "fortune",
+    "forbes",
+}
+
+
+def _host_matches_paywall(url):
+    if not url:
+        return False
+    try:
+        host = urllib.parse.urlparse(str(url).strip()).netloc.lower()
+        if host.startswith("www."):
+            host = host[4:]
+        if not host:
+            return False
+        return any(host == dom or host.endswith(f".{dom}") for dom in PAYWALLED_DOMAINS)
+    except Exception:
+        return False
+
+
+def _is_paywalled(url, source_name="", source_url=""):
+    """Return True if URL, source_url, or source_name belongs to a known paywalled outlet."""
+    if _host_matches_paywall(url) or _host_matches_paywall(source_url):
+        return True
+    src = re.sub(r"\s+", " ", str(source_name or "")).strip().lower()
+    if src and src in PAYWALLED_SOURCES:
+        return True
+    if any(ps in src for ps in ("new york times", "wall street journal", "washington post", "bloomberg", "financial times", "the athletic", "boston globe", "los angeles times")):
+        return True
+    return False
+
+
+def _parse_pub_date(pub_str):
+    """Parse RSS/Atom timestamp string into a timezone-aware UTC datetime, or None."""
+    if not pub_str:
+        return None
+    s = str(pub_str).strip()
+    if not s:
+        return None
+    try:
+        dt = parsedate_to_datetime(s)
+        if dt is not None:
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+    except Exception:
+        pass
+    try:
+        iso = s.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
 
 def _http_get(url, timeout=8, extra_headers=None):
     if cffi_requests is not None:
@@ -179,8 +318,8 @@ def _extract_media_image(elem):
     return ""
 
 
-def fetch_rss_feed(url, source_name, max_items=8):
-    """Fetch and parse an RSS 2.0 or Atom feed into normalized article dicts."""
+def fetch_rss_feed(url, source_name, max_items=8, max_age_days=7, require_recent_date=False):
+    """Fetch and parse an RSS 2.0 or Atom feed into normalized, recent, non-paywalled article dicts."""
     articles = []
     try:
         raw = _http_get(url, timeout=8)
@@ -197,7 +336,12 @@ def fetch_rss_feed(url, source_name, max_items=8):
             else:
                 items = [c for c in root.iter() if _local_tag(c.tag) == "item"]
 
-        for idx, item in enumerate(items[:max_items]):
+        now_utc = datetime.now(timezone.utc)
+
+        for idx, item in enumerate(items):
+            if len(articles) >= max_items:
+                break
+
             title = _clean_html(_child_text(item, ["title"]), max_len=200)
             if not title:
                 continue
@@ -217,24 +361,51 @@ def fetch_rss_feed(url, source_name, max_items=8):
                             link = child.attrib["href"].strip()
                             break
 
+            # Extract Google News embedded source + source url if present
+            item_source = source_name
+            source_url = ""
+            for child in item:
+                if _local_tag(child.tag) == "source":
+                    if child.text and child.text.strip():
+                        item_source = child.text.strip()
+                    if child.attrib.get("url"):
+                        source_url = child.attrib.get("url", "").strip()
+                    break
+
+            if _is_paywalled(link, item_source, source_url):
+                continue
+
+            pub_date = _child_text(item, ["pubDate", "published", "updated", "date"])
+            pub_dt = _parse_pub_date(pub_date)
+            if max_age_days is not None:
+                if pub_dt is not None:
+                    if (now_utc - pub_dt).total_seconds() > max_age_days * 86400:
+                        continue
+                elif require_recent_date:
+                    continue
+
+            # Strip duplicate " - Source Name" suffix from Google News titles
+            if item_source and title.endswith(f" - {item_source}"):
+                title = title[: -len(f" - {item_source}")].strip()
+
             summary_raw = _child_text(item, ["description", "summary", "content", "encoded"])
             summary = _clean_html(summary_raw, max_len=350)
-            pub_date = _child_text(item, ["pubDate", "published", "updated", "date"])
-            image = _extract_media_image(item)
 
-            # Extract Google News embedded source if present
-            item_source = source_name
-            for child in item:
-                if _local_tag(child.tag) == "source" and child.text:
-                    item_source = child.text.strip()
-                    break
+            # Avoid duplicating the headline when Google News puts the headline in <description>
+            norm_title = re.sub(r"[^a-z0-9]", "", title.lower())
+            norm_sum = re.sub(r"[^a-z0-9]", "", summary.lower())
+            if norm_title and norm_sum and (norm_sum.startswith(norm_title) or norm_title in norm_sum[: len(norm_title) + 12]):
+                summary = ""
+
+            image = _extract_media_image(item)
 
             articles.append({
                 "id": f"{re.sub(r'[^a-z0-9]', '', source_name.lower())[:8]}-{idx}-{abs(hash(link or title)) % 100000}",
                 "title": title,
                 "link": link,
-                "summary": summary or "Click through to read the full report.",
+                "summary": summary,
                 "pub_date": pub_date,
+                "pub_ts": pub_dt.timestamp() if pub_dt else 0,
                 "source": item_source,
                 "image": image,
             })
@@ -243,15 +414,22 @@ def fetch_rss_feed(url, source_name, max_items=8):
     return articles
 
 
-def _google_news_rss(query):
-    encoded = urllib.parse.quote_plus(query)
+def _google_news_rss(query, max_age_days=7):
+    paywall_exclusions = (
+        "-site:nytimes.com -site:wsj.com -site:washingtonpost.com -site:bloomberg.com "
+        "-site:ft.com -site:theathletic.com -site:bostonglobe.com -site:latimes.com "
+        "-site:economist.com -site:theatlantic.com -site:businessinsider.com"
+    )
+    full_query = f"({query}) when:{max_age_days}d {paywall_exclusions}"
+    encoded = urllib.parse.quote_plus(full_query)
     return f"https://news.google.com/rss/search?q={encoded}&hl=en-US&gl=US&ceid=US:en"
 
 
 def _dedupe_articles(articles, limit=12):
+    sorted_arts = sorted(articles, key=lambda a: a.get("pub_ts") or 0, reverse=True)
     seen_keys = set()
     unique = []
-    for art in articles:
+    for art in sorted_arts:
         title_key = re.sub(r"[^a-z0-9]", "", art.get("title", "").lower())[:60]
         if not title_key or title_key in seen_keys:
             continue
@@ -612,29 +790,29 @@ def fetch_all_section_feeds(settings, local_location):
 
     for sec, feeds in DEFAULT_FEEDS.items():
         for src_name, url in feeds:
-            feed_tasks.append((sec, src_name, url))
+            feed_tasks.append((sec, src_name, url, False))
 
-    # Local section feed
+    # Local section feed (strictly <= 7 days old)
     if local_location:
-        feed_tasks.append(("local", f"Local ({local_location})", _google_news_rss(f"{local_location} news")))
+        feed_tasks.append(("local", f"Local ({local_location})", _google_news_rss(f"{local_location} news", max_age_days=7), True))
     else:
-        feed_tasks.append(("local", "Local & Regional US", _google_news_rss("local community news United States")))
+        feed_tasks.append(("local", "Local & Regional US", _google_news_rss("local community news United States", max_age_days=7), True))
 
-    # Personalized sports query
+    # Personalized sports query (strictly <= 7 days old)
     sports_terms = settings.get("sports_interests") or ["Cycling", "NFL", "NBA"]
     sports_query = " OR ".join(sports_terms[:5])
-    feed_tasks.append(("sports", "Personalized Sports", _google_news_rss(sports_query)))
+    feed_tasks.append(("sports", "Personalized Sports", _google_news_rss(sports_query, max_age_days=7), True))
 
     # Custom user RSS feeds
     for cf in settings.get("custom_rss_feeds") or []:
         sec = cf.get("section") if cf.get("section") in SECTION_META else "global"
-        feed_tasks.append((sec, cf.get("name") or "Custom Feed", cf.get("url")))
+        feed_tasks.append((sec, cf.get("name") or "Custom Feed", cf.get("url"), False))
 
     raw_by_section = {sec: [] for sec in SECTION_META}
     with ThreadPoolExecutor(max_workers=8) as pool:
         future_map = {
-            pool.submit(fetch_rss_feed, url, src_name, 8): (sec, src_name)
-            for sec, src_name, url in feed_tasks
+            pool.submit(fetch_rss_feed, url, src_name, 10, 7, req_date): (sec, src_name)
+            for sec, src_name, url, req_date in feed_tasks
         }
         for fut in as_completed(future_map):
             sec, _ = future_map[fut]
@@ -900,6 +1078,10 @@ Return ONLY valid JSON with this exact schema:
   "article_takeaways": {{
     "article_id_from_input": "One punchy sentence explaining why this specific story matters"
   }},
+  "article_summaries": {{
+    "article_id_with_empty_summary": "Concise 1-2 sentence factual summary of the headline for the reader"
+  }},
+  "excluded_article_ids": ["any_article_id_that_violates_custom_instructions_or_is_paywalled_or_off_topic"],
   "daily_extras": {{
     "word_of_the_day": {{
       "word": "Sophisticated but useful English word",
@@ -922,13 +1104,32 @@ Return ONLY valid JSON with this exact schema:
   }}
 }}
 
-Provide exactly 3 distinct, deeply interesting items in "deep_dives" (do NOT make them breaking news — make them timeless things worth learning: engineering marvels, hidden history, psychology/mental models, physics/biology, economics, etc.). Ensure all URLs in related_links come directly from the provided input headlines.
+Strict Editorial Rules:
+1. Provide exactly 3 distinct, deeply interesting items in "deep_dives" (timeless topics worth learning: engineering marvels, hidden history, psychology/mental models, physics/biology, economics, etc.).
+2. NEVER output links to paywalled or subscription websites (NO nytimes.com, wsj.com, washingtonpost.com, bloomberg.com, ft.com, economist.com, newyorker.com, theatlantic.com, theathletic.com, wired.com, businessinsider.com, or any paywalled local newspaper). Only link to free, open-access sources (Wikipedia, NPR, BBC, PBS, AP News, The Guardian, Ars Technica, ScienceDaily, NASA, .gov/.edu sites, or open Google Search links).
+3. Strictly honor the reader's "Custom reader instructions" above. If the reader asked to exclude a topic, region, or timeframe, list any matching input article IDs in "excluded_article_ids" so they are removed from every section.
+4. For any input article where "summary" is empty, provide a concise 1-2 sentence summary in "article_summaries" (do NOT repeat the headline verbatim).
+5. Ensure all URLs in related_links come directly from the non-paywalled input headlines.
 """
 
     try:
         model_pref = settings.get("ai_model") or "gemini-3.5-flash"
         ai_data, used_model = _call_gemini_json(prompt, model_name=model_pref)
         ai_data["ai_model_used"] = used_model
+
+        lead = ai_data.get("lead_story") or {}
+        if isinstance(lead, dict) and isinstance(lead.get("related_links"), list):
+            lead["related_links"] = [
+                lnk for lnk in lead["related_links"]
+                if isinstance(lnk, dict) and not _is_paywalled(lnk.get("url", ""), lnk.get("source", ""))
+            ]
+        for dive in ai_data.get("deep_dives") or []:
+            if isinstance(dive, dict) and isinstance(dive.get("learn_more_links"), list):
+                dive["learn_more_links"] = [
+                    lnk for lnk in dive["learn_more_links"]
+                    if isinstance(lnk, dict) and not _is_paywalled(lnk.get("url", ""), lnk.get("source", ""))
+                ]
+
         return ai_data
     except Exception as e:
         logger.warning(f"Gemini edition synthesis failed, using wire fallback: {e}")
@@ -972,6 +1173,8 @@ Return ONLY valid JSON with this exact schema:
   ],
   "topic_tag": "Short 2-3 word tag"
 }}
+
+IMPORTANT: NEVER link to paywalled/subscription sites (no nytimes.com, wsj.com, washingtonpost.com, bloomberg.com, ft.com, economist.com, newyorker.com, theatlantic.com, wired.com, etc.). Only link to free, open-access sources like Wikipedia, NASA, .gov/.edu, or open web search.
 """
     model_pref = settings.get("ai_model") or "gemini-3.5-flash"
     try:
@@ -1022,6 +1225,11 @@ Return ONLY valid JSON with this exact schema:
 
     dive["id"] = f"dive-custom-{int(time.time())}"
     dive["generated_by"] = used_model
+    if isinstance(dive.get("learn_more_links"), list):
+        dive["learn_more_links"] = [
+            lnk for lnk in dive["learn_more_links"]
+            if isinstance(lnk, dict) and not _is_paywalled(lnk.get("url", ""), lnk.get("source", ""))
+        ]
     storage.record_covered_deep_dives([dive.get("title")])
 
     target_date = date_str or storage.get_today_str()
@@ -1071,13 +1279,21 @@ def build_daily_edition(force_refresh=False):
     if dive_titles:
         storage.record_covered_deep_dives(dive_titles)
 
-    # Step 4: Merge section highlights & article takeaways into structured sections
+    # Step 4: Merge section highlights, summaries, exclusions & article takeaways
     highlights = ai_edition.get("section_highlights") or {}
     takeaways = ai_edition.get("article_takeaways") or {}
+    ai_summaries = ai_edition.get("article_summaries") or {}
+    excluded_ids = set(ai_edition.get("excluded_article_ids") or [])
     sections = {}
     for sec, meta in SECTION_META.items():
-        arts = sections_raw.get(sec) or []
+        arts = [
+            art for art in (sections_raw.get(sec) or [])
+            if art.get("id") not in excluded_ids
+            and not _is_paywalled(art.get("link", ""), art.get("source", ""))
+        ]
         for art in arts:
+            if not art.get("summary") and art["id"] in ai_summaries:
+                art["summary"] = str(ai_summaries[art["id"]]).strip()
             if art["id"] in takeaways:
                 art["why_it_matters"] = takeaways[art["id"]]
         sections[sec] = {

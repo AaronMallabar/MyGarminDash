@@ -164,10 +164,10 @@ function renderMasthead(ed) {
     if (archBtn) {
         if (ed.archived) {
             archBtn.classList.add("is-archived");
-            archBtn.innerHTML = `<span>★</span> <span class="hide-sm">Edition Saved</span>`;
+            archBtn.innerHTML = `<span>★</span> <span class="hide-sm">Saved</span>`;
         } else {
             archBtn.classList.remove("is-archived");
-            archBtn.innerHTML = `<span>☆</span> <span class="hide-sm">Save Edition</span>`;
+            archBtn.innerHTML = `<span>☆</span> <span class="hide-sm">Save</span>`;
         }
     }
 }
@@ -261,21 +261,16 @@ function renderFrontPage(canvas, ed) {
             section: "curiosity",
             edition_date: ed.date,
         });
+        const firstPara = (firstDive.body_paragraphs || [])[0] || "";
         featuredDiveHtml = `
             <div class="col-block" style="margin-top: 1.5rem; padding-top: 1.35rem; border-top: 3px double var(--np-rule-strong);">
                 <span class="kicker-label kicker-gold">💡 WHAT YOU SHOULD LEARN TODAY • ${escapeHtml(firstDive.category || "CURIOSITY")}</span>
-                <h2 class="deep-dive-title" style="font-size: 1.55rem;">${escapeHtml(firstDive.title)}</h2>
+                <h2 class="deep-dive-title" style="font-size: 1.45rem;">${escapeHtml(firstDive.title)}</h2>
                 <div class="deep-dive-sub">${escapeHtml(firstDive.subtitle || "")}</div>
-                <div class="editorial-prose drop-cap">
-                    ${(firstDive.body_paragraphs || []).map((p) => `<p>${escapeHtml(p)}</p>`).join("")}
-                </div>
-                ${renderTakeawaysBlock(firstDive.key_takeaways)}
+                ${firstPara ? `<div class="editorial-prose"><p>${escapeHtml(firstPara)}</p></div>` : ""}
                 <div class="article-actions">
-                    ${(firstDive.learn_more_links || [])
-                        .map((l) => `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" class="np-action-btn primary-link">${escapeHtml(l.title || l.source || "Learn More")} ↗</a>`)
-                        .join("")}
+                    <button type="button" class="np-action-btn primary-link" onclick="switchSection('curiosity')">Read Full Feature in 💡 Learn →</button>
                     <button type="button" class="np-action-btn" onclick="openClipModal('${diveKey}')">✂️ Clip</button>
-                    <button type="button" class="np-action-btn" onclick="switchSection('curiosity')">More Deep Dives →</button>
                 </div>
             </div>
         `;
@@ -344,11 +339,6 @@ function renderFrontPage(canvas, ed) {
         `)
         .join("");
 
-    const extras = ed.daily_extras || {};
-    const wotd = extras.word_of_the_day || {};
-    const teaser = extras.brain_teaser || {};
-    const previewComic = (ed.comics || []).find((c) => c.available && c.image) || (ed.comics || [])[0];
-
     canvas.innerHTML = `
         <div class="front-grid">
             <!-- Left Column -->
@@ -409,30 +399,6 @@ function renderFrontPage(canvas, ed) {
                     <span class="kicker-label">⏳ ON THIS DAY IN HISTORY</span>
                     <ul class="otd-list">${otdItems}</ul>
                 </div>` : ""}
-
-                ${wotd.word ? `
-                <div class="sidebar-box">
-                    <span class="kicker-label">🔤 WORD OF THE DAY</span>
-                    <div style="font-family: var(--np-font-display); font-size: 1.3rem; font-weight: 800; color: var(--np-ink-primary);">${escapeHtml(wotd.word)}</div>
-                    <div style="font-family: var(--np-font-mono); font-size: 0.74rem; color: var(--np-ink-muted); margin-bottom: 0.35rem;">${escapeHtml(wotd.pronunciation || "")} • ${escapeHtml(wotd.part_of_speech || "")}</div>
-                    <p style="font-size: 0.88rem; line-height: 1.45;">${escapeHtml(wotd.definition || "")}</p>
-                </div>` : ""}
-
-                ${teaser.question ? `
-                <div class="sidebar-box">
-                    <span class="kicker-label">🧩 DAILY BRAIN TEASER</span>
-                    <p style="font-size: 0.88rem; line-height: 1.45; margin-bottom: 0.55rem;">${escapeHtml(teaser.question)}</p>
-                    <button type="button" class="np-action-btn" onclick="this.nextElementSibling.style.display='block'; this.style.display='none';">Reveal Answer</button>
-                    <div style="display: none; font-size: 0.86rem; color: var(--np-green); padding-top: 0.35rem;"><strong>Answer:</strong> ${escapeHtml(teaser.answer || "")}</div>
-                </div>` : ""}
-
-                ${previewComic ? `
-                <div class="sidebar-box">
-                    <span class="kicker-label">🎨 FUNNY PAGES PREVIEW</span>
-                    <div style="font-weight: 700; color: var(--np-ink-primary); margin-bottom: 0.45rem;">${escapeHtml(previewComic.name)}: ${escapeHtml(previewComic.title || "")}</div>
-                    ${previewComic.available && previewComic.image ? `<div class="comic-img-wrap" style="padding: 0.4rem;"><img src="${escapeHtml(previewComic.image)}" alt="${escapeHtml(previewComic.title)}"></div>` : ""}
-                    <button type="button" class="np-action-btn primary-link" onclick="switchSection('comics')">Open All Comics &amp; Puzzles →</button>
-                </div>` : ""}
             </div>
         </div>
     `;
@@ -480,8 +446,7 @@ function renderNewsSectionPage(canvas, ed, secKey) {
                         <h3 class="article-headline">
                             <a href="${escapeHtml(art.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(art.title)}</a>
                         </h3>
-                        ${art.image ? `<img src="${escapeHtml(art.image)}" alt="" class="article-thumb" loading="lazy" onerror="this.style.display='none'">` : ""}
-                        <p class="article-summary">${escapeHtml(art.summary || "")}</p>
+                        ${art.summary ? `<p class="article-summary">${escapeHtml(art.summary)}</p>` : ""}
                         ${art.why_it_matters ? `<div class="article-takeaway"><strong>Significance:</strong> ${escapeHtml(art.why_it_matters)}</div>` : ""}
                     </div>
                     <div class="article-actions">

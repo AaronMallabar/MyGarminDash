@@ -253,29 +253,33 @@ body {
 /* Section Ribbon */
 .section-ribbon {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     align-items: center;
-    gap: 0.35rem;
-    overflow-x: auto;
+    gap: 0.35rem 0.45rem;
+    overflow-x: visible;
     padding: 0.75rem 0;
     margin-bottom: 1.5rem;
     border-bottom: 2px solid var(--np-rule-soft);
-    scrollbar-width: thin;
 }
 
 .section-tab {
     background: transparent;
     border: 1px solid transparent;
     color: var(--np-ink-muted);
-    padding: 0.42rem 0.85rem;
+    padding: 0.35rem 0.68rem;
     border-radius: 0.35rem;
-    font-size: 0.82rem;
+    font-size: 0.76rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.16s ease;
     font-family: var(--np-font-sans);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
 }
 
 .section-tab:hover {
@@ -530,11 +534,11 @@ body {
 
 /* Sidebar Cards (Garmin Corner, Wikipedia, Extras) */
 .sidebar-box {
-    background: var(--np-bg-card);
-    border: 1px solid var(--np-rule-soft);
+    background: rgba(30, 41, 59, 0.38);
+    border: 1px solid rgba(226, 232, 240, 0.09);
     border-radius: 0.5rem;
-    padding: 1rem;
-    margin-bottom: 1.2rem;
+    padding: 1.1rem 1.15rem;
+    margin-bottom: 1.35rem;
 }
 
 .sidebar-box-gold {
@@ -651,15 +655,15 @@ body {
 .articles-broadsheet-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 1.5rem;
+    gap: 1.65rem;
 }
 
 .article-card {
-    background: var(--np-bg-card);
-    border: 1px solid var(--np-rule-soft);
-    border-top: 2px solid rgba(226, 232, 240, 0.22);
+    background: rgba(30, 41, 59, 0.38);
+    border: 1px solid rgba(226, 232, 240, 0.09);
+    border-top: 2px solid rgba(226, 232, 240, 0.16);
     border-radius: 0.45rem;
-    padding: 1.25rem;
+    padding: 1.35rem;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
