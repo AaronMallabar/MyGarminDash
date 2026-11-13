@@ -626,7 +626,11 @@
     <div class="container">
 
         <nav class="suite-nav-bar" aria-label="Dashboard Suite Navigation">
-            <a href="/" class="suite-nav-pill active">
+            <a href="/" class="suite-nav-pill">
+                <span>🏠</span>
+                <span>Home</span>
+            </a>
+            <a href="/fitness" class="suite-nav-pill active">
                 <span>🚴</span>
                 <span>Fitness &amp; Health</span>
             </a>
@@ -2508,72 +2512,20 @@
             <button class="modal-close" onclick="closeSettings()">&times;</button>
 
             <h2 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem; padding-right: 3.5rem;">
-                <span>⚙️</span> Dashboard Settings
+                <span>⚙️</span> Fitness Dashboard Settings
             </h2>
 
-            <!-- Premium System Section -->
-            <div style="margin-bottom: 2.5rem;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                    <h3 style="color: var(--accent-color); margin: 0; font-size: 1.1rem;">Software Version</h3>
-                    <div
-                        style="display: flex; align-items: center; gap: 0.6rem; background: rgba(74, 222, 128, 0.08); padding: 0.3rem 0.8rem; border-radius: 2rem; border: 1px solid rgba(74, 222, 128, 0.15);">
-                        <div
-                            style="width: 7px; height: 7px; background: #4ade80; border-radius: 50%; box-shadow: 0 0 10px rgba(74, 222, 128, 0.5); animation: pulse 2s infinite;">
-                        </div>
-                        <span
-                            style="font-size: 0.65rem; color: #4ade80; font-weight: 800; letter-spacing: 0.05em;">SYSTEM
-                            NOMINAL</span>
-                    </div>
+            <!-- Global Settings Notice -->
+            <div
+                style="margin-bottom: 2rem; padding: 1rem 1.25rem; background: rgba(56, 189, 248, 0.08); border-radius: 1rem; border: 1px solid rgba(56, 189, 248, 0.25); display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                <div>
+                    <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent-color); font-weight: 700; margin-bottom: 0.2rem;">App Updates Moved</div>
+                    <div style="font-size: 0.88rem; color: var(--text-secondary);">System version checks, app updates, and suite backups now live on the Home landing page.</div>
                 </div>
-
-                <div
-                    style="background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%); border: 1px solid rgba(255,255,255,0.08); border-radius: 1.5rem; padding: 1.75rem; position: relative; overflow: hidden; backdrop-filter: blur(12px); box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
-                    <!-- Subtle Glow -->
-                    <div
-                        style="position: absolute; top: -100px; right: -100px; width: 200px; height: 200px; background: radial-gradient(circle, rgba(56, 189, 248, 0.05) 0%, transparent 70%); pointer-events: none;">
-                    </div>
-
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 2rem;">
-                        <div style="display: flex; align-items: center; gap: 1.25rem;">
-                            <div>
-                                <div
-                                    style="font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 0.4rem; opacity: 0.6;">
-                                    Current Version</div>
-                                <div id="current-version"
-                                    style="font-family: 'Lexend', sans-serif; font-size: 1.6rem; font-weight: 400; color: #fff; letter-spacing: -0.01em;">
-                                    v0.000</div>
-                            </div>
-                        </div>
-
-                        <button id="check-update-btn" onclick="checkForUpdates()" title="Check for Updates"
-                            style="background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); width: 44px; height: 44px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);"
-                            onmouseover="this.style.background='rgba(56, 189, 248, 0.15)'; this.style.borderColor='rgba(56, 189, 248, 0.3)'; this.style.transform='translateY(-2px) rotate(30deg)';"
-                            onmouseout="this.style.background='rgba(255,255,255,0.05)'; this.style.borderColor='rgba(255,255,255,0.1)'; this.style.transform='translateY(0) rotate(0deg)';"
-                            onmousedown="this.style.transform='translateY(-1px) scale(0.95) rotate(15deg)';">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                stroke-linecap="round" stroke-linejoin="round" style="width: 20px; height: 20px;">
-                                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-                                <path d="M3 3v5h5"></path>
-                                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
-                                <path d="M16 16h5v5"></path>
-                            </svg>
-                        </button>
-                    </div>
-
-                    <!-- Modern Insight Panel -->
-                    <div id="update-details"
-                        style="display: none; margin-top: 1rem; animation: slideDown 0.4s easeOut;">
-                        <div id="update-info"
-                            style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 1.5rem; font-family: 'Inter', sans-serif;">
-                        </div>
-                        <button id="perform-update-btn" class="range-btn active"
-                            style="width: 100%; justify-content: center; padding: 1.1rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; font-weight: 700; border-radius: 1rem; border: none; display: none; transition: all 0.3s; box-shadow: 0 10px 20px rgba(16, 185, 129, 0.2);"
-                            onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 15px 25px rgba(16, 185, 129, 0.3)';"
-                            onmouseout="this.style.transform='translateY(0)';" onclick="performUpdate()">
-                            Deploy Latest System Update
-                        </button>
-                    </div>
-                </div>
+                <a href="/#global-settings" class="range-btn active"
+                    style="text-decoration: none; padding: 0.6rem 1rem; font-size: 0.85rem; white-space: nowrap;">
+                    🏠 Home — Global Settings &amp; System Updater →
+                </a>
             </div>
 
             <!-- Data Management Section -->

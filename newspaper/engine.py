@@ -1050,7 +1050,7 @@ def _call_gemini_json(prompt, model_name="gemini-3.5-flash"):
         raise RuntimeError("GEMINI_API_KEY is not configured")
 
     client = genai.Client(api_key=api_key)
-    candidates = [model_name, "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+    candidates = [model_name, "gemini-3-flash-preview", "gemini-3.5-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
     models_to_try = []
     for m in candidates:
         if m and m not in models_to_try:

@@ -268,7 +268,7 @@ def generate_gemini_content(client, model, contents, config=None, fallback_model
     model hits 503 (high demand) or 429 (quota exhausted).
     """
     if fallback_models is None:
-        candidates = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']
+        candidates = ['gemini-3-flash-preview', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']
         fallback_models = [m for m in candidates if m != model]
     
     models_to_try = [model] + [m for m in fallback_models if m != model]
@@ -1605,7 +1605,55 @@ def logout():
 @app.route('/')
 @login_required
 def index():
+    return render_template('home.html')
+
+@app.route('/fitness')
+@login_required
+def fitness_dashboard():
     return render_template('index.html')
+
+@app.route('/api/home_summary', methods=['GET'])
+@login_required
+def get_home_summary():
+    """Return lightweight cached suite overview for the Home landing page."""
+    try:
+        from newspaper import engine as np_engine, storage as np_storage
+
+        settings = load_settings()
+        settings['app_version'] = APP_VERSION
+
+        try:
+            garmin_snapshot = np_engine._load_latest_garmin_snapshot()
+        except Exception as ge:
+            logger.debug(f"Home summary Garmin snapshot failed: {ge}")
+            garmin_snapshot = {}
+
+        today_str = np_storage.get_today_str()
+        ed = np_storage.get_edition(today_str)
+        clips = np_storage.get_clips()
+        editions = np_storage.list_archived_editions()
+        lead_story = (ed or {}).get('lead_story') or {}
+
+        newspaper_summary = {
+            'has_today': bool(ed),
+            'date': (ed or {}).get('date') or today_str,
+            'date_display': (ed or {}).get('date_display') or '',
+            'issue_number': (ed or {}).get('issue_number') or '',
+            'lead_headline': lead_story.get('headline') or '',
+            'weather': (ed or {}).get('weather') or {},
+            'clips_count': len(clips),
+            'editions_count': len(editions),
+        }
+
+        return jsonify({
+            'app_version': APP_VERSION,
+            'settings': settings,
+            'fitness': garmin_snapshot,
+            'newspaper': newspaper_summary,
+        })
+    except Exception as e:
+        logger.error(f"Error building home summary: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/settings', methods=['GET'])
 @login_required
@@ -1617,6 +1665,7 @@ def get_settings():
         settings['app_version'] = APP_VERSION
         # Add available models list
         settings['available_models'] = [
+            {'id': 'gemini-3-flash-preview', 'name': 'Gemini 3 Flash Preview', 'description': 'Latest Gemini 3 Flash with auto-fallback to 2.5 Flash'},
             {'id': 'gemini-3.5-flash', 'name': 'Gemini 3.5 Flash (Recommended)', 'description': 'Next-gen fast intelligence and analysis with auto-fallback to 2.5 Flash'},
             {'id': 'gemini-2.5-flash', 'name': 'Gemini 2.5 Flash', 'description': 'Reliable balanced performance and higher daily free quota'},
             {'id': 'gemini-2.5-flash-lite', 'name': 'Gemini 2.5 Flash Lite', 'description': 'Lowest cost & lightweight summaries'},

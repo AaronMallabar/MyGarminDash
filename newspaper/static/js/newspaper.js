@@ -14,6 +14,17 @@ const NP_STATE = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
+    const initSec = new URLSearchParams(window.location.search).get("section");
+    if (initSec) {
+        const tabs = document.querySelectorAll(".section-tab");
+        const targetTab = Array.from(tabs).find((t) => t.dataset.section === initSec);
+        if (targetTab) {
+            NP_STATE.currentSection = initSec;
+            tabs.forEach((t) => {
+                t.classList.toggle("active", t === targetTab);
+            });
+        }
+    }
     loadEdition(false);
     loadArchive(true);
 });
@@ -295,7 +306,7 @@ function renderFrontPage(canvas, ed) {
                 ${act.duration_min ? ` • ${escapeHtml(act.duration_min)}m` : ""}
             </div>` : `<div style="font-size: 0.82rem; color: var(--np-ink-muted);">Sync Garmin on the Fitness tab to populate your morning athlete brief.</div>`}
             <div style="margin-top: 0.6rem;">
-                <a href="/" class="np-action-btn primary-link">Open Fitness Tab →</a>
+                <a href="/fitness" class="np-action-btn primary-link">Open Fitness Tab →</a>
             </div>
         </div>
     `;
