@@ -7106,7 +7106,10 @@ def pb_sync_status():
     return jsonify({'active': pb_sync_active})
 
 from newspaper import newspaper_bp
+from newspaper import engine as newspaper_engine
 app.register_blueprint(newspaper_bp)
+if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
+    newspaper_engine.start_daily_press_scheduler()
 
 if __name__ == '__main__':
 

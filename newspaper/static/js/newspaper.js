@@ -11,6 +11,9 @@ const NP_STATE = {
     clipRegistry: {},
     votedMap: {},
     editingClipId: null,
+    pollTimer: null,
+    pollCount: 0,
+    pendingRefreshToast: false,
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -68,10 +71,20 @@ function registerClipItem(key, payload) {
     return key;
 }
 
-async function loadEdition(forceRefresh = false, dateStr = "") {
+async function loadEdition(forceRefresh = false, dateStr = "", isPoll = false) {
     const loadingEl = document.getElementById("press-loading");
     const errorEl = document.getElementById("press-error");
     const refreshBtn = document.getElementById("refresh-edition-btn");
+    let isStillPolling = false;
+
+    if (NP_STATE.pollTimer) {
+        clearTimeout(NP_STATE.pollTimer);
+        NP_STATE.pollTimer = null;
+    }
+    if (!isPoll) {
+        NP_STATE.pollCount = 0;
+        NP_STATE.pendingRefreshToast = Boolean(forceRefresh);
+    }
 
     if (errorEl) errorEl.style.display = "none";
     if (loadingEl) loadingEl.style.display = "flex";
@@ -79,7 +92,7 @@ async function loadEdition(forceRefresh = false, dateStr = "") {
 
     try {
         const params = new URLSearchParams();
-        if (forceRefresh) params.set("refresh", "true");
+        if (forceRefresh && !isPoll) params.set("refresh", "true");
         if (dateStr) params.set("date", dateStr);
 
         const url = `/newspaper/api/edition${params.toString() ? "?" + params.toString() : ""}`;
@@ -88,9 +101,41 @@ async function loadEdition(forceRefresh = false, dateStr = "") {
             window.location.href = "/login";
             return;
         }
-        const data = await resp.json();
+
+        const rawText = await resp.text();
+        let data = null;
+        try {
+            data = JSON.parse(rawText);
+        } catch (parseErr) {
+            if (NP_STATE.pollCount < 30) {
+                NP_STATE.pollCount += 1;
+                isStillPolling = true;
+                const subEl = loadingEl ? loadingEl.querySelector(".press-loading-sub") : null;
+                if (subEl) {
+                    subEl.textContent = "Waiting for the morning press server to finish typesetting...";
+                }
+                NP_STATE.pollTimer = setTimeout(() => loadEdition(false, dateStr, true), 3000);
+                return;
+            }
+            throw new Error("Morning press server timed out returning JSON. Please tap Reprint in a moment.");
+        }
+
+        if (resp.status === 202 || (data && data.status === "printing")) {
+            const subEl = loadingEl ? loadingEl.querySelector(".press-loading-sub") : null;
+            if (subEl && data.message) {
+                subEl.textContent = data.message;
+            }
+            if (NP_STATE.pollCount < 45) {
+                NP_STATE.pollCount += 1;
+                isStillPolling = true;
+                NP_STATE.pollTimer = setTimeout(() => loadEdition(false, dateStr, true), 2500);
+                return;
+            }
+            throw new Error("Morning press is taking longer than expected. Please try refreshing.");
+        }
+
         if (!resp.ok || data.error) {
-            throw new Error(data.error || "Failed to load edition");
+            throw new Error((data && data.error) || "Failed to load edition");
         }
 
         NP_STATE.edition = data;
@@ -102,18 +147,22 @@ async function loadEdition(forceRefresh = false, dateStr = "") {
         updatePastEditionBanner(data);
         loadArchive(true);
 
-        if (forceRefresh) {
+        if (NP_STATE.pendingRefreshToast) {
+            NP_STATE.pendingRefreshToast = false;
             showToast("Special Edition printed!");
         }
     } catch (err) {
         console.error(err);
+        NP_STATE.pendingRefreshToast = false;
         if (errorEl) {
             errorEl.textContent = `Could not print edition: ${err.message}`;
             errorEl.style.display = "block";
         }
     } finally {
-        if (loadingEl) loadingEl.style.display = "none";
-        if (refreshBtn) refreshBtn.disabled = false;
+        if (!isStillPolling) {
+            if (loadingEl) loadingEl.style.display = "none";
+            if (refreshBtn) refreshBtn.disabled = false;
+        }
     }
 }
 

@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import ssl
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -715,7 +716,7 @@ ARAMAX_COMIC_SLUGS = {
 }
 
 
-def _download_image_as_data_uri(img_url, timeout=8):
+def _download_image_as_data_uri(img_url, timeout=6):
     """Download a comic strip image and encode it as an inline data:image URI."""
     if not img_url:
         return ""
@@ -815,11 +816,11 @@ def _fetch_arcamax_strip(strip_id, today_date):
     try:
         raw = None
         try:
-            raw = _http_get(page_url, timeout=8)
+            raw = _http_get(page_url, timeout=5)
         except Exception:
             req = urllib.request.Request(page_url, headers={"User-Agent": USER_AGENT})
             ctx = ssl._create_unverified_context()
-            with urllib.request.urlopen(req, context=ctx, timeout=8) as resp:
+            with urllib.request.urlopen(req, context=ctx, timeout=5) as resp:
                 raw = resp.read()
         html_str = raw.decode("utf-8", errors="replace") if raw else ""
         match = re.search(
@@ -860,7 +861,7 @@ def _fetch_bluesky_comic_strip(strip_id, today_date):
                 "https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed"
                 f"?actor={urllib.parse.quote(actor)}&limit=25&filter=posts_with_media"
             )
-            data = _http_get_json(api_url, timeout=8)
+            data = _http_get_json(api_url, timeout=5)
             feed = data.get("feed") or []
             candidates = []
             today_matches = []
@@ -912,19 +913,34 @@ def _fetch_bluesky_comic_strip(strip_id, today_date):
     return None
 
 
+_GOCOMICS_BLOCKED = False
+
+
 def _fetch_gocomics(strip_id, today_date):
+    global _GOCOMICS_BLOCKED
     meta = COMIC_META.get(strip_id, {"name": strip_id.title(), "creator": "", "home": f"https://www.gocomics.com/{strip_id}"})
     date_path = today_date.strftime("%Y/%m/%d")
     page_url = f"https://www.gocomics.com/{strip_id}/{date_path}"
 
-    # Tier 1: GoComics direct (works when curl_cffi bypasses Cloudflare)
-    for target_url in (page_url, f"https://www.gocomics.com/{strip_id}"):
+    # Tier 1: Try datacenter-friendly syndication / Bluesky sources first so cloud VMs don't stall on GoComics Cloudflare
+    if strip_id in ARAMAX_COMIC_SLUGS:
+        arcamax_result = _fetch_arcamax_strip(strip_id, today_date)
+        if arcamax_result and str(arcamax_result.get("image", "")).startswith("data:image/"):
+            return arcamax_result
+
+    if strip_id in BSKY_COMIC_ACTORS:
+        bsky_result = _fetch_bluesky_comic_strip(strip_id, today_date)
+        if bsky_result and str(bsky_result.get("image", "")).startswith("data:image/"):
+            return bsky_result
+
+    # Tier 2: GoComics direct (short timeout; stop retrying across strips once blocked in this process)
+    if not _GOCOMICS_BLOCKED:
         try:
-            raw = _http_get(target_url, timeout=8)
+            raw = _http_get(page_url, timeout=3.5)
             html_str = raw.decode("utf-8", errors="replace")
             img_url = _extract_gocomics_image_url(html_str)
             if img_url:
-                data_uri = _download_image_as_data_uri(img_url)
+                data_uri = _download_image_as_data_uri(img_url, timeout=5)
                 if data_uri:
                     return {
                         "id": strip_id,
@@ -937,17 +953,20 @@ def _fetch_gocomics(strip_id, today_date):
                         "available": True,
                     }
         except Exception as e:
-            logger.debug(f"GoComics direct fetch failed for {strip_id} ({target_url}): {e}")
+            _GOCOMICS_BLOCKED = True
+            logger.debug(f"GoComics direct fetch failed for {strip_id} ({page_url}): {e}")
+        _GOCOMICS_BLOCKED = True
 
-    # Tier 2: ArcaMax syndication (works reliably from datacenter IPs without Cloudflare 403)
-    arcamax_result = _fetch_arcamax_strip(strip_id, today_date)
-    if arcamax_result:
-        return arcamax_result
+    # Secondary fallbacks if primary source differed or failed
+    if strip_id not in ARAMAX_COMIC_SLUGS:
+        arcamax_result = _fetch_arcamax_strip(strip_id, today_date)
+        if arcamax_result:
+            return arcamax_result
 
-    # Tier 3: Bluesky Public API (AWS CloudFront, zero auth, zero datacenter blocks)
-    bsky_result = _fetch_bluesky_comic_strip(strip_id, today_date)
-    if bsky_result:
-        return bsky_result
+    if strip_id not in BSKY_COMIC_ACTORS:
+        bsky_result = _fetch_bluesky_comic_strip(strip_id, today_date)
+        if bsky_result:
+            return bsky_result
 
     return {
         "id": strip_id,
@@ -1058,14 +1077,22 @@ def _get_preferred_ai_model(settings=None):
     return "gemini-4-hydrogen"
 
 
+_UNAVAILABLE_MODELS = set()
+_LAST_WORKING_MODEL = None
+
+
 def _call_gemini_json(prompt, model_name="gemini-4-hydrogen"):
     """Call Gemini API with model fallback chain and parse JSON response."""
+    global _LAST_WORKING_MODEL
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not configured")
 
     client = genai.Client(api_key=api_key)
-    candidates = [
+    candidates = []
+    if _LAST_WORKING_MODEL and model_name in _UNAVAILABLE_MODELS:
+        candidates.append(_LAST_WORKING_MODEL)
+    candidates.extend([
         model_name,
         "gemini-4-hydrogen",
         "gemini-3.6-flash",
@@ -1073,31 +1100,61 @@ def _call_gemini_json(prompt, model_name="gemini-4-hydrogen"):
         "gemini-3-flash-preview",
         "gemini-2.5-flash",
         "gemini-2.5-flash-lite",
-    ]
+    ])
+    if _LAST_WORKING_MODEL:
+        candidates.append(_LAST_WORKING_MODEL)
+
     models_to_try = []
     for m in candidates:
-        if m and m not in models_to_try:
+        if m and m not in _UNAVAILABLE_MODELS and m not in models_to_try:
             models_to_try.append(m)
+
+    if not models_to_try:
+        _UNAVAILABLE_MODELS.clear()
+        models_to_try = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+
+    def _build_config(fast_thinking=True):
+        if fast_thinking:
+            try:
+                return types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.35,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                )
+            except Exception:
+                pass
+        return types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0.35,
+        )
 
     last_err = None
     for m in models_to_try:
+        fast_thinking = "flash" in m.lower()
         for attempt in range(2):
             try:
                 resp = client.models.generate_content(
                     model=m,
                     contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        temperature=0.5,
-                    ),
+                    config=_build_config(fast_thinking=fast_thinking),
                 )
                 text = (resp.text or "").strip()
                 text = re.sub(r"^```(?:json)?\s*", "", text)
                 text = re.sub(r"\s*```$", "", text)
-                return json.loads(text), m
+                parsed = json.loads(text)
+                _LAST_WORKING_MODEL = m
+                return parsed, m
             except Exception as e:
                 last_err = e
                 err_str = str(e)
+                err_lower = err_str.lower()
+                if fast_thinking and ("thinking" in err_lower or "invalid_argument" in err_lower) and attempt == 0:
+                    fast_thinking = False
+                    continue
+                if "404" in err_str or "not_found" in err_lower or "not found" in err_lower:
+                    _UNAVAILABLE_MODELS.add(m)
+                    logger.info(f"Newspaper Gemini model {m} unavailable (cached skip): {e}")
+                    break
                 if ("503" in err_str or "429" in err_str) and attempt == 0:
                     time.sleep(1.5)
                     continue
@@ -1585,3 +1642,203 @@ def build_daily_edition(force_refresh=False):
 
     storage.save_edition(today_str, edition)
     return edition
+
+
+_press_lock = threading.Lock()
+_press_building = False
+_heal_in_progress = set()
+_scheduler_started = False
+
+
+def _get_press_lock_path():
+    return os.path.join(storage.BASE_DIR, "press.lock")
+
+
+def _get_last_scheduled_press_path():
+    return os.path.join(storage.BASE_DIR, "last_scheduled_press.txt")
+
+
+def _acquire_cross_process_press_lock():
+    """Atomically create press.lock across worker processes; return True if acquired."""
+    lock_path = _get_press_lock_path()
+    storage._ensure_dirs()
+    for _ in range(2):
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            try:
+                os.write(fd, f"{os.getpid()}:{time.time()}".encode("utf-8"))
+            finally:
+                os.close(fd)
+            return True
+        except FileExistsError:
+            try:
+                age = time.time() - os.path.getmtime(lock_path)
+                if age >= 180:
+                    os.remove(lock_path)
+                    continue
+            except OSError:
+                continue
+            return False
+        except OSError:
+            return False
+    return False
+
+
+def _release_cross_process_press_lock():
+    lock_path = _get_press_lock_path()
+    try:
+        if os.path.exists(lock_path):
+            os.remove(lock_path)
+    except OSError:
+        pass
+
+
+def is_edition_printing():
+    """Return True while a background newspaper print job is active (thread or cross-worker lock)."""
+    if _press_building:
+        return True
+    lock_path = _get_press_lock_path()
+    if os.path.exists(lock_path):
+        try:
+            age = time.time() - os.path.getmtime(lock_path)
+            if age < 180:
+                return True
+            os.remove(lock_path)
+        except OSError:
+            pass
+    return False
+
+
+def trigger_background_edition_build(force_refresh=False):
+    """Trigger build_daily_edition in a background daemon thread without blocking HTTP requests."""
+    global _press_building
+    with _press_lock:
+        if _press_building:
+            return True
+        if not _acquire_cross_process_press_lock():
+            return True
+        _press_building = True
+
+    def _worker():
+        global _press_building
+        try:
+            build_daily_edition(force_refresh=force_refresh)
+        except Exception as e:
+            logger.error(f"Background newspaper edition build failed: {e}", exc_info=True)
+        finally:
+            with _press_lock:
+                _press_building = False
+                _release_cross_process_press_lock()
+
+    threading.Thread(target=_worker, name="newspaper-press-worker", daemon=True).start()
+    return True
+
+
+def trigger_background_comics_heal(date_str, edition=None):
+    """Embed inline comic data URIs for a cached edition in the background."""
+    with _press_lock:
+        if date_str in _heal_in_progress:
+            return
+        _heal_in_progress.add(date_str)
+
+    def _heal_worker():
+        try:
+            ed = edition or storage.get_edition(date_str)
+            if not ed:
+                return
+            target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            existing_ids = [
+                c.get("id") for c in (ed.get("comics") or [])
+                if isinstance(c, dict) and c.get("id")
+            ]
+            enabled_ids = existing_ids or storage.load_editorial_settings().get("enabled_comics")
+            ed["comics"] = fetch_daily_comics(target_date, enabled_ids)
+            storage.save_edition(date_str, ed)
+        except Exception as e:
+            logger.warning(f"Background comics heal failed for {date_str}: {e}")
+        finally:
+            with _press_lock:
+                _heal_in_progress.discard(date_str)
+
+    threading.Thread(target=_heal_worker, name=f"newspaper-heal-{date_str}", daemon=True).start()
+
+
+def _needs_3am_press(now_est):
+    """Return True if it is >= 3:00 AM EST today and today's 3 AM edition hasn't printed yet."""
+    if now_est.hour < 3:
+        return False
+    today_str = now_est.date().isoformat()
+    marker_path = _get_last_scheduled_press_path()
+    existing = storage.get_edition(today_str)
+
+    if os.path.exists(marker_path):
+        try:
+            with open(marker_path, "r", encoding="utf-8") as f:
+                last_date = f.read().strip()
+            if last_date == today_str and existing:
+                return False
+        except OSError:
+            pass
+
+    if existing:
+        gen_at = str(existing.get("generated_at") or "")
+        if gen_at >= f"{today_str}T03:00:00":
+            try:
+                storage._ensure_dirs()
+                with open(marker_path, "w", encoding="utf-8") as f:
+                    f.write(today_str)
+            except OSError:
+                pass
+            return False
+
+    return True
+
+
+def start_daily_press_scheduler():
+    """Start daemon thread that pre-prints missing today's edition on boot and prints daily at 3:00 AM EST."""
+    global _scheduler_started
+    with _press_lock:
+        if _scheduler_started:
+            return
+        _scheduler_started = True
+
+    def _scheduler_loop():
+        # Small stagger per worker PID to avoid simultaneous startup bursts
+        time.sleep(4.0 + (os.getpid() % 5) * 0.4)
+        try:
+            now_est = datetime.now(EST)
+            today_str = now_est.date().isoformat()
+            existing = storage.get_edition(today_str)
+            if not existing:
+                logger.info(f"Morning Press: Edition for {today_str} missing on startup; pre-printing in background...")
+                trigger_background_edition_build(force_refresh=False)
+                if now_est.hour >= 3:
+                    try:
+                        storage._ensure_dirs()
+                        with open(_get_last_scheduled_press_path(), "w", encoding="utf-8") as f:
+                            f.write(today_str)
+                    except OSError:
+                        pass
+            elif _comics_need_embed(existing.get("comics")):
+                trigger_background_comics_heal(today_str, existing)
+        except Exception as e:
+            logger.warning(f"Morning Press startup check failed: {e}")
+
+        while True:
+            time.sleep(60)
+            try:
+                now_est = datetime.now(EST)
+                if _needs_3am_press(now_est) and not is_edition_printing():
+                    today_str = now_est.date().isoformat()
+                    try:
+                        storage._ensure_dirs()
+                        with open(_get_last_scheduled_press_path(), "w", encoding="utf-8") as f:
+                            f.write(today_str)
+                    except OSError:
+                        pass
+                    logger.info(f"Morning Press: Running scheduled 3:00 AM EST print for {today_str}...")
+                    trigger_background_edition_build(force_refresh=True)
+            except Exception as e:
+                logger.warning(f"Morning Press scheduler loop error: {e}")
+
+    threading.Thread(target=_scheduler_loop, name="newspaper-3am-scheduler", daemon=True).start()

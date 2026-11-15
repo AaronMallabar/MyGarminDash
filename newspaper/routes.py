@@ -59,6 +59,7 @@ def index():
 def get_edition():
     date_param = (request.args.get("date") or "").strip()
     refresh = request.args.get("refresh", "").lower() in ("1", "true", "yes")
+    wait = request.args.get("wait", "").lower() in ("1", "true", "yes")
     today_str = storage.get_today_str()
 
     try:
@@ -67,23 +68,43 @@ def get_edition():
             if not edition:
                 return jsonify({"error": f"No cached edition found for {date_param}"}), 404
             if engine._comics_need_embed(edition.get("comics")):
-                try:
-                    target_date = datetime.strptime(date_param, "%Y-%m-%d").date()
-                    existing_ids = [
-                        c.get("id") for c in (edition.get("comics") or [])
-                        if isinstance(c, dict) and c.get("id")
-                    ]
-                    enabled_ids = existing_ids or storage.load_editorial_settings().get("enabled_comics")
-                    edition["comics"] = engine.fetch_daily_comics(target_date, enabled_ids)
-                    storage.save_edition(date_param, edition)
-                except Exception as heal_err:
-                    logger.warning(f"Failed to auto-heal comics for past edition {date_param}: {heal_err}")
+                engine.trigger_background_comics_heal(date_param, edition)
             edition["is_past_edition"] = True
             return jsonify(edition)
 
-        edition = engine.build_daily_edition(force_refresh=refresh)
-        edition["is_past_edition"] = False
-        return jsonify(edition)
+        if wait:
+            edition = engine.build_daily_edition(force_refresh=refresh)
+            edition["is_past_edition"] = False
+            return jsonify(edition)
+
+        if refresh:
+            engine.trigger_background_edition_build(force_refresh=True)
+            return jsonify({
+                "status": "printing",
+                "date": today_str,
+                "message": "Printing a fresh Special Edition — ready in ~10–15 seconds...",
+            }), 202
+
+        if engine.is_edition_printing():
+            return jsonify({
+                "status": "printing",
+                "date": today_str,
+                "message": "Typesetting today's morning edition — ready in ~10–15 seconds...",
+            }), 202
+
+        cached = storage.get_edition(today_str)
+        if cached:
+            if engine._comics_need_embed(cached.get("comics")):
+                engine.trigger_background_comics_heal(today_str, cached)
+            cached["is_past_edition"] = False
+            return jsonify(cached)
+
+        engine.trigger_background_edition_build(force_refresh=False)
+        return jsonify({
+            "status": "printing",
+            "date": today_str,
+            "message": "Typesetting today's morning edition — ready in ~10–15 seconds...",
+        }), 202
     except Exception as e:
         logger.error(f"Error getting newspaper edition: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
