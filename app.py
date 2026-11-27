@@ -486,6 +486,14 @@ def get_calorie_data(client, date_str):
     mgr = get_sync_manager()
     # stats_data will be {total, active, resting, steps, ...}
     stats_data = mgr.get_metric_for_date('stats', date_str)
+    if (not stats_data or not stats_data.get('total')) and mgr.client is not None:
+        try:
+            if date_str <= get_today().isoformat():
+                refreshed = mgr.get_metric_for_date('stats', date_str, force_refresh=True)
+                if refreshed and refreshed.get('total'):
+                    stats_data = refreshed
+        except Exception as e:
+            logger.debug(f"Historical calorie refresh failed for {date_str}: {e}")
     
     if stats_data:
         return stats_data
@@ -837,6 +845,17 @@ class GarminSyncManager:
                 GarminPersistence.record_sync(finish_ts, ['stats', 'hr', 'stress', 'sleep', 'hydration', 'hrv', 'intensity_minutes', 'activities', 'weight'])
                 GarminSyncManager._dashboard_sync_time = finish_ts
                 GarminSyncManager._dashboard_sync_count += 1
+
+                # Invalidate AI insights cache if underlying Garmin metrics changed
+                try:
+                    new_sig = compute_ai_metrics_signature(self, today_str)
+                    cached_ai = ai_insights_cache.get('data') if isinstance(ai_insights_cache, dict) else None
+                    if cached_ai and cached_ai.get('metrics_signature') != new_sig:
+                        logger.info("Background sync updated Garmin metrics; invalidating stale AI insights cache.")
+                        save_ai_insights_cache(None, 0)
+                except Exception as sig_err:
+                    logger.debug(f"AI cache signature check skipped: {sig_err}")
+
                 logger.info(f"Background dashboard sync completed successfully at {finish_ts}!")
             except Exception as e:
                 logger.error(f"Background dashboard sync error: {e}")
@@ -994,6 +1013,26 @@ class GarminSyncManager:
                 }
             else:
                 return None
+
+            # Preserve valid existing cached values if Garmin returns an empty/partial snapshot
+            existing_cached = month_data.get(date_str)
+            if isinstance(existing_cached, dict) and isinstance(data, dict):
+                if metric == 'sleep' and not data.get('sleepTimeSeconds') and existing_cached.get('sleepTimeSeconds'):
+                    merged = existing_cached.copy()
+                    merged['timestamp'] = time.time()
+                    data = merged
+                elif metric == 'hrv' and not data.get('weeklyAvg') and not data.get('lastNightAvg') and (existing_cached.get('weeklyAvg') or existing_cached.get('lastNightAvg')):
+                    merged = existing_cached.copy()
+                    merged['timestamp'] = time.time()
+                    data = merged
+                elif metric == 'stats' and data.get('total', 0) == 0 and data.get('steps', 0) == 0 and data.get('resting_hr', 0) == 0 and (existing_cached.get('steps', 0) > 0 or existing_cached.get('total', 0) > 0):
+                    merged = existing_cached.copy()
+                    merged['timestamp'] = time.time()
+                    data = merged
+                elif metric == 'hydration' and data.get('intake', 0) == 0 and existing_cached.get('intake', 0) > 0:
+                    merged = existing_cached.copy()
+                    merged['timestamp'] = time.time()
+                    data = merged
 
             month_data[date_str] = data
             GarminPersistence.save_month(metric, date_str, month_data)
@@ -2008,6 +2047,35 @@ def get_update_log():
             return jsonify({'error': str(e)}), 500
     return jsonify({'log': 'No update log found yet.'})
 
+def compute_ai_metrics_signature(mgr, today_str=None):
+    """Build a deterministic fingerprint of today's cached Garmin metrics so AI captions invalidate when metrics change."""
+    if not today_str:
+        today_str = get_today().isoformat()
+    stats = mgr.get_metric_for_date('stats', today_str) or {}
+    sleep = mgr.get_metric_for_date('sleep', today_str) or {}
+    hrv = mgr.get_metric_for_date('hrv', today_str) or {}
+    hyd = mgr.get_metric_for_date('hydration', today_str) or {}
+    im = mgr.get_metric_for_date('intensity_minutes', today_str) or {}
+    weight = mgr.get_metric_for_date('weight', today_str) or {}
+    acts = mgr.get_metric_for_date('activities', today_str) or []
+    act_ids = sorted([str(a.get('activityId')) for a in acts if isinstance(a, dict) and a.get('activityId')])
+    payload = {
+        'date': today_str,
+        'steps': n(stats.get('steps', 0)),
+        'active_kcal': n(stats.get('active', 0)),
+        'total_kcal': n(stats.get('total', 0)),
+        'rhr': n(stats.get('resting_hr', 0)),
+        'stress': n(stats.get('stress_avg', 0)),
+        'sleep_sec': n(sleep.get('sleepTimeSeconds', 0)),
+        'hyd_ml': round(n(hyd.get('intake', 0))),
+        'hrv_avg': hrv.get('lastNightAvg') or hrv.get('weeklyAvg') or 0,
+        'im_total': n(im.get('total', 0)),
+        'weight': n(weight.get('weight', 0)),
+        'act_ids': act_ids,
+    }
+    return json.dumps(payload, sort_keys=True)
+
+
 @app.route('/api/ai_insights')
 @login_required
 def get_ai_insights():
@@ -2015,16 +2083,22 @@ def get_ai_insights():
     
     force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
     
-    # Check cache first (unless force refresh requested)
+    # Check cache first (unless force refresh requested or underlying Garmin metrics updated)
     now = time.time()
     if not force_refresh and ai_insights_cache['data'] and ai_insights_cache['timestamp']:
         if now - ai_insights_cache['timestamp'] < AI_CACHE_EXPIRY:
-            cache_age_min = round((now - ai_insights_cache['timestamp']) / 60)
-            logger.info(f"AI Insights: Returning cached response ({cache_age_min}min old)")
-            result = ai_insights_cache['data'].copy()
-            result['cached_at'] = ai_insights_cache['timestamp']
-            result['cache_age_seconds'] = now - ai_insights_cache['timestamp']
-            return jsonify(result)
+            mgr = get_sync_manager()
+            current_sig = compute_ai_metrics_signature(mgr)
+            cached_sig = ai_insights_cache['data'].get('metrics_signature')
+            if cached_sig and cached_sig == current_sig:
+                cache_age_min = round((now - ai_insights_cache['timestamp']) / 60)
+                logger.info(f"AI Insights: Returning cached response ({cache_age_min}min old)")
+                result = ai_insights_cache['data'].copy()
+                result['cached_at'] = ai_insights_cache['timestamp']
+                result['cache_age_seconds'] = now - ai_insights_cache['timestamp']
+                return jsonify(result)
+            else:
+                logger.info("AI Insights: Underlying Garmin metrics changed since cache; regenerating.")
     
     if force_refresh:
         logger.info("AI Insights: Force refresh requested by user")
@@ -2769,7 +2843,8 @@ JSON SCHEMA REQUIREMENT:
             'suggestions':       " ".join(ai_data.get('suggestions', [])) if isinstance(ai_data.get('suggestions'), list) else (ai_data.get('suggestions') or ''),
             'activity_insights': final_activity_insights,
             'is_ai':             True,
-            'model_name':        model_name
+            'model_name':        model_name,
+            'metrics_signature': compute_ai_metrics_signature(mgr, today_str)
         }
         
         now = time.time()
@@ -3317,14 +3392,17 @@ def api_analytics_compare():
         sport = request.args.get('sport', 'cycling').strip().lower()
         metric = request.args.get('metric', 'distance').strip().lower()
 
-        # Discover all available monthly activity cache files
+        # Discover all available monthly activity cache files (capped at current local month in America/New_York)
+        current_month_str = get_today().strftime('%Y-%m')
         cache_pattern = os.path.join('garmin_cache', 'activities', '*.json')
         files = glob.glob(cache_pattern)
         available_months = []
         for f in files:
             bn = os.path.basename(f)
             if bn.endswith('.json') and len(bn) == 12 and bn[:4].isdigit() and bn[5:7].isdigit():
-                available_months.append(bn[:-5])
+                m_key = bn[:-5]
+                if m_key <= current_month_str:
+                    available_months.append(m_key)
         available_months.sort(reverse=True)
 
         available_years = sorted(list(set(m[:4] for m in available_months)), reverse=True)
@@ -3528,6 +3606,16 @@ def get_dashboard_bootstrap():
                 hrv_data = mgr.get_metric_for_date('hrv', prev_d) or hrv_data
                 hydration_data = mgr.get_metric_for_date('hydration', prev_d) or hydration_data
 
+        # Independently fall back for sleep and HRV if today has no valid data yet
+        if not sleep_data.get('sleepTimeSeconds'):
+            _, prev_sleep = GarminPersistence.get_latest_cached_day('sleep')
+            if prev_sleep and prev_sleep.get('sleepTimeSeconds'):
+                sleep_data = prev_sleep
+        if not hrv_data.get('weeklyAvg') and not hrv_data.get('lastNightAvg'):
+            _, prev_hrv = GarminPersistence.get_latest_cached_day('hrv')
+            if prev_hrv and (prev_hrv.get('weeklyAvg') or prev_hrv.get('lastNightAvg')):
+                hrv_data = prev_hrv
+
         # If today has no HR yet in cache, fallback to most recent cached HR day for initial display
         if not hr_data_today.get('heartRateValues') and not hr_data_today.get('restingHeartRate'):
             prev_hr_d, prev_hr = GarminPersistence.get_latest_cached_day('hr')
@@ -3713,20 +3801,28 @@ def get_dashboard_bootstrap():
         all_steps.sort(key=lambda x: x['calendarDate'], reverse=True)
         streak_data = mgr.get_range('steps', today - timedelta(days=90), today, allow_live_sync=False)
         streak_data.sort(key=lambda x: x['calendarDate'], reverse=True)
+        today_stats_steps = n(cal_data.get('steps', 0)) if cal_data else 0
+        today_stats_goal = n(cal_data.get('steps_goal', 10000)) if cal_data else 10000
         streak = 0
         temp_exp = today
+        seen_today_in_streak = False
         for day in streak_data:
             ds = day.get('calendarDate')
             if not ds: continue
             cd = date.fromisoformat(ds)
+            if cd > today: continue
             if (temp_exp - cd).days > 1: break
             st = n(day.get('totalSteps'))
-            gl = n(day.get('stepGoal') or day.get('steps_goal') or 10000)
+            gl = n(day.get('stepGoal') or day.get('steps_goal') or today_stats_goal or 10000)
             if ds == today_str:
+                seen_today_in_streak = True
+                st = max(st, today_stats_steps)
                 if st >= gl: streak += 1
                 temp_exp = cd; continue
             if st >= gl: streak += 1; temp_exp = cd
             else: break
+        if not seen_today_in_streak and today_stats_steps >= (today_stats_goal or 10000):
+            streak += 1
         steps_history = list(reversed([d for d in all_steps if d['calendarDate'] <= today_str][:7]))
         
         # HR (7d)
@@ -3790,12 +3886,28 @@ def get_dashboard_bootstrap():
             weight_summary['latest_lbs'] = latest_w['weight_lbs']
             weight_summary['latest_kg'] = latest_w['weight_kg']
             weight_summary['date'] = latest_w['date']
-            if len(weight_history) > 7:
-                weight_summary['delta_lbs'] = round(latest_w['weight_lbs'] - weight_history[-8]['weight_lbs'], 1)
+            if len(weight_history) >= 2:
+                weight_summary['delta_lbs'] = round(latest_w['weight_lbs'] - weight_history[-2]['weight_lbs'], 1)
+            else:
+                all_w_1y = [x for x in mgr.get_range('weight', today - timedelta(days=365), today, allow_live_sync=False) if x.get('weight')]
+                if len(all_w_1y) >= 2:
+                    prev_lbs = round((all_w_1y[-2]['weight'] / 1000) * 2.20462, 1)
+                    weight_summary['delta_lbs'] = round(latest_w['weight_lbs'] - prev_lbs, 1)
         elif weight_grams:
-            kg = weight_grams / 1000
-            weight_summary['latest_lbs'] = round(kg * 2.20462, 1)
-            weight_summary['latest_kg'] = round(kg, 1)
+            all_w_1y = [x for x in mgr.get_range('weight', today - timedelta(days=365), today, allow_live_sync=False) if x.get('weight')]
+            if all_w_1y:
+                latest_raw = all_w_1y[-1]
+                kg = latest_raw['weight'] / 1000
+                weight_summary['latest_lbs'] = round(kg * 2.20462, 1)
+                weight_summary['latest_kg'] = round(kg, 1)
+                weight_summary['date'] = latest_raw.get('date') or latest_raw.get('calendarDate')
+                if len(all_w_1y) >= 2:
+                    prev_lbs = round((all_w_1y[-2]['weight'] / 1000) * 2.20462, 1)
+                    weight_summary['delta_lbs'] = round(weight_summary['latest_lbs'] - prev_lbs, 1)
+            else:
+                kg = weight_grams / 1000
+                weight_summary['latest_lbs'] = round(kg * 2.20462, 1)
+                weight_summary['latest_kg'] = round(kg, 1)
                 
         # Hydration (7d)
         hydration_history = mgr.get_range('hydration', start_date_7d, today, allow_live_sync=False)
@@ -3859,6 +3971,10 @@ def get_dashboard_bootstrap():
         last_sync_info = GarminPersistence.get_last_sync_info()
         last_sync_info['is_syncing'] = is_syncing
 
+        current_ai_sig = compute_ai_metrics_signature(mgr, today_str)
+        cached_ai_data = ai_insights_cache.get('data') if isinstance(ai_insights_cache, dict) else None
+        ai_is_fresh = bool(cached_ai_data and cached_ai_data.get('metrics_signature') == current_ai_sig)
+
         return jsonify({
             'last_sync': last_sync_info,
             'sync_in_progress': is_syncing,
@@ -3866,7 +3982,8 @@ def get_dashboard_bootstrap():
             'goals_config': goals_config_payload,
             'longterm_stats': longterm_stats_payload,
             'ytd': ytd_payload,
-            'ai_insights': ai_insights_cache.get('data'),
+            'ai_insights': cached_ai_data if ai_is_fresh else None,
+            'ai_insights_stale': not ai_is_fresh,
             'today_1d': {
                 'sleep': today_sleep_1d,
                 'hydration': today_hydration_1d,
@@ -3948,18 +4065,27 @@ def get_steps_history():
         streak = 0
         temp_expected = actual_today
         today_str = actual_today.isoformat()
+        today_stats = mgr.get_metric_for_date('stats', today_str) or {}
+        today_stats_steps = n(today_stats.get('steps', 0))
+        today_stats_goal = n(today_stats.get('steps_goal', 10000))
+        seen_today = False
         for day in streak_data:
             d_str = day.get('calendarDate')
             if not d_str: continue
             curr_d = date.fromisoformat(d_str)
+            if curr_d > actual_today: continue
             if (temp_expected - curr_d).days > 1: break
             steps = n(day.get('totalSteps'))
-            goal = n(day.get('stepGoal') or day.get('steps_goal') or 10000)
+            goal = n(day.get('stepGoal') or day.get('steps_goal') or today_stats_goal or 10000)
             if d_str == today_str:
+                seen_today = True
+                steps = max(steps, today_stats_steps)
                 if steps >= goal: streak += 1
                 temp_expected = curr_d; continue
             if steps >= goal: streak += 1; temp_expected = curr_d
             else: break
+        if not seen_today and today_stats_steps >= (today_stats_goal or 10000):
+            streak += 1
 
         requested_days = 7
         if range_val == '1d': requested_days = 1
@@ -4299,9 +4425,14 @@ def get_weight_history():
             latest_dt = date.fromisoformat(latest['date'])
             seven_days_ago = latest_dt - timedelta(days=7)
             recent_points = [d['weight_lbs'] for d in history if date.fromisoformat(d['date']) > seven_days_ago]
-            if len(history) > 7:
-                old = history[-8]
+            if len(history) >= 2:
+                old = history[-2]
                 summary['delta_lbs'] = round(latest['weight_lbs'] - old['weight_lbs'], 1)
+            else:
+                all_w_1y = [x for x in mgr.get_range('weight', end_date - timedelta(days=365), end_date) if x.get('weight')]
+                if len(all_w_1y) >= 2:
+                    prev_lbs = round((all_w_1y[-2]['weight'] / 1000) * 2.20462, 1)
+                    summary['delta_lbs'] = round(latest['weight_lbs'] - prev_lbs, 1)
         else:
             all_cached_weights = mgr.get_range('weight', end_date - timedelta(days=365), end_date)
             valid_w = [x for x in all_cached_weights if x.get('weight')]

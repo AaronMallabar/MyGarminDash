@@ -20,6 +20,12 @@ window.updateLastSyncDisplay = function (lastSync, isSyncing, isOffline) {
 
     el.style.cursor = 'pointer';
 
+    if (lastSync && (lastSync.display || lastSync.timestamp)) {
+        window._lastKnownSyncInfo = lastSync;
+    } else if (!lastSync && window._lastKnownSyncInfo) {
+        lastSync = window._lastKnownSyncInfo;
+    }
+
     if (isOffline) {
         el.textContent = 'Offline Mode';
         el.title = 'Dashboard is running in offline mode with cached data';
@@ -90,7 +96,7 @@ window.pollSyncStatus = function () {
             clearInterval(window._syncPollTimer);
             window._syncPollTimer = null;
             if (window.updateLastSyncDisplay) {
-                window.updateLastSyncDisplay(null, false, false);
+                window.updateLastSyncDisplay(window._lastKnownSyncInfo || null, false, false);
             }
         }
     }, 2500);
@@ -170,9 +176,11 @@ window.refreshDashboardDataSilently = async function () {
             window.renderWeightChart(hist.weight, '1m');
         }
 
-        // 4. Update AI Insights if present
-        if (boot.ai_insights && window.renderAIInsights) {
+        // 4. Update AI Insights if present and fresh; otherwise regenerate to match synced metrics
+        if (boot.ai_insights && !boot.ai_insights_stale && window.renderAIInsights) {
             window.renderAIInsights(boot.ai_insights);
+        } else if (window.fetchAIInsights) {
+            window.fetchAIInsights(false);
         }
 
         // 5. Brief gentle highlight on the sync pill
@@ -299,8 +307,11 @@ window.fetchDashboardData = async function () {
                         window.renderWeightChart(hist.weight, '1m');
                     }
 
-                    if (boot.ai_insights && window.renderAIInsights) {
+                    if (boot.ai_insights && !boot.ai_insights_stale && window.renderAIInsights) {
+                        window._needsAiRefresh = false;
                         window.renderAIInsights(boot.ai_insights);
+                    } else {
+                        window._needsAiRefresh = true;
                     }
 
                     if (window.updateLastSyncDisplay) {
@@ -388,8 +399,14 @@ window.fetchDashboardData = async function () {
         }
 
         // Background / Low-priority tasks
-        if (window.fetchAIInsights) window.fetchAIInsights(false);
+        if (window.fetchAIInsights && (!bootstrapSuccess || window._needsAiRefresh)) {
+            window.fetchAIInsights(false);
+        }
         if (window.fetchProactiveSuggestions) window.fetchProactiveSuggestions();
+
+        if (!bootstrapSuccess && window.updateLastSyncDisplay) {
+            window.updateLastSyncDisplay(window._lastKnownSyncInfo || null, false, isOffline);
+        }
 
         setTimeout(() => {
             window.fetchActivityHeatmap();
@@ -398,6 +415,9 @@ window.fetchDashboardData = async function () {
 
     } catch (error) {
         console.error('Error fetching dashboard data:', error);
+        if (window.updateLastSyncDisplay) {
+            window.updateLastSyncDisplay(window._lastKnownSyncInfo || null, false, false);
+        }
         if (window.showError) window.showError('Failed to load dashboard data');
     }
 };
@@ -578,6 +598,7 @@ window.renderAIInsights = function (data) {
  * @param {boolean} forceRefresh - If true, bypass cache and regenerate from AI
  */
 window.fetchAIInsights = async function (forceRefresh = false) {
+    const reqSeq = (window._aiRequestSeq = (window._aiRequestSeq || 0) + 1);
     const headlineEl = document.getElementById('ai-headline');
     const refreshBtn = document.getElementById('ai-refresh-btn');
 
@@ -596,6 +617,11 @@ window.fetchAIInsights = async function (forceRefresh = false) {
 
         if (res.ok) {
             const data = await res.json();
+            // Prevent stale/out-of-order responses from overwriting newer state
+            if (reqSeq !== window._aiRequestSeq) return;
+            if (data.cached_at && window._lastRenderedAiAt && data.cached_at < window._lastRenderedAiAt && !forceRefresh) {
+                return;
+            }
 
             if (data.error) {
                 if (headlineEl) {
@@ -604,6 +630,7 @@ window.fetchAIInsights = async function (forceRefresh = false) {
                 return;
             }
 
+            if (data.cached_at) window._lastRenderedAiAt = data.cached_at;
             // Render all components
             window.renderAIInsights(data);
         } else {
@@ -688,33 +715,32 @@ window.fetchCalorieHistory = async function () {
 window.fetchNutritionData = async function () {
     try {
         const dateStr = window.getLocalDateStr(window.activeNutritionDate || new Date());
-        const [logsRes, customRes] = await Promise.all([
+        const [logsRes, customRes, statsRes] = await Promise.all([
             fetch(`/api/nutrition/logs?date=${dateStr}`),
-            fetch('/api/nutrition/custom_foods')
+            fetch('/api/nutrition/custom_foods'),
+            fetch(`/api/nutrition/analysis?date=${dateStr}&no_ai=true`).catch(() => null)
         ]);
 
         let currentLogs = [];
         if (logsRes.ok) {
             currentLogs = await logsRes.json();
-            // Render logs immediately without waiting for metabolic analysis
-            if (window.updateNutritionUI) window.updateNutritionUI(currentLogs, { total: 0, active: 0, resting: 0 }, null);
         }
         if (customRes.ok) {
             window.customFoods = await customRes.json();
         }
 
-        // Fetch metabolic & analysis in background without blocking log display
-        try {
-            const analysisUrl = `/api/nutrition/analysis?date=${dateStr}&no_ai=true`;
-            const statsRes = await fetch(analysisUrl);
-            if (statsRes.ok) {
+        let metabolic = { total: 0, active: 0, resting: 0 };
+        let analysis = null;
+        if (statsRes && statsRes.ok) {
+            try {
                 const analysisData = await statsRes.json();
-                let metabolic = analysisData.metabolic || { total: 0, active: 0, resting: 0 };
-                if (window.updateNutritionUI) window.updateNutritionUI(currentLogs, metabolic, analysisData.analysis);
+                metabolic = analysisData.metabolic || metabolic;
+                analysis = analysisData.analysis;
+            } catch (mErr) {
+                console.warn("Metabolic parse skipped/failed:", mErr);
             }
-        } catch (mErr) {
-            console.warn("Metabolic fetch skipped/failed:", mErr);
         }
+        if (window.updateNutritionUI) window.updateNutritionUI(currentLogs, metabolic, analysis);
     } catch (err) {
         console.error("Nutrition fetch error:", err);
     }

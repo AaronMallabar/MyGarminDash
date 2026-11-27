@@ -517,33 +517,7 @@ window.initDashboardShortcuts = function () {
 
     if (sections.length === 0) return;
 
-    // Smooth click handler with instant active state update
-    pills.forEach(pill => {
-        pill.addEventListener('click', (e) => {
-            const targetId = pill.getAttribute('data-section');
-            const targetEl = document.getElementById(targetId);
-            if (targetEl) {
-                e.preventDefault();
-                targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                pills.forEach(p => p.classList.remove('active'));
-                pill.classList.add('active');
-                if (history.replaceState) {
-                    history.replaceState(null, '', '#' + targetId);
-                }
-            }
-        });
-    });
-
-    // Scroll spy with IntersectionObserver
-    const observer = new IntersectionObserver((entries) => {
-        const visible = entries.filter(e => e.isIntersecting);
-        if (visible.length === 0) return;
-
-        // Pick the topmost intersecting section
-        visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        const topEntry = visible[0];
-        const activeId = topEntry.target.id;
-
+    const setActivePill = (activeId) => {
         pills.forEach(pill => {
             if (pill.getAttribute('data-section') === activeId) {
                 pill.classList.add('active');
@@ -554,13 +528,103 @@ window.initDashboardShortcuts = function () {
                 pill.classList.remove('active');
             }
         });
-    }, {
-        rootMargin: '-10% 0px -65% 0px',
-        threshold: [0, 0.2, 0.5]
+    };
+
+    const scrollToSection = (targetEl, targetId, updateHash = true) => {
+        const barHeight = bar.offsetHeight || 56;
+        const offset = barHeight + 24;
+        const top = Math.max(0, targetEl.getBoundingClientRect().top + window.scrollY - offset);
+        window._shortcutScrollLockUntil = Date.now() + 750;
+        window.scrollTo({ top, behavior: 'smooth' });
+        setActivePill(targetId);
+        if (updateHash && history.replaceState) {
+            history.replaceState(null, '', '#' + targetId);
+        }
+    };
+
+    // Smooth click handler with exact sticky-header offset
+    pills.forEach(pill => {
+        pill.addEventListener('click', (e) => {
+            const targetId = pill.getAttribute('data-section');
+            const targetEl = document.getElementById(targetId);
+            if (targetEl) {
+                e.preventDefault();
+                scrollToSection(targetEl, targetId, true);
+            }
+        });
     });
 
-    sections.forEach(sec => observer.observe(sec));
+    // Deterministic scroll spy using section top positions relative to sticky nav
+    if (!window._shortcutScrollSpyBound) {
+        window._shortcutScrollSpyBound = true;
+        let ticking = false;
+        const updateActiveOnScroll = () => {
+            ticking = false;
+            if (window._shortcutScrollLockUntil && Date.now() < window._shortcutScrollLockUntil) {
+                return;
+            }
+            const barEl = document.getElementById('dashboard-shortcuts');
+            const threshold = (barEl ? barEl.offsetHeight : 56) + 56;
+            let activeId = sections[0].id;
+
+            // If scrolled to the very bottom, highlight the last section
+            if ((window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - 40)) {
+                activeId = sections[sections.length - 1].id;
+            } else {
+                for (const sec of sections) {
+                    const rect = sec.getBoundingClientRect();
+                    if (rect.top <= threshold) {
+                        activeId = sec.id;
+                    }
+                }
+            }
+            setActivePill(activeId);
+        };
+
+        window.addEventListener('scroll', () => {
+            if (!ticking) {
+                ticking = true;
+                window.requestAnimationFrame(updateActiveOnScroll);
+            }
+        }, { passive: true });
+    }
+
+    // Handle initial hash navigation (e.g. from home landing card)
+    if (window.location.hash && window.location.hash.length > 1) {
+        const hashId = window.location.hash.slice(1);
+        const hashEl = document.getElementById(hashId);
+        if (hashEl) {
+            setTimeout(() => scrollToSection(hashEl, hashId, false), 120);
+        }
+    }
 };
+
+// Global Escape key and backdrop click to close active modals
+if (!window._globalModalHandlersBound) {
+    window._globalModalHandlersBound = true;
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (document.getElementById('foodModal')?.classList.contains('active') && window.closeFoodModal) {
+                window.closeFoodModal();
+            } else if (document.getElementById('libraryModal')?.classList.contains('active') && window.closeLibraryModal) {
+                window.closeLibraryModal();
+            } else if (window.closeModal) {
+                window.closeModal();
+            }
+        }
+    });
+    document.addEventListener('click', (e) => {
+        if (e.target && e.target.classList && e.target.classList.contains('modal') && e.target.classList.contains('active')) {
+            if (e.target.id === 'foodModal' && window.closeFoodModal) {
+                window.closeFoodModal();
+            } else if (e.target.id === 'libraryModal' && window.closeLibraryModal) {
+                window.closeLibraryModal();
+            } else if (window.closeModal) {
+                window.closeModal(e.target.id);
+            }
+        }
+    });
+}
 
 // Auto-run if DOM already loaded or on event
 if (document.readyState === 'complete' || document.readyState === 'interactive') {

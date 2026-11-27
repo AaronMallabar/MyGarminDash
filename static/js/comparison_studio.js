@@ -122,7 +122,8 @@ window.populateCustomPickers = function (months, years) {
 
     let html = '<optgroup label="Months">';
     months.forEach(m => {
-        const dt = new Date(m + '-02');
+        const parts = m.split('-');
+        const dt = parts.length >= 2 ? new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, 15) : new Date(m + '-15');
         const label = dt.toLocaleDateString([], { month: 'short', year: 'numeric' });
         html += `<option value="${m}">${label}</option>`;
     });

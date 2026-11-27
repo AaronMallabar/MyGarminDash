@@ -56,10 +56,11 @@ function createBaseTileLayer(style) {
     }
 
     if (mode === 'topo') {
-        return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+        return L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+            subdomains: ['a', 'b', 'c'],
             maxNativeZoom: 17,
             maxZoom: 22,
-            attribution: '&copy; Esri'
+            attribution: '&copy; <a href="https://opentopomap.org" target="_blank">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank">CC-BY-SA</a>)'
         });
     }
 

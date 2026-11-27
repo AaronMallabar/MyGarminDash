@@ -2732,8 +2732,20 @@ html {
 #section-nutrition,
 #section-heatmap,
 #section-calendar,
+#readiness-hero-section,
+#section-health,
+#section-goals,
+#section-compare,
+#pb-module,
+#section-nutrition,
+#section-heatmap,
+#section-calendar,
 #section-activities {
-    scroll-margin-top: 5rem;
+    scroll-margin-top: 5.5rem;
+}
+
+.nutrition-grid > .card {
+    min-width: 0;
 }
 
 .dashboard-shortcuts-bar {

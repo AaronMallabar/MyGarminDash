@@ -167,12 +167,9 @@ window.parseLocalDate = function (dateStr) {
 
 window.isDateToday = function (date) {
     if (!date) return true;
-    const d = (date instanceof Date) ? date : new Date(date);
+    const d = (date instanceof Date) ? date : window.parseLocalDate(date);
     if (isNaN(d.getTime())) return true;
-    const today = new Date();
-    return d.getDate() === today.getDate() &&
-        d.getMonth() === today.getMonth() &&
-        d.getFullYear() === today.getFullYear();
+    return window.getLocalDateStr(d) === window.getEasternDateStr();
 };
 
 window.ensureChartAnimatorSafe = function () {

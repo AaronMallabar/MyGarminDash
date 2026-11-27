@@ -743,8 +743,9 @@
                 <button id="ai-full-drawer-btn" class="range-btn" onclick="openModal('aiBriefingModal')" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: rgba(255,255,255,0.08);">
                     📋 Full Briefing
                 </button>
-                <button id="ai-refresh-btn" class="range-btn" onclick="fetchAIInsights(true)" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-color: rgba(56,189,248,0.3);">
-                    ↻ Refresh
+                <button id="ai-refresh-btn" class="range-btn" onclick="fetchAIInsights(true)" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-color: rgba(56,189,248,0.3); display: inline-flex; align-items: center; gap: 0.35rem;">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                    <span>Refresh</span>
                 </button>
             </div>
         </div>
@@ -841,8 +842,8 @@
                     <span class="streak-caption">Last 7d</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.35rem; font-size: 0.8rem; color: #94a3b8;">
-                    <span>Mod: <strong id="im-glance-mod" style="color: #4ade80;">--</strong></span>
-                    <span>Vig: <strong id="im-glance-vig" style="color: #38bdf8;">--</strong></span>
+                    <span>Today Mod: <strong id="im-glance-mod" style="color: #4ade80;">--</strong></span>
+                    <span>Today Vig: <strong id="im-glance-vig" style="color: #38bdf8;">--</strong></span>
                 </div>
                 <div class="glance-ai-pill" id="ai-pill-im" style="display: none;">
                     <span>✨</span> <span id="ai-blurb-im">Analyzing intensity minutes...</span>
@@ -1895,7 +1896,7 @@
                 </div>
 
 
-                <div id="quick-log-bar" style="display: none; margin-bottom: 2rem; overflow-x: auto; white-space: nowrap; padding-bottom: 0.5rem; gap: 0.75rem;">
+                <div id="quick-log-bar" style="display: none; margin-bottom: 2rem; flex-wrap: wrap; gap: 0.6rem; width: 100%; max-width: 100%;">
                     <!-- Populated by JS with frequent items -->
                 </div>
 
@@ -2731,7 +2732,7 @@
     <div id="foodModal" class="modal">
         <div class="modal-content"
             style="max-width: 1050px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; max-height: 92vh; width: 95%;">
-            <button class="modal-close" onclick="closeFoodModal()">&times;</button>
+            <button type="button" class="modal-close" onclick="window.closeFoodModal()" aria-label="Close modal">&times;</button>
 
             <header style="margin-bottom: 1.5rem; padding-right: 3.5rem;">
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
@@ -2986,6 +2987,14 @@
                                 </div>
                                 <div>
                                     <div
+                                        style="font-size: 0.6rem; color: #a78bfa; font-weight: 800; text-transform: uppercase;">
+                                        Caffeine</div>
+                                    <div id="summary-caffeine"
+                                        style="font-size: 1.25rem; font-weight: 800; font-family: 'Lexend', sans-serif; color: #a78bfa;">
+                                        0mg</div>
+                                </div>
+                                <div>
+                                    <div
                                         style="font-size: 0.6rem; color: #fb923c; font-weight: 800; text-transform: uppercase;">
                                         Cholesterol</div>
                                     <div id="summary-chol"
@@ -3102,11 +3111,42 @@
         </div>
     </div>
 
+    <!-- Hydration Log Modal -->
+    <div id="hydrationModal" class="modal">
+        <div class="modal-content" style="max-width: 420px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1);">
+            <button type="button" class="modal-close" onclick="closeModal('hydrationModal')" aria-label="Close modal">&times;</button>
+            <h2 style="margin-bottom: 1.25rem; font-family: 'Lexend', sans-serif; display: flex; align-items: center; gap: 0.5rem;">
+                <span>💧</span> Log Hydration
+            </h2>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-bottom: 1.25rem;">
+                <button type="button" class="range-btn" onclick="submitHydration(8)" style="padding: 0.6rem 0.4rem; font-weight: 700;">+8 oz</button>
+                <button type="button" class="range-btn" onclick="submitHydration(12)" style="padding: 0.6rem 0.4rem; font-weight: 700;">+12 oz</button>
+                <button type="button" class="range-btn" onclick="submitHydration(16)" style="padding: 0.6rem 0.4rem; font-weight: 700;">+16 oz</button>
+                <button type="button" class="range-btn" onclick="submitHydration(24)" style="padding: 0.6rem 0.4rem; font-weight: 700;">+24 oz</button>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Custom Intake</label>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="number" step="1" min="1" id="hydration-input" class="form-input" placeholder="16" style="flex: 1;">
+                    <div style="display: flex; gap: 0.5rem; background: rgba(255,255,255,0.05); padding: 0.5rem; border-radius: 0.5rem;">
+                        <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer; font-size: 0.85rem;">
+                            <input type="radio" name="hydration-unit" value="oz" checked> oz
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer; font-size: 0.85rem;">
+                            <input type="radio" name="hydration-unit" value="ml"> ml
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <button type="button" class="range-btn active" style="width: 100%; padding: 0.8rem; margin-top: 1rem; font-weight: 700;" onclick="submitHydration()">Log Intake</button>
+        </div>
+    </div>
+
     <!-- Library Modal -->
     <div id="libraryModal" class="modal">
         <div class="modal-content"
             style="max-width: 800px; background: #0f172a; border: 1px solid rgba(255,255,255,0.1);">
-            <button class="modal-close" onclick="closeLibraryModal()">&times;</button>
+            <button type="button" class="modal-close" onclick="window.closeLibraryModal()" aria-label="Close modal">&times;</button>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; padding-right: 3.5rem;">
                 <h2 style="font-family: 'Lexend', sans-serif; margin: 0;">Food Library</h2>
                 <a href="/api/nutrition/export_library" target="_blank" class="range-btn active"

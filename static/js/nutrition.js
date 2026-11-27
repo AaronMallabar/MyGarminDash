@@ -265,7 +265,7 @@ window.updateNutritionUI = function (logs, metabolicData, aiAnalysis) {
                     </div>
                     <div style="display: flex; gap: 0.5rem;">
                         <button onclick="window.editAnyMeal(${l.id})" style="background: none; border: none; color: #38bdf8; cursor: pointer; opacity: 0.5; padding: 0.5rem; font-size: 0.8rem;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">Edit</button>
-                        <button onclick="window.deleteFoodLog(${l.id})" style="background: none; border: none; color: #f87171; cursor: pointer; opacity: 0.5; padding: 0.5rem;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">✕</button>
+                        <button onclick="window.deleteFoodLog(${l.id})" title="Delete entry" aria-label="Delete entry" style="background: none; border: none; color: #f87171; cursor: pointer; opacity: 0.65; padding: 0.45rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 0.4rem;" onmouseover="this.style.opacity=1; this.style.background='rgba(248,113,113,0.12)'" onmouseout="this.style.opacity=0.65; this.style.background='none'"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg></button>
                     </div>
                 </div>
             `).join('');
@@ -404,7 +404,7 @@ window.clearManualFoodForm = function () {
     if (nameInput) nameInput.value = '';
     const catInput = document.getElementById('custom-category');
     if (catInput) {
-        const hour = new Date().getHours();
+        const hour = window.getEasternHour ? window.getEasternHour() : new Date().getHours();
         if (hour < 11) catInput.value = 'Breakfast';
         else if (hour < 15) catInput.value = 'Lunch';
         else if (hour < 21) catInput.value = 'Dinner';
@@ -441,6 +441,7 @@ window.clearManualFoodForm = function () {
 window.closeFoodModal = function () {
     const modal = document.getElementById('foodModal');
     if (modal) modal.classList.remove('active');
+    document.body.style.overflow = '';
     window.editingLogId = null;
     const saveBtn = document.getElementById('btn-save-custom-food');
     if (saveBtn) saveBtn.textContent = 'Log Food';
@@ -1103,7 +1104,7 @@ window.addIngredientRow = function (data = null) {
                 aria-label="Calories (kcal)">
         </div>
         <button type="button" onclick="document.getElementById('${rowId}').remove(); window.updateNutrientSummary();" 
-            style="background:none; border:none; color:#f87171; cursor:pointer; padding: 0 0.3rem; font-size: 1rem; line-height: 1;" title="Remove row">✕</button>
+            style="background:none; border:none; color:#f87171; cursor:pointer; padding: 0.25rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 0.35rem;" title="Remove row" aria-label="Remove row"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
     `;
     list.appendChild(div);
 };
@@ -1291,6 +1292,7 @@ window.openLibraryModal = function () {
     const modal = document.getElementById('libraryModal');
     if (modal) {
         modal.classList.add('active');
+        document.body.style.overflow = 'hidden';
         window.renderLibrary();
     }
 }
@@ -1298,6 +1300,7 @@ window.openLibraryModal = function () {
 window.closeLibraryModal = function () {
     const modal = document.getElementById('libraryModal');
     if (modal) modal.classList.remove('active');
+    document.body.style.overflow = '';
 }
 
 window.renderLibrary = async function () {
@@ -1315,7 +1318,7 @@ window.renderLibrary = async function () {
             <div class="card" style="margin-bottom: 0; background: rgba(255,255,255,0.02);">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
                     <span style="font-size: 0.7rem; color: #10b981; font-weight: 700; text-transform: uppercase;">${data.category || 'Meal'}</span>
-                    <button onclick="window.deleteLibraryItem('${name}')" style="background:none; border:none; color:#f87171; cursor:pointer; opacity: 0.5;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">✕</button>
+                    <button onclick="window.deleteLibraryItem('${name}')" title="Delete item" aria-label="Delete item" style="background:none; border:none; color:#f87171; cursor:pointer; opacity: 0.65; padding: 0.25rem; display: inline-flex; align-items: center; justify-content: center;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.65"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
                 <div style="font-weight: 600; margin-bottom: 0.25rem;">${name}</div>
                 <div style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem;">${data.calories} kcal</div>

@@ -55,13 +55,36 @@ window.updateDashboard = function (data, today1d = {}, history = {}) {
     const kgNum = parseFloat(weightKg);
     const calculatedBmi = data.bmi || ((!isNaN(kgNum) && kgNum > 0) ? (kgNum / (heightM * heightM)).toFixed(1) : null);
     if (calculatedBmi) window.safeSetText('weight-bmi-val', calculatedBmi);
-    if (weightSum.delta_lbs !== undefined || data.weight_change_lbs !== undefined) {
-        const delta = weightSum.delta_lbs !== undefined ? weightSum.delta_lbs : data.weight_change_lbs;
-        const prefix = delta > 0 ? '+' : '';
-        const badge = document.getElementById('weight-diff-badge');
-        if (badge) {
+    const todayStr = window.getEasternDateStr ? window.getEasternDateStr() : window.getLocalDateStr();
+    const yesterdayDt = window.parseLocalDate ? window.parseLocalDate(todayStr) : new Date();
+    yesterdayDt.setDate(yesterdayDt.getDate() - 1);
+    const yesterdayStr = window.getLocalDateStr(yesterdayDt);
+
+    const updatedEl = document.getElementById('weight-updated-date');
+    if (updatedEl) {
+        const wDate = weightSum.date ? String(weightSum.date).slice(0, 10) : '';
+        if (!wDate) {
+            updatedEl.textContent = 'No weigh-in';
+        } else if (wDate === todayStr) {
+            updatedEl.textContent = 'Updated Today';
+        } else if (wDate === yesterdayStr) {
+            updatedEl.textContent = 'Updated Yesterday';
+        } else {
+            const wDt = window.parseLocalDate ? window.parseLocalDate(wDate) : new Date(wDate + 'T12:00:00');
+            updatedEl.textContent = 'Updated ' + wDt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+    }
+
+    const badge = document.getElementById('weight-diff-badge');
+    if (badge) {
+        if (weightSum.delta_lbs !== undefined || data.weight_change_lbs !== undefined) {
+            const delta = weightSum.delta_lbs !== undefined ? weightSum.delta_lbs : data.weight_change_lbs;
+            const prefix = delta > 0 ? '+' : '';
             badge.textContent = `${prefix}${delta} lbs Change`;
             badge.style.color = delta <= 0 ? '#4ade80' : '#f87171';
+        } else {
+            badge.textContent = '-- lbs Change';
+            badge.style.color = 'var(--accent-color)';
         }
     }
     if (window.renderGlanceWeightSparkline) {
@@ -103,14 +126,24 @@ window.updateDashboard = function (data, today1d = {}, history = {}) {
         const m = Math.round((sleepSecs % 3600) / 60);
         sleepDurationStr = `${h}h ${m}m`;
     }
-    const sleepScore = sleepSum.score != null ? sleepSum.score : (data.sleep_score || '--');
-    window.safeSetText('sleep', sleepDurationStr);
-    window.safeSetText('sleep-score-val', sleepScore);
+    const sleepScore = (sleepSum.score != null && sleepSum.score > 0) ? sleepSum.score : ((data.sleep_score && data.sleep_score > 0) ? data.sleep_score : '--');
+    const prevSleepText = document.getElementById('sleep')?.textContent?.trim();
+    const prevSleepScore = document.getElementById('sleep-score-val')?.textContent?.trim();
+    if (sleepDurationStr !== '--' || !prevSleepText || prevSleepText === '--') {
+        window.safeSetText('sleep', sleepDurationStr);
+    }
+    if (sleepScore !== '--' || !prevSleepScore || prevSleepScore === '--') {
+        window.safeSetText('sleep-score-val', sleepScore);
+    }
 
     const bedTime = sleepSum.bedTime || data.sleep_start || '--';
     const wakeTime = sleepSum.wakeTime || data.sleep_end || '--';
-    window.safeSetText('sleep-start-time', bedTime);
-    window.safeSetText('sleep-end-time', wakeTime);
+    if (bedTime !== '--' || !document.getElementById('sleep-start-time')?.textContent?.trim()) {
+        window.safeSetText('sleep-start-time', bedTime);
+    }
+    if (wakeTime !== '--' || !document.getElementById('sleep-end-time')?.textContent?.trim()) {
+        window.safeSetText('sleep-end-time', wakeTime);
+    }
 
     if (window.renderGlanceSleepTimeline) {
         window.renderGlanceSleepTimeline(sleepSum.sleepLevels ? sleepSum : {
@@ -141,12 +174,20 @@ window.updateDashboard = function (data, today1d = {}, history = {}) {
 
     // Week streaks with real history data
     if (window.renderWeekStreak) {
+        const todayStr = window.getEasternDateStr ? window.getEasternDateStr() : window.getLocalDateStr();
         const imHistory = (history.intensity_minutes && history.intensity_minutes.history) || data.im_history || [];
-        const stepsHistory = (history.steps && history.steps.history) || data.steps_history || [];
+        const rawStepsHistory = (history.steps && history.steps.history) || data.steps_history || [];
+        const stepsHistory = rawStepsHistory.map(d => ({ ...d }));
+        const todayStepEntry = stepsHistory.find(d => (d.calendarDate || d.date || '').slice(0, 10) === todayStr);
+        if (todayStepEntry) {
+            todayStepEntry.totalSteps = Math.max(todayStepEntry.totalSteps || 0, stepsCount);
+        } else if (stepsCount > 0) {
+            stepsHistory.push({ calendarDate: todayStr, totalSteps: stepsCount });
+        }
         const hydrationHistory = (history.hydration && history.hydration.history) || data.hydration_history || [];
         window.renderWeekStreak('im-streak-days', imHistory, imGoal / 7);
         window.renderWeekStreak('steps-streak-days', stepsHistory, stepsGoal);
-        window.renderWeekStreak('hydration-streak-days', hydrationHistory, hydGoalOz);
+        window.renderWeekStreak('hydration-streak-days', hydrationHistory, hydGoalMl);
     }
 
     const activityList = document.getElementById('activity-list');
@@ -243,6 +284,33 @@ window.updateGoalsConfig = function (data) {
     setGoalDonut('year-cycle', 'year-cycle-percent', 'year-cycle-chart', 'year-cycle-goal', y.cycling_actual || 0, y.cycling || 2400);
 }
 
+
+window.submitHydration = async function (presetOz = null) {
+    const inputEl = document.getElementById('hydration-input');
+    const unitEl = document.querySelector('input[name="hydration-unit"]:checked');
+    const unit = presetOz !== null ? 'oz' : (unitEl ? unitEl.value : 'oz');
+    const val = presetOz !== null ? presetOz : parseFloat(inputEl ? inputEl.value : '');
+    if (!val || isNaN(val) || val <= 0) return;
+
+    const payload = unit === 'ml' ? { ml: val } : { ounces: val };
+    try {
+        const res = await fetch('/api/hydration/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            if (inputEl) inputEl.value = '';
+            window.closeModal('hydrationModal');
+            if (window.fetchDashboardData) window.fetchDashboardData();
+        } else {
+            const err = await res.json().catch(() => ({}));
+            alert(err.message || err.error || 'Failed to log hydration');
+        }
+    } catch (err) {
+        console.error('Log hydration error:', err);
+    }
+};
 
 window.submitWeight = async function () {
     const val = parseFloat(document.getElementById('weight-input').value);

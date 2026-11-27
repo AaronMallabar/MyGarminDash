@@ -2764,10 +2764,7 @@ window.resetZoom = function(prefix) {
     if (statsEl) statsEl.style.display = 'none';
 }
 
-window.closeModal = function() {
-    const modal = document.getElementById('activityModal');
-    if (modal) modal.classList.remove('active');
-}
+// Modal closing is handled centrally in ui.js (window.closeModal)
 
 function getPowerZoneColor(p) {
     if (p >= 450) return '#a855f7'; if (p >= 350) return '#ef4444'; if (p >= 300) return '#f97316';
@@ -2963,6 +2960,10 @@ window.renderGlanceHRV = function(hrvData, hrvHistory = []) {
     const summary = hrvData.hrvSummary || hrvData.summary || hrvData;
     const lastNight = summary.lastNightAvg || summary.last_night_avg || '--';
     const weeklyAvg = summary.weeklyAvg || summary.weekly_avg || '--';
+    const prevHrv = document.getElementById('hrv-val')?.textContent?.trim();
+    if (weeklyAvg === '--' && lastNight === '--' && prevHrv && prevHrv !== '--') {
+        return; // Preserve valid cached HRV values when background sync returns partial/empty data
+    }
     const baseline = summary.baseline || { lowUpper: 77, balancedLow: 77, balancedUpper: 103 };
     const low = baseline.balancedLow || baseline.lowUpper || summary.baselineLow || 70;
     const high = baseline.balancedUpper || summary.baselineHigh || 100;
@@ -3044,17 +3045,34 @@ window.renderWeekStreak = function(containerId, historyDays, goal) {
     const el = document.getElementById(containerId);
     if (!el) return;
     const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-    const entries = Array.isArray(historyDays) ? historyDays.slice(-7) : [];
-    
+    const todayStr = window.getEasternDateStr ? window.getEasternDateStr() : window.getLocalDateStr();
+    const todayDt = window.parseLocalDate ? window.parseLocalDate(todayStr) : new Date();
+    const mondayOffset = (todayDt.getDay() + 6) % 7; // Monday = 0, Sunday = 6
+    const mondayDt = new Date(todayDt.getFullYear(), todayDt.getMonth(), todayDt.getDate() - mondayOffset);
+
+    const entryMap = {};
+    if (Array.isArray(historyDays)) {
+        historyDays.forEach(entry => {
+            if (entry && typeof entry === 'object') {
+                const ds = (entry.calendarDate || entry.date || '').slice(0, 10);
+                if (ds) entryMap[ds] = entry;
+            }
+        });
+    }
+
     el.innerHTML = days.map((dayChar, i) => {
-        const entry = entries[i];
-        let val = 0;
-        if (typeof entry === 'number') {
-            val = entry;
-        } else if (entry) {
-            val = entry.totalSteps || entry.total || entry.intake || entry.val || entry.activeMinutes || 0;
+        const dt = new Date(mondayDt.getFullYear(), mondayDt.getMonth(), mondayDt.getDate() + i);
+        const dateStr = window.getLocalDateStr(dt);
+        if (dateStr > todayStr) {
+            return `<span class="streak-dot" style="opacity: 0.45;" title="${dateStr}">${dayChar}</span>`;
         }
-        const isMet = val >= (goal || 1);
-        return `<span class="streak-dot ${isMet ? 'met' : ''}">${isMet ? '✓' : dayChar}</span>`;
+        const entry = entryMap[dateStr];
+        let val = 0;
+        if (entry) {
+            val = entry.totalSteps ?? entry.total ?? entry.intake ?? entry.val ?? entry.activeMinutes ?? 0;
+        }
+        const effectiveGoal = (goal && goal > 0) ? goal : 1;
+        const isMet = val > 0 && val >= effectiveGoal;
+        return `<span class="streak-dot ${isMet ? 'met' : ''}" title="${dateStr}">${isMet ? '✓' : dayChar}</span>`;
     }).join('');
 };
