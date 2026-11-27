@@ -579,7 +579,24 @@
 
         @media (max-width: 820px) {
             .apps-grid {
-                grid-template-columns: 1fr;
+                display: flex;
+                flex-direction: row;
+                overflow-x: auto;
+                scroll-snap-type: x mandatory;
+                -webkit-overflow-scrolling: touch;
+                gap: 0.9rem;
+                padding-bottom: 0.5rem;
+                scrollbar-width: none;
+            }
+            .apps-grid::-webkit-scrollbar {
+                display: none;
+            }
+            .apps-grid > .app-card {
+                flex: 0 0 90%;
+                min-width: 90%;
+                scroll-snap-align: start;
+                scroll-snap-stop: always;
+                padding: 1.25rem;
             }
         }
     </style>

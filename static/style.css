@@ -2912,3 +2912,146 @@ html {
 .compare-select:focus {
     border-color: var(--accent-color);
 }
+
+/* ==========================================================================
+   MOBILE VIEW: SWIPEABLE CARD CAROUSELS & WIDER CARD LAYOUT (<= 768px)
+   Desktop layout above 768px is completely unchanged.
+   ========================================================================== */
+.mobile-carousel-dots {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    body {
+        padding: 0.85rem 0.65rem 4.5rem;
+        overflow-x: hidden;
+    }
+
+    header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+        margin-bottom: 1.25rem;
+    }
+
+    header h1 {
+        font-size: 1.65rem;
+        line-height: 1.15;
+    }
+
+    .readiness-hero {
+        padding: 1.15rem;
+        gap: 1rem;
+    }
+
+    .readiness-actions {
+        flex-direction: row;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .card,
+    .comparison-card {
+        padding: 1.1rem;
+        border-radius: 1.1rem;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* Horizontal swipeable card tracks with snap */
+    .glance-grid,
+    .goals-grid,
+    .nutrition-grid,
+    .compare-scorecards-grid {
+        display: flex !important;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: visible;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+        gap: 0.85rem;
+        margin-bottom: 0.5rem;
+        padding: 0.25rem 0.15rem 0.65rem;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+
+    .glance-grid::-webkit-scrollbar,
+    .goals-grid::-webkit-scrollbar,
+    .nutrition-grid::-webkit-scrollbar,
+    .compare-scorecards-grid::-webkit-scrollbar {
+        display: none;
+    }
+
+    .glance-grid > .glance-card {
+        flex: 0 0 86%;
+        min-width: 86%;
+        max-width: 86%;
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
+        min-height: 255px;
+    }
+
+    .goals-grid > .goal-card,
+    .goals-grid > .card {
+        flex: 0 0 84%;
+        min-width: 84%;
+        max-width: 84%;
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
+    }
+
+    .nutrition-grid > .card,
+    .compare-scorecards-grid > .card {
+        flex: 0 0 92%;
+        min-width: 92%;
+        max-width: 92%;
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
+    }
+
+    /* Ensure general grids stack full-width cleanly on mobile */
+    .grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    /* Mobile carousel pagination dots */
+    .mobile-carousel-dots {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        margin: 0.15rem 0 1.75rem;
+    }
+
+    .mobile-carousel-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.35);
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .mobile-carousel-dot.active {
+        width: 20px;
+        background: var(--accent-color, #38bdf8);
+    }
+
+    /* Prevent inner flex/grid rows from squeezing inside mobile cards */
+    .compare-header-row,
+    .compare-controls-bar {
+        gap: 0.65rem;
+        padding: 0.75rem;
+    }
+
+    .compare-select {
+        width: 100%;
+    }
+}

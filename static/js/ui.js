@@ -632,3 +632,69 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 } else {
     document.addEventListener('DOMContentLoaded', window.initDashboardShortcuts);
 }
+
+/**
+ * Mobile Swipeable Carousel Indicators (<= 768px)
+ * Adds tappable dot indicators beneath horizontal card carousels on mobile.
+ */
+window.initMobileCarousels = function () {
+    const selectors = ['.glance-grid', '.goals-grid', '.nutrition-grid', '.compare-scorecards-grid'];
+    selectors.forEach(sel => {
+        document.querySelectorAll(sel).forEach(track => {
+            const cards = Array.from(track.children).filter(el => el.nodeType === 1);
+            if (cards.length < 2) return;
+
+            let dotsEl = track.nextElementSibling;
+            if (!dotsEl || !dotsEl.classList.contains('mobile-carousel-dots')) {
+                dotsEl = document.createElement('div');
+                dotsEl.className = 'mobile-carousel-dots';
+                track.insertAdjacentElement('afterend', dotsEl);
+            }
+
+            if (dotsEl.children.length !== cards.length) {
+                dotsEl.innerHTML = cards.map((_, idx) =>
+                    `<button type="button" class="mobile-carousel-dot ${idx === 0 ? 'active' : ''}" aria-label="Go to card ${idx + 1}"></button>`
+                ).join('');
+
+                Array.from(dotsEl.children).forEach((dot, idx) => {
+                    dot.addEventListener('click', () => {
+                        const target = cards[idx];
+                        if (target) {
+                            track.scrollTo({ left: target.offsetLeft - track.offsetLeft, behavior: 'smooth' });
+                        }
+                    });
+                });
+            }
+
+            if (!track._carouselScrollBound) {
+                track._carouselScrollBound = true;
+                let scrollRaf = null;
+                track.addEventListener('scroll', () => {
+                    if (scrollRaf) return;
+                    scrollRaf = window.requestAnimationFrame(() => {
+                        scrollRaf = null;
+                        const trackLeft = track.scrollLeft;
+                        let bestIdx = 0;
+                        let bestDist = Infinity;
+                        cards.forEach((card, idx) => {
+                            const dist = Math.abs((card.offsetLeft - track.offsetLeft) - trackLeft);
+                            if (dist < bestDist) {
+                                bestDist = dist;
+                                bestIdx = idx;
+                            }
+                        });
+                        Array.from(dotsEl.children).forEach((d, idx) => {
+                            d.classList.toggle('active', idx === bestIdx);
+                        });
+                    });
+                }, { passive: true });
+            }
+        });
+    });
+};
+
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(window.initMobileCarousels, 120);
+} else {
+    document.addEventListener('DOMContentLoaded', () => setTimeout(window.initMobileCarousels, 120));
+}

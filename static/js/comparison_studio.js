@@ -108,6 +108,7 @@ window.runComparisonQuery = async function () {
         window.comparisonData = payload.data;
         window.renderScorecards(payload.data);
         window.renderComparisonChart(payload.data);
+        if (window.initMobileCarousels) window.initMobileCarousels();
     } catch (err) {
         console.error('Failed to load comparison analytics:', err);
     } finally {
