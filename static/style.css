@@ -522,15 +522,16 @@ h1 {
 
 .modal-close {
     position: absolute;
-    top: 1.25rem;
-    right: 1.25rem;
+    top: 1.15rem;
+    right: 1.15rem;
     background: rgba(30, 41, 59, 0.85);
     border: 1px solid rgba(255, 255, 255, 0.15);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     color: #cbd5e1;
-    width: 2.25rem;
-    height: 2.25rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
     border-radius: 50%;
     cursor: pointer;
     display: flex;
@@ -538,9 +539,20 @@ h1 {
     justify-content: center;
     font-size: 1.35rem;
     line-height: 1;
-    z-index: 1200;
+    z-index: 1400;
+    pointer-events: auto;
     transition: all 0.2s ease;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.modal-close::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+}
+
+.modal-close > * {
+    pointer-events: none;
 }
 
 .modal-close:hover {

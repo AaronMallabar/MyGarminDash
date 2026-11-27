@@ -604,7 +604,7 @@
 
             <div class="suite-top-actions">
                 <span class="version-pill" id="top-version-pill">{{ app_version }}</span>
-                <button type="button" class="top-btn" onclick="quickCheckUpdates()">↻ Check Updates</button>
+                <button type="button" class="top-btn" onclick="quickCheckUpdates()" style="display: inline-flex; align-items: center; gap: 0.35rem;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg><span>Check Updates</span></button>
                 <a href="{{ url_for('logout') }}" class="top-btn top-btn-danger">Logout</a>
             </div>
         </div>
@@ -730,7 +730,7 @@
                     <p class="settings-desc">Check GitHub for new releases across both Fitness &amp; Health and The Daily Dispatch, and deploy with one click.</p>
 
                     <div class="btn-row">
-                        <button type="button" id="check-update-btn" class="action-btn action-btn-primary" onclick="checkForUpdates()">↻ Check for Updates</button>
+                        <button type="button" id="check-update-btn" class="action-btn action-btn-primary" onclick="checkForUpdates()" style="display: inline-flex; align-items: center; gap: 0.4rem;"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg><span>Check for Updates</span></button>
                         <button type="button" id="toggle-update-log-btn" class="action-btn" onclick="toggleUpdateLog()">📜 View Update Log</button>
                     </div>
 

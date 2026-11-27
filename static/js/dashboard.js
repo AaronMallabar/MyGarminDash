@@ -41,9 +41,9 @@ window.updateDashboard = function (data, today1d = {}, history = {}) {
     let weightLbs = '--';
     let weightKg = '--';
     if (data.weight_grams) {
-        const kg = (data.weight_grams / 1000).toFixed(1);
-        weightKg = kg;
-        weightLbs = (kg * 2.20462).toFixed(1);
+        const kgRaw = data.weight_grams / 1000;
+        weightKg = kgRaw.toFixed(1);
+        weightLbs = (kgRaw * 2.20462).toFixed(1);
     } else if (weightSum.latest_lbs) {
         weightLbs = weightSum.latest_lbs.toFixed(1);
         weightKg = (weightSum.latest_kg || (weightSum.latest_lbs / 2.20462)).toFixed(1);
