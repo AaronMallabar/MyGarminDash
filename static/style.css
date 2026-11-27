@@ -3087,4 +3087,226 @@ html {
     .compare-select {
         width: 100%;
     }
+
+    /* Full-width bottom-sheet modals on mobile */
+    .modal.active {
+        align-items: flex-end !important;
+        justify-content: center !important;
+        padding: 0 !important;
+    }
+
+    .modal .modal-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: 94vh !important;
+        border-radius: 1.25rem 1.25rem 0 0 !important;
+        padding: 1rem !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+    }
+
+    .modal .modal-close {
+        top: 0.75rem !important;
+        right: 0.75rem !important;
+        width: 2.25rem !important;
+        height: 2.25rem !important;
+    }
+
+    /* Food Log / Edit Food Log modal: phone-native layout */
+    #foodModal header {
+        padding-right: 2.75rem !important;
+        margin-bottom: 0.75rem !important;
+    }
+
+    #foodModal header h2 {
+        font-size: 1.2rem !important;
+    }
+
+    #food-modal-mode-tabs {
+        width: 100%;
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    #food-modal-mode-tabs button {
+        justify-content: center;
+        padding: 0.5rem 0.4rem !important;
+        font-size: 0.78rem !important;
+    }
+
+    #food-modal-date-picker {
+        padding: 0.55rem 0.65rem !important;
+        gap: 0.5rem !important;
+        margin-top: 0.65rem !important;
+    }
+
+    #food-chat-view {
+        padding: 0.75rem 0.15rem !important;
+    }
+
+    #food-chat-view > div:nth-of-type(2) {
+        flex-wrap: wrap;
+        gap: 0.5rem !important;
+    }
+
+    #btn-send-chat {
+        width: 100%;
+    }
+
+    #custom-food-form {
+        flex-direction: column !important;
+        overflow: visible !important;
+    }
+
+    #custom-food-form > div:first-child {
+        padding: 0.75rem 0 !important;
+        overflow: visible !important;
+    }
+
+    #custom-food-form > div:first-child > div:first-child > div {
+        flex-wrap: wrap;
+        gap: 0.5rem !important;
+    }
+
+    #custom-name {
+        width: 100%;
+        min-width: 100%;
+        height: 40px;
+        font-size: 0.95rem !important;
+        box-sizing: border-box;
+    }
+
+    #custom-category {
+        width: 100%;
+        height: 38px;
+        box-sizing: border-box;
+    }
+
+    #custom-food-form > div:first-child > div:nth-child(2) {
+        overflow: visible !important;
+        padding-right: 0 !important;
+    }
+
+    #custom-food-form > div:first-child > div:nth-child(2) > div:first-child {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    #custom-food-form > div:first-child > div:nth-child(2) > div:first-child > div {
+        flex-wrap: wrap;
+        gap: 0.4rem !important;
+        width: 100%;
+    }
+
+    #ingredient-header {
+        display: none !important;
+    }
+
+    .ingredient-row.ingredient-grid {
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 0.55rem !important;
+        padding: 0.75rem !important;
+        background: rgba(255, 255, 255, 0.04) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.75rem !important;
+        position: relative;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .ingredient-row > div[data-label="Ingredient"] {
+        grid-column: 1 / -1;
+        padding-right: 2.25rem;
+    }
+
+    .ingredient-row > div[data-label]::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 0.62rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #94a3b8;
+        margin-bottom: 0.2rem;
+    }
+
+    .ingredient-row input,
+    .ingredient-row select {
+        height: 38px !important;
+        font-size: 0.9rem !important;
+        box-sizing: border-box;
+    }
+
+    .ingredient-row > button {
+        position: absolute;
+        top: 0.55rem;
+        right: 0.55rem;
+        width: 32px;
+        height: 32px;
+        background: rgba(248, 113, 113, 0.12) !important;
+        border-radius: 0.5rem !important;
+    }
+
+    /* Food modal bottom summary & action bar */
+    #custom-food-form > div:first-child > div:last-child {
+        padding: 0.75rem !important;
+        border-radius: 0.85rem !important;
+    }
+
+    #custom-food-form > div:first-child > div:last-child > div {
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 0.75rem !important;
+    }
+
+    #custom-food-form > div:first-child > div:last-child > div > div:first-child {
+        display: grid !important;
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 0.55rem !important;
+        width: 100%;
+    }
+
+    #summary-cal,
+    #summary-pro,
+    #summary-carb,
+    #summary-fat,
+    #summary-sugar,
+    #summary-caffeine,
+    #summary-chol {
+        font-size: 1rem !important;
+    }
+
+    #custom-food-form > div:first-child > div:last-child > div > div:last-child {
+        width: 100%;
+        display: flex !important;
+        gap: 0.5rem !important;
+    }
+
+    #btn-save-custom-food {
+        flex: 1;
+        padding: 0.75rem 1rem !important;
+    }
+
+    /* Calendar, Heatmap, and PB mobile ergonomics */
+    #globalHeatmap {
+        height: 340px !important;
+    }
+
+    .calendar-grid {
+        gap: 0.25rem !important;
+    }
+
+    .calendar-cell {
+        min-height: 54px !important;
+        padding: 0.25rem !important;
+        font-size: 0.72rem !important;
+    }
+
+    #pb-module .card,
+    #section-calendar .card {
+        padding: 0.9rem !important;
+    }
 }

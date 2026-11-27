@@ -1040,62 +1040,62 @@ window.addIngredientRow = function (data = null) {
     const unitOptions = units.map(u => `<option value="${u}" ${currentUnit === u ? 'selected' : ''}>${u.charAt(0).toUpperCase() + u.slice(1)}</option>`).join('');
 
     div.innerHTML = `
-        <div style="min-width: 0;">
+        <div data-label="Ingredient" style="min-width: 0;">
             <input type="text" class="ing-name" placeholder="Ingredients" value="${data?.name || ''}" 
                 style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.5rem; font-size: 0.85rem;"
                 aria-label="Ingredients">
         </div>
-        <div>
+        <div data-label="Qty">
             <input type="number" step="any" class="ing-qty" placeholder="Qty" value="${data?.qty ?? 1}" 
                 onfocus="this.select()"
                 oninput="window.onQtyChange(this)"
                 style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; padding: 0 0.4rem; font-size: 0.85rem;"
                 aria-label="Quantity">
         </div>
-        <div>
+        <div data-label="Unit">
             <select class="ing-unit" onchange="window.updateNutrientSummary()" 
                 style="width: 100%; height: 32px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 0.4rem; font-size: 0.8rem;"
                 aria-label="Unit">
                 ${unitOptions}
             </select>
         </div>
-        <div>
+        <div data-label="Pro (g)">
             <input type="number" step="any" class="ing-pro" placeholder="P" value="${data?.protein_g ?? 0}" 
                 onfocus="this.select()" oninput="window.updateNutrientSummary()"
                 style="width: 100%; height: 32px; background: rgba(244, 114, 182, 0.05); border: 1px solid rgba(244, 114, 182, 0.2); color: #f472b6; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
                 aria-label="Protein (g)">
         </div>
-        <div>
+        <div data-label="Carb (g)">
             <input type="number" step="any" class="ing-carb" placeholder="C" value="${data?.carbs_g ?? 0}" 
                 onfocus="this.select()" oninput="window.updateNutrientSummary()"
                 style="width: 100%; height: 32px; background: rgba(234, 179, 8, 0.05); border: 1px solid rgba(234, 179, 8, 0.2); color: #eab308; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
                 aria-label="Carbs (g)">
         </div>
-        <div>
+        <div data-label="Fat (g)">
             <input type="number" step="any" class="ing-fat" placeholder="F" value="${data?.fat_g ?? 0}" 
                 onfocus="this.select()" oninput="window.updateNutrientSummary()"
                 style="width: 100%; height: 32px; background: rgba(249, 115, 22, 0.05); border: 1px solid rgba(249, 115, 22, 0.2); color: #f97316; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
                 aria-label="Fat (g)">
         </div>
-        <div>
+        <div data-label="Sug (g)">
             <input type="number" step="any" class="ing-sugar" placeholder="S" value="${data?.sugar_g ?? 0}" 
                 onfocus="this.select()" oninput="window.updateNutrientSummary()"
                 style="width: 100%; height: 32px; background: rgba(96, 165, 250, 0.05); border: 1px solid rgba(96, 165, 250, 0.2); color: #60a5fa; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
                 aria-label="Sugar (g)">
         </div>
-        <div>
+        <div data-label="Caf (mg)">
             <input type="number" step="any" class="ing-caffeine" placeholder="Caf" value="${data?.caffeine_mg ?? 0}" 
                 onfocus="this.select()" oninput="window.updateNutrientSummary()"
                 style="width: 100%; height: 32px; background: rgba(167, 139, 250, 0.05); border: 1px solid rgba(167, 139, 250, 0.2); color: #a78bfa; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
                 aria-label="Caffeine (mg)">
         </div>
-        <div>
+        <div data-label="Chol (mg)">
             <input type="number" step="any" class="ing-chol" placeholder="Chol" value="${data?.cholesterol_mg ?? 0}" 
                 onfocus="this.select()" oninput="window.updateNutrientSummary()"
                 style="width: 100%; height: 32px; background: rgba(251, 146, 60, 0.05); border: 1px solid rgba(251, 146, 60, 0.2); color: #fb923c; border-radius: 0.4rem; padding: 0 0.3rem; font-size: 0.8rem; font-weight: 700;"
                 aria-label="Cholesterol (mg)">
         </div>
-        <div>
+        <div data-label="Kcal">
             <input type="number" step="any" class="ing-cal" placeholder="kcal" value="${data?.calories ?? 0}" 
                 onfocus="this.select()"
                 oninput="window.updateNutrientSummary()"
