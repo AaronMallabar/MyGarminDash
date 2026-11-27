@@ -2961,7 +2961,7 @@ html {
 
     /* Horizontal swipeable card tracks with snap */
     .glance-grid,
-    .goals-grid,
+    #section-goals > .grid,
     .nutrition-grid,
     .compare-scorecards-grid {
         display: flex !important;
@@ -2979,37 +2979,70 @@ html {
     }
 
     .glance-grid::-webkit-scrollbar,
-    .goals-grid::-webkit-scrollbar,
+    #section-goals > .grid::-webkit-scrollbar,
     .nutrition-grid::-webkit-scrollbar,
     .compare-scorecards-grid::-webkit-scrollbar {
         display: none;
     }
 
     .glance-grid > .glance-card {
-        flex: 0 0 86%;
-        min-width: 86%;
-        max-width: 86%;
+        flex: 0 0 88%;
+        min-width: 88%;
+        max-width: 88%;
         scroll-snap-align: start;
         scroll-snap-stop: always;
         min-height: 255px;
     }
 
-    .goals-grid > .goal-card,
-    .goals-grid > .card {
-        flex: 0 0 84%;
-        min-width: 84%;
-        max-width: 84%;
+    #section-goals > .grid > .card {
+        flex: 0 0 90%;
+        min-width: 90%;
+        max-width: 90%;
         scroll-snap-align: start;
         scroll-snap-stop: always;
     }
 
     .nutrition-grid > .card,
     .compare-scorecards-grid > .card {
-        flex: 0 0 92%;
-        min-width: 92%;
-        max-width: 92%;
+        flex: 0 0 94%;
+        min-width: 94%;
+        max-width: 94%;
         scroll-snap-align: start;
         scroll-snap-stop: always;
+    }
+
+    /* Nutrition & Trends mobile polish so nothing is cramped or clipped */
+    #net-calories {
+        font-size: 2.35rem !important;
+    }
+
+    #outtake-calories > div {
+        white-space: normal !important;
+        line-height: 1.25;
+    }
+
+    #calorie-1d-container > div:first-child {
+        grid-template-columns: 1fr !important;
+        gap: 1.25rem !important;
+    }
+
+    #calorie-trends-card {
+        padding: 1rem !important;
+    }
+
+    #section-heatmap > div:first-child {
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    #section-heatmap > div:first-child > div {
+        flex-wrap: wrap;
+        gap: 0.5rem !important;
+    }
+
+    .activity-item {
+        flex-wrap: wrap;
+        gap: 0.65rem;
     }
 
     /* Ensure general grids stack full-width cleanly on mobile */

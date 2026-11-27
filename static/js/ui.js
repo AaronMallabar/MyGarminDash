@@ -638,7 +638,7 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
  * Adds tappable dot indicators beneath horizontal card carousels on mobile.
  */
 window.initMobileCarousels = function () {
-    const selectors = ['.glance-grid', '.goals-grid', '.nutrition-grid', '.compare-scorecards-grid'];
+    const selectors = ['.glance-grid', '#section-goals > .grid', '.nutrition-grid', '.compare-scorecards-grid'];
     selectors.forEach(sel => {
         document.querySelectorAll(sel).forEach(track => {
             const cards = Array.from(track.children).filter(el => el.nodeType === 1);
