@@ -156,9 +156,10 @@ def get_app_version():
         ).strip()
         if re.match(r'^v2\.\d+(?:\.\d+)?$', desc):
             return desc
-        match = re.match(r'^(v2\.\d+)\.\d+-(\d+)-g[0-9a-f]+$', desc)
+        match = re.match(r'^(v2\.\d+)\.(\d+)-(\d+)-g[0-9a-f]+$', desc)
         if match:
-            return f"{match.group(1)}.{match.group(2)}"
+            patch = int(match.group(2)) + int(match.group(3))
+            return f"{match.group(1)}.{patch}"
         return "v2.0.0"
     except Exception:
         return "v2.0.0"
