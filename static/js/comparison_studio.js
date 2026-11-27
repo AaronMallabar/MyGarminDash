@@ -1,209 +1,188 @@
 /**
- * Comparison Studio & Multi-Metric Analytics Suite
- * Interactive side-by-side bar charts, scatter plots, and cumulative comparisons
+ * Training Data Viewer & Analytics Explorer
+ * Multi-span, multi-bucket (days/weeks/months/years), cumulative or per-bucket,
+ * with Cycling vs Running, Power, Speed, Pace, Elevation, HR, and Dual-Axis Overlays.
  */
 
 window.comparisonChart = null;
-window.comparisonData = null;
+window.exploreData = null;
 
-window.compareState = {
-    preset: 'this_vs_last_month',
-    period_a: '',
-    period_b: '',
-    sport: 'cycling',
+window.exploreState = {
+    span: '3m',
+    bucket: 'auto',
+    sport: 'cycling_vs_running',
     metric: 'distance',
-    chartType: 'bar' // 'bar' | 'scatter' | 'cumulative'
+    overlay: 'none',
+    accumulate: false,
+    chartType: 'bar' // 'bar' | 'line' | 'scatter'
 };
 
-window.setCompareChartType = function (type) {
-    window.compareState.chartType = type || 'bar';
+window.setExploreSpan = function (span) {
+    window.exploreState.span = span;
+    document.querySelectorAll('#explore-span-group .range-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-span') === span);
+    });
+    const customRow = document.getElementById('explore-custom-dates');
+    if (customRow) {
+        customRow.style.display = span === 'custom' ? 'flex' : 'none';
+        if (span === 'custom') {
+            const endInput = document.getElementById('explore-end-date');
+            const startInput = document.getElementById('explore-start-date');
+            const todayStr = window.getEasternDateStr ? window.getEasternDateStr() : window.getLocalDateStr();
+            if (endInput && !endInput.value) endInput.value = todayStr;
+            if (startInput && !startInput.value) {
+                const d = window.parseLocalDate ? window.parseLocalDate(todayStr) : new Date();
+                d.setDate(d.getDate() - 30);
+                startInput.value = window.getLocalDateStr(d);
+            }
+            return;
+        }
+    }
+    window.runExploreQuery();
+};
+
+window.setExploreBucket = function (bucket) {
+    window.exploreState.bucket = bucket || 'auto';
+    document.querySelectorAll('#explore-bucket-group .range-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-bucket') === bucket);
+    });
+    window.runExploreQuery();
+};
+
+window.toggleExploreAccumulate = function () {
+    window.exploreState.accumulate = !window.exploreState.accumulate;
+    const btn = document.getElementById('explore-accumulate-btn');
+    if (btn) {
+        btn.classList.toggle('active', window.exploreState.accumulate);
+        btn.textContent = window.exploreState.accumulate ? '📈 Accumulate: ON' : '📈 Accumulate: OFF';
+    }
+    window.runExploreQuery();
+};
+
+window.setExploreChartType = function (type) {
+    window.exploreState.chartType = type || 'bar';
     document.querySelectorAll('#compare-chart-type-toggle .toggle-btn').forEach(btn => {
         btn.classList.toggle('active', btn.getAttribute('data-chart') === type);
     });
-    if (window.comparisonData) {
-        window.renderComparisonChart(window.comparisonData);
+    if (window.exploreData) {
+        window.renderExploreChart(window.exploreData);
     }
 };
 
-window.setComparePreset = function (preset) {
-    window.compareState.preset = preset;
-    document.querySelectorAll('#compare-preset-group .range-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.getAttribute('data-preset') === preset);
-    });
-
-    const customRow = document.getElementById('compare-custom-pickers');
-    if (customRow) {
-        customRow.style.display = preset === 'custom' ? 'flex' : 'none';
-    }
-
-    // Auto-calculate period keys based on preset
-    const months = window.comparisonAvailableMonths || [];
-    const years = window.comparisonAvailableYears || [];
-
-    if (preset === 'this_vs_last_month') {
-        // If current month has minimal activities (< 2), default to last full month vs month before
-        if (months.length >= 2) {
-            window.compareState.period_a = months[0];
-            window.compareState.period_b = months[1];
-        }
-    } else if (preset === 'this_vs_last_year_month') {
-        if (months.length > 0) {
-            const currentM = months[0];
-            const targetPrevYear = (parseInt(currentM.slice(0, 4)) - 1) + currentM.slice(4);
-            window.compareState.period_a = currentM;
-            window.compareState.period_b = months.includes(targetPrevYear) ? targetPrevYear : (months[12] || months[1]);
-        }
-    } else if (preset === 'this_vs_last_year') {
-        if (years.length >= 2) {
-            window.compareState.period_a = years[0];
-            window.compareState.period_b = years[1];
-        }
-    }
-
-    // Sync select dropdown values if custom pickers exist
-    const selA = document.getElementById('compare-custom-a');
-    const selB = document.getElementById('compare-custom-b');
-    if (selA && window.compareState.period_a) selA.value = window.compareState.period_a;
-    if (selB && window.compareState.period_b) selB.value = window.compareState.period_b;
-
-    window.runComparisonQuery();
-};
-
-window.runComparisonQuery = async function () {
+window.runExploreQuery = async function () {
     const sportSel = document.getElementById('compare-sport-select');
     const metricSel = document.getElementById('compare-metric-select');
-    if (sportSel) window.compareState.sport = sportSel.value;
-    if (metricSel) window.compareState.metric = metricSel.value;
-
-    if (window.compareState.preset === 'custom') {
-        const selA = document.getElementById('compare-custom-a');
-        const selB = document.getElementById('compare-custom-b');
-        if (selA) window.compareState.period_a = selA.value;
-        if (selB) window.compareState.period_b = selB.value;
-    }
+    const overlaySel = document.getElementById('explore-overlay-select');
+    if (sportSel) window.exploreState.sport = sportSel.value;
+    if (metricSel) window.exploreState.metric = metricSel.value;
+    if (overlaySel) window.exploreState.overlay = overlaySel.value;
 
     const params = new URLSearchParams({
-        period_a: window.compareState.period_a || '',
-        period_b: window.compareState.period_b || '',
-        sport: window.compareState.sport,
-        metric: window.compareState.metric,
-        preset: window.compareState.preset
+        span: window.exploreState.span,
+        bucket: window.exploreState.bucket,
+        sport: window.exploreState.sport,
+        metric: window.exploreState.metric,
+        overlay: window.exploreState.overlay,
+        accumulate: window.exploreState.accumulate ? 'true' : 'false'
     });
+
+    if (window.exploreState.span === 'custom') {
+        const s = document.getElementById('explore-start-date')?.value;
+        const e = document.getElementById('explore-end-date')?.value;
+        if (s) params.set('start_date', s);
+        if (e) params.set('end_date', e);
+    }
 
     const loadingEl = document.getElementById('compare-chart-loading');
     if (loadingEl) loadingEl.style.display = 'flex';
 
     try {
-        const res = await fetch(`/api/analytics/compare?${params.toString()}`);
-        if (!res.ok) throw new Error('Comparison API error');
+        const res = await fetch(`/api/analytics/explore?${params.toString()}`);
+        if (!res.ok) throw new Error('Explore API error');
         const payload = await res.json();
+        window.exploreData = payload;
 
-        // Save available periods on first run
-        if (payload.available_months && !window.comparisonAvailableMonths) {
-            window.comparisonAvailableMonths = payload.available_months;
-            window.comparisonAvailableYears = payload.available_years;
-            window.populateCustomPickers(payload.available_months, payload.available_years);
+        const cap = document.getElementById('explore-span-caption');
+        if (cap && payload.summary?.span_label) {
+            cap.textContent = `${payload.summary.span_label} • by ${payload.bucket}`;
         }
 
-        window.comparisonData = payload.data;
-        window.renderScorecards(payload.data);
-        window.renderComparisonChart(payload.data);
+        window.renderExploreScorecards(payload);
+        window.renderExploreChart(payload);
         if (window.initMobileCarousels) window.initMobileCarousels();
     } catch (err) {
-        console.error('Failed to load comparison analytics:', err);
+        console.error('Failed to load training data explorer:', err);
     } finally {
         if (loadingEl) loadingEl.style.display = 'none';
     }
 };
 
-window.populateCustomPickers = function (months, years) {
-    const selA = document.getElementById('compare-custom-a');
-    const selB = document.getElementById('compare-custom-b');
-    if (!selA || !selB) return;
+function formatPace(minPerMi) {
+    if (!minPerMi || minPerMi <= 0) return '--';
+    const mins = Math.floor(minPerMi);
+    const secs = Math.round((minPerMi - mins) * 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
 
-    let html = '<optgroup label="Months">';
-    months.forEach(m => {
-        const parts = m.split('-');
-        const dt = parts.length >= 2 ? new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, 15) : new Date(m + '-15');
-        const label = dt.toLocaleDateString([], { month: 'short', year: 'numeric' });
-        html += `<option value="${m}">${label}</option>`;
-    });
-    html += '</optgroup><optgroup label="Full Years">';
-    years.forEach(y => {
-        html += `<option value="${y}">${y} (Full Year)</option>`;
-    });
-    html += '</optgroup>';
-
-    selA.innerHTML = html;
-    selB.innerHTML = html;
-
-    if (window.compareState.period_a) selA.value = window.compareState.period_a;
-    if (window.compareState.period_b) selB.value = window.compareState.period_b;
-};
-
-window.renderScorecards = function (data) {
+window.renderExploreScorecards = function (payload) {
     const container = document.getElementById('compare-scorecards-grid');
-    if (!container || !data) return;
-
-    const pa = data.period_a;
-    const pb = data.period_b;
-    const unit = data.unit;
-    const delta = data.delta;
-    const deltaPct = data.delta_pct;
-    const isPositive = delta > 0;
-    const isZero = delta === 0;
-
-    let deltaColor = isPositive ? 'var(--success-color)' : 'var(--danger-color)';
-    let deltaSign = isPositive ? '+' : '';
-    let deltaIcon = isPositive ? '📈' : '📉';
-    if (isZero) {
-        deltaColor = 'var(--text-secondary)';
-        deltaIcon = '⚖️';
-    }
+    if (!container || !payload || !payload.summary) return;
+    const s = payload.summary;
 
     container.innerHTML = `
-        <div class="card glance-card" style="padding: 1rem; border-left: 3px solid #38bdf8; background: rgba(30, 41, 59, 0.45);">
-            <div style="font-size: 0.72rem; font-weight: 700; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem;">
-                ${pa.label}
+        <div class="card glance-card" style="padding: 1rem; border-left: 3px solid #38bdf8; background: rgba(30, 41, 59, 0.45); min-height: auto;">
+            <div style="font-size: 0.72rem; font-weight: 700; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem;">
+                📏 Total Distance
             </div>
-            <div style="font-size: 1.6rem; font-weight: 800; color: #fff; margin-bottom: 0.2rem;">
-                ${pa.summary} <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">${unit}</span>
+            <div style="font-size: 1.55rem; font-weight: 800; color: #fff; margin-bottom: 0.2rem;">
+                ${s.total_miles.toLocaleString()} <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">mi</span>
             </div>
-            <div style="font-size: 0.75rem; color: var(--text-secondary);">
-                ${pa.acts_count} activities recorded
-            </div>
-        </div>
-
-        <div class="card glance-card" style="padding: 1rem; border-left: 3px solid #c084fc; background: rgba(30, 41, 59, 0.45);">
-            <div style="font-size: 0.72rem; font-weight: 700; color: #c084fc; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem;">
-                ${pb.label}
-            </div>
-            <div style="font-size: 1.6rem; font-weight: 800; color: #fff; margin-bottom: 0.2rem;">
-                ${pb.summary} <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">${unit}</span>
-            </div>
-            <div style="font-size: 0.75rem; color: var(--text-secondary);">
-                ${pb.acts_count} activities recorded
+            <div style="font-size: 0.76rem; color: var(--text-secondary);">
+                🚴 ${s.cycling_miles} mi • 🏃 ${s.running_miles} mi
             </div>
         </div>
 
-        <div class="card glance-card" style="padding: 1rem; border-left: 3px solid ${deltaColor}; background: rgba(30, 41, 59, 0.45);">
-            <div style="font-size: 0.72rem; font-weight: 700; color: ${deltaColor}; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem; display: flex; justify-content: space-between;">
-                <span>${deltaIcon} Difference (Delta)</span>
-                <span>${deltaSign}${deltaPct}%</span>
+        <div class="card glance-card" style="padding: 1rem; border-left: 3px solid #4ade80; background: rgba(30, 41, 59, 0.45); min-height: auto;">
+            <div style="font-size: 0.72rem; font-weight: 700; color: #4ade80; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem;">
+                ⚡ Speed &amp; Pace
             </div>
-            <div style="font-size: 1.6rem; font-weight: 800; color: ${deltaColor}; margin-bottom: 0.2rem;">
-                ${deltaSign}${delta} <span style="font-size: 0.85rem; font-weight: 600; opacity: 0.8;">${unit}</span>
+            <div style="font-size: 1.55rem; font-weight: 800; color: #fff; margin-bottom: 0.2rem;">
+                ${s.avg_speed_mph ?? '--'} <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">mph</span>
             </div>
-            <div style="font-size: 0.75rem; color: var(--text-secondary);">
-                ${isPositive ? 'Ahead of comparison period' : (isZero ? 'Equal to comparison period' : 'Behind comparison period')}
+            <div style="font-size: 0.76rem; color: var(--text-secondary);">
+                Run Pace: ${formatPace(s.avg_pace_min_mi)} /mi
+            </div>
+        </div>
+
+        <div class="card glance-card" style="padding: 1rem; border-left: 3px solid #f59e0b; background: rgba(30, 41, 59, 0.45); min-height: auto;">
+            <div style="font-size: 0.72rem; font-weight: 700; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem;">
+                🔋 Power &amp; Heart Rate
+            </div>
+            <div style="font-size: 1.55rem; font-weight: 800; color: #fff; margin-bottom: 0.2rem;">
+                ${s.avg_power_w ?? '--'} <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">W</span>
+            </div>
+            <div style="font-size: 0.76rem; color: var(--text-secondary);">
+                Avg HR: ${s.avg_hr ?? '--'} bpm
+            </div>
+        </div>
+
+        <div class="card glance-card" style="padding: 1rem; border-left: 3px solid #c084fc; background: rgba(30, 41, 59, 0.45); min-height: auto;">
+            <div style="font-size: 0.72rem; font-weight: 700; color: #c084fc; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem;">
+                ⏱️ Volume &amp; Climb
+            </div>
+            <div style="font-size: 1.55rem; font-weight: 800; color: #fff; margin-bottom: 0.2rem;">
+                ${s.total_hours} <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">hrs</span>
+            </div>
+            <div style="font-size: 0.76rem; color: var(--text-secondary);">
+                ${s.workouts} workouts • ${s.elevation_ft.toLocaleString()} ft • ${s.calories.toLocaleString()} kcal
             </div>
         </div>
     `;
 };
 
-window.renderComparisonChart = function (data) {
+window.renderExploreChart = function (payload) {
     const canvas = document.getElementById('comparisonStudioChart');
-    if (!canvas || !data) return;
+    if (!canvas || !payload || !payload.series) return;
 
     if (window.comparisonChart) {
         window.comparisonChart.destroy();
@@ -211,37 +190,24 @@ window.renderComparisonChart = function (data) {
     }
 
     const ctx = canvas.getContext('2d');
-    const chartType = window.compareState.chartType;
-    const pa = data.period_a;
-    const pb = data.period_b;
-    const unit = data.unit;
+    const chartType = window.exploreState.chartType;
+    const ser = payload.series;
+    const unit = ser.unit || '';
+    const hasOverlay = Array.isArray(ser.overlay) && ser.overlay.length > 0;
 
     if (chartType === 'scatter') {
-        // Scatter Plot: plots every individual workout
+        const ptsCycling = (payload.workouts || []).filter(w => w.sport === 'cycling').map(w => ({ x: w.bucket_idx, y: w.y, ...w }));
+        const ptsRunning = (payload.workouts || []).filter(w => w.sport === 'running').map(w => ({ x: w.bucket_idx, y: w.y, ...w }));
+        const ptsOther = (payload.workouts || []).filter(w => w.sport !== 'cycling' && w.sport !== 'running').map(w => ({ x: w.bucket_idx, y: w.y, ...w }));
+
+        const datasets = [];
+        if (ptsCycling.length) datasets.push({ label: 'Cycling', data: ptsCycling, backgroundColor: '#38bdf8', pointRadius: 6, pointHoverRadius: 9 });
+        if (ptsRunning.length) datasets.push({ label: 'Running', data: ptsRunning, backgroundColor: '#f97316', pointRadius: 6, pointHoverRadius: 9 });
+        if (ptsOther.length) datasets.push({ label: 'Other', data: ptsOther, backgroundColor: '#a855f7', pointRadius: 6, pointHoverRadius: 9 });
+
         window.comparisonChart = new Chart(ctx, {
             type: 'scatter',
-            data: {
-                datasets: [
-                    {
-                        label: pa.label,
-                        data: data.scatter_a,
-                        backgroundColor: '#38bdf8',
-                        borderColor: '#0284c7',
-                        borderWidth: 2,
-                        pointRadius: 6,
-                        pointHoverRadius: 9
-                    },
-                    {
-                        label: pb.label,
-                        data: data.scatter_b,
-                        backgroundColor: '#c084fc',
-                        borderColor: '#9333ea',
-                        borderWidth: 2,
-                        pointRadius: 6,
-                        pointHoverRadius: 9
-                    }
-                ]
-            },
+            data: { datasets },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
@@ -250,193 +216,153 @@ window.renderComparisonChart = function (data) {
                         const el = elements[0];
                         const pt = window.comparisonChart.data.datasets[el.datasetIndex].data[el.index];
                         if (pt && pt.id && window.openActivityDetail) {
-                            window.openActivityDetail(pt.id, {
-                                activityId: pt.id,
-                                activityName: pt.name,
-                                startTimeLocal: pt.date
-                            });
+                            window.openActivityDetail(pt.id, { activityId: pt.id, activityName: pt.name, startTimeLocal: pt.date });
                         }
                     }
                 },
                 scales: {
                     x: {
-                        title: {
-                            display: true,
-                            text: data.labels.length > 12 ? 'Day of the Month (1–31)' : 'Month',
+                        type: 'linear',
+                        min: 0,
+                        max: Math.max(0, (payload.labels || []).length - 1),
+                        ticks: {
                             color: '#94a3b8',
-                            font: { family: 'Inter', size: 12, weight: 600 }
+                            stepSize: 1,
+                            maxTicksLimit: 10,
+                            callback: (val) => (payload.labels && payload.labels[Math.round(val)]) || ''
                         },
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: { color: '#94a3b8' }
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' }
                     },
                     y: {
-                        title: {
-                            display: true,
-                            text: `${data.metric.toUpperCase()} (${unit})`,
-                            color: '#94a3b8',
-                            font: { family: 'Inter', size: 12, weight: 600 }
-                        },
+                        title: { display: true, text: `${payload.metric.toUpperCase()} (${unit})`, color: '#94a3b8' },
                         grid: { color: 'rgba(255, 255, 255, 0.05)' },
                         ticks: { color: '#94a3b8' }
                     }
                 },
                 plugins: {
-                    legend: {
-                        labels: { color: '#e2e8f0', font: { family: 'Inter', weight: 600 } }
-                    },
+                    legend: { labels: { color: '#e2e8f0', font: { family: 'Inter', weight: 600 } } },
                     tooltip: {
                         backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                        titleColor: '#fff',
-                        bodyColor: '#cbd5e1',
                         borderColor: 'rgba(255, 255, 255, 0.15)',
                         borderWidth: 1,
-                        padding: 10,
                         callbacks: {
-                            title: (items) => {
-                                const pt = items[0].raw;
-                                return pt.name || 'Workout';
-                            },
+                            title: (items) => items[0]?.raw?.name || 'Workout',
                             label: (item) => {
                                 const pt = item.raw;
-                                return [
-                                    `📅 Date: ${pt.date}`,
-                                    `📊 ${data.metric}: ${pt.y} ${unit}`,
-                                    `📏 Distance: ${pt.dist} mi`,
-                                    `⚡ Speed: ${pt.spd} mph`,
-                                    `⏱️ Duration: ${pt.dur} min`,
-                                    `👆 Click to view full activity`
-                                ];
+                                const lines = [`📅 ${pt.date}`, `📊 ${payload.metric}: ${pt.y} ${unit}`, `📏 ${pt.dist} mi • ⏱️ ${pt.dur} min`];
+                                if (pt.spd) lines.push(`⚡ ${pt.spd} mph`);
+                                if (pt.pwr) lines.push(`🔋 ${pt.pwr} W`);
+                                if (pt.hr) lines.push(`❤️ ${pt.hr} bpm`);
+                                return lines;
                             }
                         }
                     }
                 }
             }
         });
-    } else if (chartType === 'cumulative') {
-        // Cumulative progression line chart
-        window.comparisonChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: data.labels,
-                datasets: [
-                    {
-                        label: `${pa.label} (Cumulative)`,
-                        data: data.cum_a,
-                        borderColor: '#38bdf8',
-                        backgroundColor: 'rgba(56, 189, 248, 0.12)',
-                        borderWidth: 3,
-                        fill: true,
-                        tension: 0.25,
-                        pointRadius: 2,
-                        pointHoverRadius: 6
-                    },
-                    {
-                        label: `${pb.label} (Cumulative)`,
-                        data: data.cum_b,
-                        borderColor: '#c084fc',
-                        backgroundColor: 'rgba(192, 132, 252, 0.06)',
-                        borderWidth: 2.5,
-                        borderDash: [5, 5],
-                        fill: true,
-                        tension: 0.25,
-                        pointRadius: 2,
-                        pointHoverRadius: 6
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: {
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: { color: '#94a3b8' }
-                    },
-                    y: {
-                        title: {
-                            display: true,
-                            text: `Cumulative ${data.metric.toUpperCase()} (${unit})`,
-                            color: '#94a3b8'
-                        },
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: { color: '#94a3b8' }
-                    }
-                },
-                plugins: {
-                    legend: { labels: { color: '#e2e8f0', font: { family: 'Inter', weight: 600 } } },
-                    tooltip: {
-                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                        borderColor: 'rgba(255, 255, 255, 0.15)',
-                        borderWidth: 1
-                    }
-                }
-            }
-        });
-    } else {
-        // Default: Side-by-Side Grouped Bar Chart
-        window.comparisonChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: data.labels,
-                datasets: [
-                    {
-                        label: pa.label,
-                        data: data.bars_a,
-                        backgroundColor: 'rgba(56, 189, 248, 0.85)',
-                        borderColor: '#38bdf8',
-                        borderWidth: 1,
-                        borderRadius: 4
-                    },
-                    {
-                        label: pb.label,
-                        data: data.bars_b,
-                        backgroundColor: 'rgba(192, 132, 252, 0.85)',
-                        borderColor: '#c084fc',
-                        borderWidth: 1,
-                        borderRadius: 4
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: {
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: { color: '#94a3b8' }
-                    },
-                    y: {
-                        title: {
-                            display: true,
-                            text: `${data.metric.toUpperCase()} (${unit})`,
-                            color: '#94a3b8'
-                        },
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: { color: '#94a3b8' }
-                    }
-                },
-                plugins: {
-                    legend: { labels: { color: '#e2e8f0', font: { family: 'Inter', weight: 600 } } },
-                    tooltip: {
-                        backgroundColor: 'rgba(15, 23, 42, 0.95)',
-                        borderColor: 'rgba(255, 255, 255, 0.15)',
-                        borderWidth: 1,
-                        callbacks: {
-                            label: (item) => `${item.dataset.label}: ${item.raw} ${unit}`
-                        }
-                    }
-                }
-            }
+        return;
+    }
+
+    const isLine = chartType === 'line' || window.exploreState.accumulate;
+    const datasets = [
+        {
+            label: `${ser.primary_label} (${unit})`,
+            data: ser.primary,
+            type: isLine ? 'line' : 'bar',
+            backgroundColor: isLine ? 'rgba(56, 189, 248, 0.14)' : 'rgba(56, 189, 248, 0.85)',
+            borderColor: '#38bdf8',
+            borderWidth: isLine ? 2.5 : 1,
+            borderRadius: isLine ? 0 : 4,
+            fill: isLine,
+            tension: 0.25,
+            pointRadius: isLine ? 2.5 : 0,
+            yAxisID: 'y',
+            spanGaps: true
+        }
+    ];
+
+    if (Array.isArray(ser.secondary)) {
+        datasets.push({
+            label: `${ser.secondary_label} (${unit})`,
+            data: ser.secondary,
+            type: isLine ? 'line' : 'bar',
+            backgroundColor: isLine ? 'rgba(249, 115, 22, 0.14)' : 'rgba(249, 115, 22, 0.85)',
+            borderColor: '#f97316',
+            borderWidth: isLine ? 2.5 : 1,
+            borderRadius: isLine ? 0 : 4,
+            fill: isLine,
+            tension: 0.25,
+            pointRadius: isLine ? 2.5 : 0,
+            yAxisID: 'y',
+            spanGaps: true
         });
     }
+
+    if (hasOverlay) {
+        datasets.push({
+            label: `${ser.overlay_label} (${ser.overlay_unit})`,
+            data: ser.overlay,
+            type: 'line',
+            borderColor: '#4ade80',
+            backgroundColor: 'rgba(74, 222, 128, 0.1)',
+            borderWidth: 2,
+            borderDash: [4, 4],
+            tension: 0.25,
+            pointRadius: 2.5,
+            yAxisID: 'y1',
+            spanGaps: true
+        });
+    }
+
+    const scales = {
+        x: {
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#94a3b8', maxRotation: 40, autoSkip: true, maxTicksLimit: 12 }
+        },
+        y: {
+            position: 'left',
+            title: { display: true, text: `${payload.metric.toUpperCase()} (${unit})`, color: '#94a3b8' },
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#94a3b8' }
+        }
+    };
+
+    if (hasOverlay) {
+        scales.y1 = {
+            position: 'right',
+            title: { display: true, text: `${ser.overlay_label.toUpperCase()} (${ser.overlay_unit})`, color: '#4ade80' },
+            grid: { drawOnChartArea: false },
+            ticks: { color: '#4ade80' }
+        };
+    }
+
+    window.comparisonChart = new Chart(ctx, {
+        type: isLine ? 'line' : 'bar',
+        data: { labels: payload.labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales,
+            plugins: {
+                legend: { labels: { color: '#e2e8f0', font: { family: 'Inter', weight: 600 } } },
+                tooltip: {
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    borderColor: 'rgba(255, 255, 255, 0.15)',
+                    borderWidth: 1
+                }
+            }
+        }
+    });
 };
 
-// Initialize Studio on DOM Ready
+// Backwards-compatible aliases if anything still calls old names
+window.runComparisonQuery = window.runExploreQuery;
+
 document.addEventListener('DOMContentLoaded', () => {
-    // Run comparison query after dashboard initializes
     setTimeout(() => {
-        if (window.runComparisonQuery) {
-            window.setComparePreset('this_vs_last_month');
+        if (window.runExploreQuery) {
+            window.runExploreQuery();
         }
-    }, 400);
+    }, 350);
 });

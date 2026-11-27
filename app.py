@@ -3457,6 +3457,329 @@ def api_analytics_compare():
         logger.error(f"Error in /api/analytics/compare: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
+
+@app.route('/api/analytics/explore')
+@login_required
+def api_analytics_explore():
+    """Flexible multi-span, multi-bucket, multi-sport training data viewer."""
+    try:
+        today = get_today()
+        today_str = today.isoformat()
+
+        span = request.args.get('span', '3m').strip().lower()
+        bucket = request.args.get('bucket', 'auto').strip().lower()
+        sport = request.args.get('sport', 'cycling_vs_running').strip().lower()
+        metric = request.args.get('metric', 'distance').strip().lower()
+        overlay = request.args.get('overlay', 'none').strip().lower()
+        accumulate = request.args.get('accumulate', 'false').strip().lower() == 'true'
+        start_arg = request.args.get('start_date', '').strip()
+        end_arg = request.args.get('end_date', '').strip()
+
+        # Load all cached monthly activity files up to current month
+        current_month_str = today.strftime('%Y-%m')
+        files = sorted(glob.glob(os.path.join('garmin_cache', 'activities', '*.json')))
+        all_acts = []
+        seen_ids = set()
+        for f in files:
+            bn = os.path.basename(f)
+            if not (bn.endswith('.json') and len(bn) == 12 and bn[:4].isdigit() and bn[5:7].isdigit()):
+                continue
+            if bn[:-5] > current_month_str:
+                continue
+            try:
+                with open(f, 'r', encoding='utf-8') as fp:
+                    d = json.load(fp)
+                items = []
+                if isinstance(d, dict):
+                    for day_k, day_acts in d.items():
+                        if isinstance(day_acts, list):
+                            for a in day_acts:
+                                if isinstance(a, dict):
+                                    a_copy = dict(a)
+                                    a_copy['_date'] = day_k
+                                    items.append(a_copy)
+                elif isinstance(d, list):
+                    items = [dict(a) for a in d if isinstance(a, dict)]
+                for a in items:
+                    aid = a.get('activityId')
+                    if aid and aid in seen_ids:
+                        continue
+                    if aid:
+                        seen_ids.add(aid)
+                    d_str = a.get('_date') or (a.get('startTimeLocal') or '')[:10] or (a.get('startTimeGMT') or '')[:10]
+                    if not d_str or d_str > today_str:
+                        continue
+                    a['_date'] = d_str
+                    all_acts.append(a)
+            except Exception as ex:
+                logger.warning(f"Explore read error {f}: {ex}")
+
+        # Resolve date range [start_dt, end_dt]
+        end_dt = today
+        if span == 'custom' and end_arg:
+            try:
+                end_dt = min(today, date.fromisoformat(end_arg))
+            except Exception:
+                end_dt = today
+
+        if span == '1w':
+            start_dt = end_dt - timedelta(days=6)
+        elif span == '1m':
+            start_dt = end_dt - timedelta(days=29)
+        elif span == '3m':
+            start_dt = end_dt - timedelta(days=89)
+        elif span == '6m':
+            start_dt = end_dt - timedelta(days=179)
+        elif span == '1y':
+            start_dt = end_dt - timedelta(days=364)
+        elif span == 'ytd':
+            start_dt = date(end_dt.year, 1, 1)
+        elif span == 'custom' and start_arg:
+            try:
+                start_dt = date.fromisoformat(start_arg)
+            except Exception:
+                start_dt = end_dt - timedelta(days=89)
+        elif span == 'all':
+            dates = [a['_date'] for a in all_acts if a.get('_date')]
+            start_dt = date.fromisoformat(min(dates)) if dates else (end_dt - timedelta(days=364))
+        else:
+            start_dt = end_dt - timedelta(days=89)
+
+        if start_dt > end_dt:
+            start_dt = end_dt
+
+        start_s = start_dt.isoformat()
+        end_s = end_dt.isoformat()
+        range_days = (end_dt - start_dt).days + 1
+
+        if bucket == 'auto':
+            if range_days <= 45:
+                bucket = 'day'
+            elif range_days <= 210:
+                bucket = 'week'
+            elif range_days <= 1100:
+                bucket = 'month'
+            else:
+                bucket = 'year'
+
+        def match_sport(a, sp):
+            if sp == 'all':
+                return True
+            if sp == 'cycling':
+                return is_cycling_activity(a)
+            if sp == 'running':
+                return is_running_activity(a)
+            if sp == 'walking':
+                tk = str((a.get('activityType') or {}).get('typeKey', '') if isinstance(a.get('activityType'), dict) else (a.get('activityType') or '')).lower()
+                an = str(a.get('activityName') or '').lower()
+                return any(w in tk for w in ('walk', 'hike')) or any(w in an for w in ('walk', 'hike'))
+            if sp == 'swimming':
+                tk = str((a.get('activityType') or {}).get('typeKey', '') if isinstance(a.get('activityType'), dict) else (a.get('activityType') or '')).lower()
+                an = str(a.get('activityName') or '').lower()
+                return 'swim' in tk or 'swim' in an
+            return is_cycling_activity(a) or is_running_activity(a)
+
+        in_range = [a for a in all_acts if start_s <= a['_date'] <= end_s]
+        filtered = [a for a in in_range if match_sport(a, sport)]
+
+        # Build ordered bucket keys & labels covering the entire span
+        bucket_keys = []
+        bucket_labels = {}
+        cur = start_dt
+        if bucket == 'day':
+            while cur <= end_dt:
+                k = cur.isoformat()
+                bucket_keys.append(k)
+                bucket_labels[k] = cur.strftime('%b %d').replace(' 0', ' ')
+                cur += timedelta(days=1)
+        elif bucket == 'week':
+            cur_mon = start_dt - timedelta(days=start_dt.weekday())
+            while cur_mon <= end_dt:
+                k = cur_mon.isoformat()
+                bucket_keys.append(k)
+                bucket_labels[k] = 'Wk ' + cur_mon.strftime('%b %d').replace(' 0', ' ')
+                cur_mon += timedelta(days=7)
+        elif bucket == 'month':
+            y, m = start_dt.year, start_dt.month
+            while (y, m) <= (end_dt.year, end_dt.month):
+                k = f"{y:04d}-{m:02d}"
+                bucket_keys.append(k)
+                bucket_labels[k] = date(y, m, 1).strftime('%b %y')
+                m += 1
+                if m > 12:
+                    m = 1
+                    y += 1
+        else:  # year
+            for y in range(start_dt.year, end_dt.year + 1):
+                k = f"{y:04d}"
+                bucket_keys.append(k)
+                bucket_labels[k] = k
+
+        def get_bucket_key(d_str):
+            dt_obj = date.fromisoformat(d_str)
+            if bucket == 'day':
+                return d_str
+            if bucket == 'week':
+                return (dt_obj - timedelta(days=dt_obj.weekday())).isoformat()
+            if bucket == 'month':
+                return d_str[:7]
+            return d_str[:4]
+
+        def act_val(a, m_key):
+            if m_key == 'distance':
+                return (a.get('distance') or 0) / 1609.34
+            if m_key == 'speed':
+                s = a.get('averageSpeed') or 0
+                return (s * 2.23694) if s > 0 else None
+            if m_key == 'pace':
+                dist_mi = (a.get('distance') or 0) / 1609.34
+                dur_min = (a.get('duration') or a.get('movingDuration') or 0) / 60.0
+                return (dur_min / dist_mi) if (dist_mi > 0.1 and dur_min > 0) else None
+            if m_key == 'power':
+                p = a.get('avgPower') or a.get('normPower') or 0
+                return float(p) if p > 0 else None
+            if m_key == 'duration':
+                return (a.get('duration') or a.get('movingDuration') or a.get('elapsedDuration') or 0) / 3600.0
+            if m_key == 'elevation':
+                return (a.get('elevationGain') or 0) * 3.28084
+            if m_key == 'hr':
+                hr = a.get('averageHR') or 0
+                return float(hr) if hr > 0 else None
+            if m_key == 'calories':
+                return float(a.get('calories') or 0)
+            if m_key == 'count':
+                return 1.0
+            return 0.0
+
+        ADDITIVE_METRICS = {'distance', 'duration', 'elevation', 'calories', 'count'}
+        UNIT_MAP = {
+            'distance': 'mi', 'speed': 'mph', 'pace': 'min/mi', 'power': 'W',
+            'duration': 'hrs', 'elevation': 'ft', 'hr': 'bpm', 'calories': 'kcal', 'count': 'workouts'
+        }
+
+        def agg_series(acts_subset, m_key):
+            buckets = {k: [] for k in bucket_keys}
+            for a in acts_subset:
+                bk = get_bucket_key(a['_date'])
+                if bk in buckets:
+                    v = act_val(a, m_key)
+                    if v is not None:
+                        buckets[bk].append(v)
+            out = []
+            running_sum = 0.0
+            running_vals = []
+            for k in bucket_keys:
+                vals = buckets[k]
+                if m_key in ADDITIVE_METRICS:
+                    val = sum(vals)
+                    if accumulate:
+                        running_sum += val
+                        out.append(round(running_sum, 2))
+                    else:
+                        out.append(round(val, 2))
+                else:
+                    if vals:
+                        avg_v = sum(vals) / len(vals)
+                        running_vals.extend(vals)
+                        out.append(round((sum(running_vals) / len(running_vals)) if accumulate else avg_v, 1))
+                    else:
+                        out.append(round(sum(running_vals) / len(running_vals), 1) if (accumulate and running_vals) else None)
+            return out
+
+        cycling_acts = [a for a in filtered if is_cycling_activity(a)]
+        running_acts = [a for a in filtered if is_running_activity(a)]
+
+        if sport == 'cycling_vs_running':
+            primary_series = agg_series(cycling_acts, metric)
+            secondary_series = agg_series(running_acts, metric)
+            primary_label = 'Cycling'
+            secondary_label = 'Running'
+        else:
+            primary_series = agg_series(filtered, metric)
+            secondary_series = None
+            primary_label = sport.capitalize() if sport != 'all' else 'All Sports'
+            secondary_label = None
+
+        overlay_series = agg_series(filtered, overlay) if (overlay and overlay != 'none' and overlay != metric) else None
+
+        # Summary KPIs across filtered activities
+        total_miles = round(sum((a.get('distance') or 0) / 1609.34 for a in filtered), 1)
+        cycling_miles = round(sum((a.get('distance') or 0) / 1609.34 for a in cycling_acts), 1)
+        running_miles = round(sum((a.get('distance') or 0) / 1609.34 for a in running_acts), 1)
+        total_hours = round(sum((a.get('duration') or a.get('movingDuration') or 0) / 3600.0 for a in filtered), 1)
+        elevation_ft = round(sum((a.get('elevationGain') or 0) * 3.28084 for a in filtered))
+        total_cals = round(sum((a.get('calories') or 0) for a in filtered))
+        speeds = [(a.get('averageSpeed') or 0) * 2.23694 for a in filtered if (a.get('averageSpeed') or 0) > 0]
+        powers = [a.get('avgPower') or a.get('normPower') for a in filtered if (a.get('avgPower') or a.get('normPower') or 0) > 0]
+        hrs = [a.get('averageHR') for a in filtered if (a.get('averageHR') or 0) > 0]
+        run_paces = [
+            ((a.get('duration') or a.get('movingDuration') or 0) / 60.0) / ((a.get('distance') or 0) / 1609.34)
+            for a in running_acts
+            if (a.get('distance') or 0) > 160 and (a.get('duration') or a.get('movingDuration') or 0) > 0
+        ]
+
+        # Individual workouts for scatter/drilldown
+        workouts = []
+        for a in sorted(filtered, key=lambda x: x['_date']):
+            v = act_val(a, metric)
+            if v is None:
+                continue
+            workouts.append({
+                'id': a.get('activityId'),
+                'name': a.get('activityName') or 'Workout',
+                'date': a['_date'],
+                'sport': 'cycling' if is_cycling_activity(a) else ('running' if is_running_activity(a) else 'other'),
+                'bucket_idx': bucket_keys.index(get_bucket_key(a['_date'])) if get_bucket_key(a['_date']) in bucket_keys else 0,
+                'y': round(v, 2),
+                'dist': round((a.get('distance') or 0) / 1609.34, 1),
+                'spd': round((a.get('averageSpeed') or 0) * 2.23694, 1),
+                'pwr': round(a.get('avgPower') or a.get('normPower') or 0),
+                'dur': round((a.get('duration') or 0) / 60.0),
+                'hr': round(a.get('averageHR') or 0)
+            })
+
+        return jsonify({
+            'span': span,
+            'bucket': bucket,
+            'sport': sport,
+            'metric': metric,
+            'overlay': overlay,
+            'accumulate': accumulate,
+            'start_date': start_s,
+            'end_date': end_s,
+            'labels': [bucket_labels[k] for k in bucket_keys],
+            'series': {
+                'primary': primary_series,
+                'primary_label': primary_label,
+                'secondary': secondary_series,
+                'secondary_label': secondary_label,
+                'unit': UNIT_MAP.get(metric, ''),
+                'overlay': overlay_series,
+                'overlay_label': overlay.capitalize() if overlay_series else None,
+                'overlay_unit': UNIT_MAP.get(overlay, '') if overlay_series else ''
+            },
+            'summary': {
+                'total_miles': total_miles,
+                'cycling_miles': cycling_miles,
+                'running_miles': running_miles,
+                'workouts': len(filtered),
+                'cycling_workouts': len(cycling_acts),
+                'running_workouts': len(running_acts),
+                'total_hours': total_hours,
+                'elevation_ft': elevation_ft,
+                'calories': total_cals,
+                'avg_speed_mph': round(sum(speeds) / len(speeds), 1) if speeds else None,
+                'avg_power_w': round(sum(powers) / len(powers)) if powers else None,
+                'avg_hr': round(sum(hrs) / len(hrs)) if hrs else None,
+                'avg_pace_min_mi': round(sum(run_paces) / len(run_paces), 2) if run_paces else None,
+                'span_label': f"{start_dt.strftime('%b %d, %Y')} – {end_dt.strftime('%b %d, %Y')}"
+            },
+            'workouts': workouts
+        })
+    except Exception as e:
+        logger.error(f"Error in /api/analytics/explore: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
 def hour_to_time_str(h_val):
     if h_val is None:
         return '--'

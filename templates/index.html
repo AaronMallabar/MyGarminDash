@@ -1715,69 +1715,105 @@
 
         </div>
 
-        <!-- Comparison Studio Module -->
+        <!-- Training Data Viewer & Analytics Explorer -->
         <div id="section-compare">
-            <h2 style="margin-top: 2rem; margin-bottom: 1.5rem; font-size: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
-                <div>Comparison Studio <span style="font-size: 0.8rem; font-weight:normal; background: rgba(56, 189, 248, 0.1); padding: 0.2rem 0.5rem; border-radius: 1rem; color: var(--accent-color);">ANALYTICS</span></div>
+            <h2 style="margin-top: 2rem; margin-bottom: 1.5rem; font-size: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+                <div>Training Data Viewer <span style="font-size: 0.8rem; font-weight:normal; background: rgba(56, 189, 248, 0.1); padding: 0.2rem 0.5rem; border-radius: 1rem; color: var(--accent-color);">EXPLORER</span></div>
+                <span id="explore-span-caption" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 500;"></span>
             </h2>
 
             <div class="comparison-card">
-                <!-- Top Toolbar: Presets & Visualization Toggle -->
+                <!-- Row 1: Time Span & Chart Type -->
                 <div class="compare-header-row">
-                    <div class="range-btn-group" id="compare-preset-group">
-                        <button class="range-btn active" data-preset="this_vs_last_month" onclick="setComparePreset('this_vs_last_month')">This Month vs Last Month</button>
-                        <button class="range-btn" data-preset="this_vs_last_year_month" onclick="setComparePreset('this_vs_last_year_month')">vs Same Month Last Year</button>
-                        <button class="range-btn" data-preset="this_vs_last_year" onclick="setComparePreset('this_vs_last_year')">Year vs Year</button>
-                        <button class="range-btn" data-preset="custom" onclick="setComparePreset('custom')">Custom Periods</button>
+                    <div class="range-btn-group" id="explore-span-group" style="display: flex; flex-wrap: wrap; gap: 0.35rem;">
+                        <button class="range-btn" data-span="1w" onclick="setExploreSpan('1w')">7D</button>
+                        <button class="range-btn" data-span="1m" onclick="setExploreSpan('1m')">1M</button>
+                        <button class="range-btn active" data-span="3m" onclick="setExploreSpan('3m')">3M</button>
+                        <button class="range-btn" data-span="6m" onclick="setExploreSpan('6m')">6M</button>
+                        <button class="range-btn" data-span="1y" onclick="setExploreSpan('1y')">1Y</button>
+                        <button class="range-btn" data-span="ytd" onclick="setExploreSpan('ytd')">YTD</button>
+                        <button class="range-btn" data-span="all" onclick="setExploreSpan('all')">All</button>
+                        <button class="range-btn" data-span="custom" onclick="setExploreSpan('custom')">Custom</button>
                     </div>
 
                     <div class="toggle-group" id="compare-chart-type-toggle">
-                        <button class="toggle-btn active" data-chart="bar" onclick="setCompareChartType('bar')">📊 Bars</button>
-                        <button class="toggle-btn" data-chart="scatter" onclick="setCompareChartType('scatter')">📍 Workouts</button>
-                        <button class="toggle-btn" data-chart="cumulative" onclick="setCompareChartType('cumulative')">📈 Cumulative</button>
+                        <button class="toggle-btn active" data-chart="bar" onclick="setExploreChartType('bar')">📊 Bars</button>
+                        <button class="toggle-btn" data-chart="line" onclick="setExploreChartType('line')">📈 Line</button>
+                        <button class="toggle-btn" data-chart="scatter" onclick="setExploreChartType('scatter')">📍 Workouts</button>
                     </div>
                 </div>
 
-                <!-- Secondary Filter Controls: Sport, Metric, & Custom Pickers -->
-                <div class="compare-controls-bar">
-                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <label for="compare-sport-select" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">SPORT</label>
-                        <select id="compare-sport-select" class="compare-select" onchange="runComparisonQuery()">
-                            <option value="cycling" selected>🚲 Cycling</option>
-                            <option value="running">🏃 Running</option>
+                <!-- Custom Date Range Row -->
+                <div id="explore-custom-dates" style="display: none; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-bottom: 1rem; padding: 0.65rem 0.85rem; background: rgba(15, 23, 42, 0.6); border-radius: 0.65rem; border: 1px solid rgba(255,255,255,0.08);">
+                    <label style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 700;">FROM</label>
+                    <input type="date" id="explore-start-date" class="compare-select" style="color-scheme: dark;">
+                    <label style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 700;">TO</label>
+                    <input type="date" id="explore-end-date" class="compare-select" style="color-scheme: dark;">
+                    <button type="button" onclick="runExploreQuery()" style="background: var(--accent-color); color: #0f172a; font-weight: 700; border: none; padding: 0.45rem 0.9rem; border-radius: 0.45rem; cursor: pointer;">Apply</button>
+                </div>
+
+                <!-- Row 2: Grouping (Days/Weeks/Months/Years), Accumulate, Sport, Metric, Overlay -->
+                <div class="compare-controls-bar" style="gap: 0.75rem 1.25rem;">
+                    <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                        <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 700;">GROUP BY</span>
+                        <div class="range-btn-group" id="explore-bucket-group" style="display: flex; gap: 0.25rem;">
+                            <button class="range-btn active" data-bucket="auto" onclick="setExploreBucket('auto')" style="padding: 0.3rem 0.55rem; font-size: 0.78rem;">Auto</button>
+                            <button class="range-btn" data-bucket="day" onclick="setExploreBucket('day')" style="padding: 0.3rem 0.55rem; font-size: 0.78rem;">Days</button>
+                            <button class="range-btn" data-bucket="week" onclick="setExploreBucket('week')" style="padding: 0.3rem 0.55rem; font-size: 0.78rem;">Weeks</button>
+                            <button class="range-btn" data-bucket="month" onclick="setExploreBucket('month')" style="padding: 0.3rem 0.55rem; font-size: 0.78rem;">Months</button>
+                            <button class="range-btn" data-bucket="year" onclick="setExploreBucket('year')" style="padding: 0.3rem 0.55rem; font-size: 0.78rem;">Years</button>
+                        </div>
+                    </div>
+
+                    <button type="button" id="explore-accumulate-btn" class="range-btn" onclick="toggleExploreAccumulate()" style="border: 1px solid rgba(56, 189, 248, 0.3); padding: 0.35rem 0.75rem; font-size: 0.78rem; font-weight: 700;">
+                        📈 Accumulate: OFF
+                    </button>
+
+                    <div style="display: flex; align-items: center; gap: 0.45rem;">
+                        <label for="compare-sport-select" style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 700;">SPORT</label>
+                        <select id="compare-sport-select" class="compare-select" onchange="runExploreQuery()">
+                            <option value="cycling_vs_running" selected>🚴+🏃 Cycling &amp; Running</option>
+                            <option value="cycling">🚲 Cycling Only</option>
+                            <option value="running">🏃 Running Only</option>
                             <option value="walking">🚶 Walking &amp; Hiking</option>
                             <option value="swimming">🏊 Swimming</option>
                             <option value="all">🌐 All Sports</option>
                         </select>
                     </div>
 
-                    <div style="display: flex; align-items: center; gap: 0.5rem;">
-                        <label for="compare-metric-select" style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">METRIC</label>
-                        <select id="compare-metric-select" class="compare-select" onchange="runComparisonQuery()">
-                            <option value="distance" selected>📏 Total Distance</option>
-                            <option value="speed">⚡ Average Speed</option>
-                            <option value="count">🔢 Activity Count</option>
-                            <option value="duration">⏱️ Time / Duration</option>
-                            <option value="elevation">⛰️ Elevation Gain</option>
-                            <option value="power">🔋 Average Power</option>
-                            <option value="hr">❤️ Average HR</option>
+                    <div style="display: flex; align-items: center; gap: 0.45rem;">
+                        <label for="compare-metric-select" style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 700;">METRIC</label>
+                        <select id="compare-metric-select" class="compare-select" onchange="runExploreQuery()">
+                            <option value="distance" selected>📏 Distance (mi)</option>
+                            <option value="speed">⚡ Avg Speed (mph)</option>
+                            <option value="power">🔋 Avg Power (W)</option>
+                            <option value="pace">🏃 Avg Pace (min/mi)</option>
+                            <option value="duration">⏱️ Time (hrs)</option>
+                            <option value="elevation">⛰️ Elevation Gain (ft)</option>
+                            <option value="hr">❤️ Avg HR (bpm)</option>
                             <option value="calories">🔥 Active Calories</option>
+                            <option value="count">🔢 Workout Count</option>
                         </select>
                     </div>
 
-                    <!-- Custom Dropdown Row (toggled when Custom preset is selected) -->
-                    <div id="compare-custom-pickers" style="display: none; align-items: center; gap: 0.5rem; margin-left: auto;">
-                        <select id="compare-custom-a" class="compare-select"></select>
-                        <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 700;">VS</span>
-                        <select id="compare-custom-b" class="compare-select"></select>
-                        <button class="btn btn-sm" onclick="runComparisonQuery()" style="background: var(--accent-color); color: #0f172a; font-weight: 700; border: none; padding: 0.4rem 0.8rem; border-radius: 0.4rem; cursor: pointer;">Apply</button>
+                    <div style="display: flex; align-items: center; gap: 0.45rem;">
+                        <label for="explore-overlay-select" style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 700;">OVERLAY</label>
+                        <select id="explore-overlay-select" class="compare-select" onchange="runExploreQuery()">
+                            <option value="none" selected>None</option>
+                            <option value="speed">⚡ Avg Speed (mph)</option>
+                            <option value="power">🔋 Avg Power (W)</option>
+                            <option value="hr">❤️ Avg HR (bpm)</option>
+                            <option value="elevation">⛰️ Elevation (ft)</option>
+                            <option value="distance">📏 Distance (mi)</option>
+                            <option value="duration">⏱️ Time (hrs)</option>
+                        </select>
                     </div>
                 </div>
 
-                <!-- KPI Head-to-Head Scorecards -->
+                <!-- Summary KPI Cards (Swipeable on mobile) -->
                 <div id="compare-scorecards-grid" class="compare-scorecards-grid"></div>
 
-                <!-- Interactive Comparison Chart -->
+                <!-- Interactive Chart -->
                 <div class="chart-container" style="position: relative; height: 380px;">
                     <div id="compare-chart-loading" style="display: none; position: absolute; inset: 0; background: rgba(15, 23, 42, 0.7); align-items: center; justify-content: center; z-index: 5; border-radius: 0.5rem;">
                         <div class="spinner"></div>
